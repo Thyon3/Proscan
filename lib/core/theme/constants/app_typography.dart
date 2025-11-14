@@ -24,9 +24,10 @@ class AppTypography {
   static final TextTheme light = TextTheme(
     // Headlines
     displayLarge: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 57,
+      fontSize: 16,
       fontWeight: FontWeight.bold,
+      color: AppColors.lightTextPrimary,
+      height: 1.2,
     ),
     displayMedium: _base(
       color: AppColors.lightTextPrimary,
