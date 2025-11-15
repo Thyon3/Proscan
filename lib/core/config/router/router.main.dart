@@ -25,5 +25,12 @@ final GoRouter router = GoRouter(
         return LoginScreen();
       },
     ),
+    GoRoute(
+      path: '/forgotpassword',
+      name: 'forgotpassword',
+      builder: (context, state) {
+        return ForgotPasswordScreen();
+      },
+    ),
   ],
 );

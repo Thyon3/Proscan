@@ -1,39 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:iconsax/iconsax.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
-
   final _emailFocus = FocusNode();
-  final _passFocus = FocusNode();
-
-  bool _obscurePass = true;
-  bool _rememberMe = false;
 
   @override
   void dispose() {
     _emailCtrl.dispose();
-    _passCtrl.dispose();
     _emailFocus.dispose();
-    _passFocus.dispose();
     super.dispose();
   }
 
-  void _login() {
+  void _sendCode() {
     if (_formKey.currentState!.validate()) {
-      context.go('/home');
+      // TODO: Send reset code
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('6-digit code sent to ${_emailCtrl.text}'),
+          backgroundColor: AppColors.primary,
+        ),
+      );
     }
   }
 
@@ -45,62 +42,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       backgroundColor: scheme.background,
+
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 24),
-
-                // Logo
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Text(
-                      '[≡]',
-                      style: TextStyle(
-                        fontSize: 36,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 60),
 
                 // Title
                 Text(
-                  'Welcome Back',
+                  'Forgot Password?',
                   style: GoogleFonts.inter(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: scheme.onBackground,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
+
+                // Subtitle
                 Text(
-                  'Log in to your ThyScan account',
+                  'Enter your email address and we\'ll send you a 6-digit code to reset your password.',
                   style: GoogleFonts.inter(
                     fontSize: 16,
                     color: scheme.onBackground.withOpacity(0.7),
+                    height: 1.5,
                   ),
-                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
 
@@ -109,8 +80,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _emailCtrl,
                   focusNode: _emailFocus,
                   label: 'Email',
-                  hint: 'youname@example.com',
-                  icon: Icons.person_outline,
+                  hint: 'Enter your email',
+                  icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
                   scheme: scheme,
                   isDark: isDark,
@@ -120,75 +91,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 20),
-
-                // Password Field
-                _buildField(
-                  controller: _passCtrl,
-                  focusNode: _passFocus,
-                  label: 'Password',
-                  hint: 'Enter your password',
-                  icon: Icons.lock_outline,
-                  isPassword: true,
-                  obscureText: _obscurePass,
-                  onToggle: () => setState(() => _obscurePass = !_obscurePass),
-                  scheme: scheme,
-                  isDark: isDark,
-                  validator: (v) => v!.length < 6 ? 'Min 6 chars' : null,
-                ),
-                const SizedBox(height: 16),
-
-                // Remember Me + Forgot
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Checkbox(
-                            value: _rememberMe,
-                            onChanged: (v) => setState(() => _rememberMe = v!),
-                            activeColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Remember me',
-                          style: GoogleFonts.inter(
-                            fontSize: 14,
-                            color: scheme.onBackground.withOpacity(0.8),
-                          ),
-                        ),
-                      ],
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        context.go('/forgotpassword');
-                      },
-                      child: Text(
-                        'Forgot password?',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
                 const SizedBox(height: 32),
 
-                // Login Button
+                // Send Code Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: _login,
+                    onPressed: _sendCode,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(
@@ -198,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       shadowColor: AppColors.primary.withOpacity(0.3),
                     ),
                     child: Text(
-                      'Login',
+                      'Send Code',
                       style: GoogleFonts.inter(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -235,17 +145,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Google Button
-                _socialButton(
-                  label: 'Continue with Google',
-                  icon: Icons.g_mobiledata,
-
-                  onTap: () {},
-                  scheme: scheme,
-                  isDark: isDark,
-                ),
-                const SizedBox(height: 16),
-
                 // Apple Button
                 _socialButton(
                   label: 'Continue with Apple',
@@ -255,23 +154,32 @@ class _LoginScreenState extends State<LoginScreen> {
                   isDark: isDark,
                   isApple: true,
                 ),
+                SizedBox(height: 15),
+                _socialButton(
+                  label: 'Continue with Google',
+                  icon: Icons.g_mobiledata,
+                  onTap: () {},
+                  scheme: scheme,
+                  isDark: isDark,
+                  isApple: true,
+                ),
                 const SizedBox(height: 32),
 
-                // Sign Up Link
+                // Login Link
                 Center(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Don\'t have an account? ',
+                        'Already have an account? ',
                         style: GoogleFonts.inter(
                           color: scheme.onBackground.withOpacity(0.7),
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => context.push('/signup'),
+                        onTap: () => context.push('/login'),
                         child: Text(
-                          'Sign Up',
+                          'Log In',
                           style: GoogleFonts.inter(
                             color: AppColors.primary,
                             fontWeight: FontWeight.bold,
@@ -298,9 +206,6 @@ class _LoginScreenState extends State<LoginScreen> {
     required String hint,
     required IconData icon,
     TextInputType? keyboardType,
-    bool isPassword = false,
-    bool obscureText = false,
-    VoidCallback? onToggle,
     required ColorScheme scheme,
     required bool isDark,
     String? Function(String?)? validator,
@@ -332,7 +237,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: TextFormField(
             controller: controller,
             focusNode: focusNode,
-            obscureText: obscureText,
             keyboardType: keyboardType,
             style: GoogleFonts.inter(color: scheme.onBackground, fontSize: 16),
             decoration: InputDecoration(
@@ -341,17 +245,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 color: scheme.onBackground.withOpacity(0.5),
               ),
               prefixIcon: Icon(icon, color: AppColors.primary, size: 20),
-              suffixIcon: isPassword
-                  ? IconButton(
-                      icon: Icon(
-                        obscureText
-                            ? Icons.visibility_off_outlined
-                            : Icons.visibility_outlined,
-                        color: AppColors.primary,
-                      ),
-                      onPressed: onToggle,
-                    )
-                  : null,
               filled: true,
               fillColor: isDark ? scheme.surface : Color(0xFFF8FFF9),
               border: OutlineInputBorder(
@@ -374,6 +267,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // SOCIAL BUTTON
   Widget _socialButton({
     required String label,
     required IconData icon,
@@ -397,7 +291,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 blurRadius: 14,
                 offset: const Offset(0, 4),
               ),
-
             if (isDark)
               BoxShadow(
                 color: Colors.black.withOpacity(0.2),
@@ -417,9 +310,10 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(width: 12),
             Text(
               label,
-              style: Theme.of(context).textTheme.bodyLarge!.copyWith(
-                fontSize: 18,
+              style: GoogleFonts.inter(
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
+                color: scheme.onBackground,
               ),
             ),
           ],
