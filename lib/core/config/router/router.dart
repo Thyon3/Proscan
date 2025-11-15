@@ -6,6 +6,7 @@ import 'package:thyscan/features/auth/screens/signup.dart';
 import 'package:thyscan/features/auth/screens/verifyotp.dart';
 import 'package:thyscan/features/home/presentation/screens/appmainscreen.dart';
 import 'package:thyscan/features/home/presentation/screens/homescreen.dart';
+import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
 import 'package:thyscan/features/onboarding/screens/onboarding.dart';
 import 'package:thyscan/features/splash/screens/splash.dart';
 

@@ -33,6 +33,13 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/recentscansselection',
+      name: 'recentscansselection',
+      builder: (context, state) {
+        return RecentScansSection();
+      },
+    ),
+    GoRoute(
       path: '/verifyotp',
       name: 'verifyotp',
       builder: (context, state) {
