@@ -67,7 +67,7 @@ class HomeScreen extends ConsumerWidget {
                   horizontal: 20,
                   vertical: 8,
                 ),
-                child: ScanListItem(
+                child: LibraryScanListItem(
                   scan: scan,
                   isSelectionMode: homeState.isSelectionMode,
                   isSelected: isSelected,

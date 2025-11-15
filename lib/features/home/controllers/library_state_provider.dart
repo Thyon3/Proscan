@@ -1,14 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-part 'home_state_provider.freezed.dart';
 
+part 'library_state_provider.freezed.dart'; // Run build_runner to generate this
+
+// Define the state for the Library screen
 @freezed
-class HomeState with _$HomeState {
-  const HomeState._();
-  const factory HomeState({
+class LibraryState with _$LibraryState {
+  const factory LibraryState({
     @Default(false) bool isSelectionMode,
     @Default({}) Set<String> selectedScanIds,
-  }) = _HomeState;
+  }) = _LibraryState;
 
   @override
   // TODO: implement isSelectionMode
@@ -19,14 +20,13 @@ class HomeState with _$HomeState {
   Set<String> get selectedScanIds => throw UnimplementedError();
 }
 
-// 2. CREATE THE NOTIFIER
-class HomeNotifier extends Notifier<HomeState> {
+// Create the Notifier
+class LibraryNotifier extends Notifier<LibraryState> {
   @override
-  HomeState build() {
-    return const HomeState(); // Initial state
+  LibraryState build() {
+    return const LibraryState(); // Initial state is not in selection mode
   }
 
-  // Enters selection mode and selects the first item
   void enterSelectionMode(String initialScanId) {
     state = state.copyWith(
       isSelectionMode: true,
@@ -34,14 +34,12 @@ class HomeNotifier extends Notifier<HomeState> {
     );
   }
 
-  // Exits selection mode and clears all selections
   void exitSelectionMode() {
     state = state.copyWith(isSelectionMode: false, selectedScanIds: {});
   }
 
-  // Toggles the selection status of a single scan
   void toggleScanSelection(String scanId) {
-    if (!state.isSelectionMode) return; // Safety check
+    if (!state.isSelectionMode) return;
 
     final newSet = Set<String>.from(state.selectedScanIds);
     if (newSet.contains(scanId)) {
@@ -50,7 +48,6 @@ class HomeNotifier extends Notifier<HomeState> {
       newSet.add(scanId);
     }
 
-    // If the last item is deselected, exit selection mode automatically
     if (newSet.isEmpty) {
       exitSelectionMode();
     } else {
@@ -58,13 +55,16 @@ class HomeNotifier extends Notifier<HomeState> {
     }
   }
 
-  // TODO: Implement select all logic if needed
   void selectAll(List<String> allScanIds) {
     state = state.copyWith(selectedScanIds: allScanIds.toSet());
   }
+
+  void selectNone() {
+    state = state.copyWith(selectedScanIds: {});
+  }
 }
 
-// 3. CREATE THE PROVIDER
-final homeProvider = NotifierProvider<HomeNotifier, HomeState>(
-  HomeNotifier.new,
+// Create the final provider
+final libraryProvider = NotifierProvider<LibraryNotifier, LibraryState>(
+  LibraryNotifier.new,
 );

@@ -1,9 +1,13 @@
+// lib/features/home/presentation/screens/app_main_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart' show StateProvider;
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
+import 'package:thyscan/features/home/controllers/library_state_provider.dart';
+
 import 'package:thyscan/features/home/presentation/screens/homescreen.dart';
 import 'package:thyscan/features/home/presentation/screens/tools_screen.dart';
 import 'package:thyscan/features/home/presentation/screens/library.dart';
@@ -27,13 +31,19 @@ class AppMainScreen extends ConsumerWidget {
     final int currentIndex = ref.watch(screenIndexProvider);
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // THE FIX: WATCH THE HOME SCREEN'S STATE
-    final isSelectionMode = ref.watch(homeProvider).isSelectionMode;
+    // WATCH BOTH SCREEN STATES
+    final isHomeSelectionMode = ref.watch(homeProvider).isSelectionMode;
+    final isLibrarySelectionMode = ref.watch(libraryProvider).isSelectionMode;
+
+    // THE FIX: Combine the conditions
+    final bool hideMainNavigation =
+        (isHomeSelectionMode && currentIndex == 0) ||
+        (isLibrarySelectionMode && currentIndex == 3);
 
     final List<Widget> screens = [
       const HomeScreen(),
       const ToolsScreen(),
-      const Placeholder(), // This is fine as it's never shown
+      const Placeholder(),
       const LibraryScreen(),
       const ProfileScreen(),
     ];
@@ -41,10 +51,10 @@ class AppMainScreen extends ConsumerWidget {
     return Scaffold(
       body: IndexedStack(index: currentIndex, children: screens),
 
-      floatingActionButton: (isSelectionMode && currentIndex == 0)
-          ? null // If in selection mode on the home screen, hide the button
+      floatingActionButton:
+          hideMainNavigation // Use the new combined boolean
+          ? null
           : FloatingActionButton(
-              // Otherwise, show the button as usual
               onPressed: () => context.push('/scan'),
               backgroundColor: AppColors.primary,
               elevation: 12,
@@ -56,7 +66,8 @@ class AppMainScreen extends ConsumerWidget {
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
-      bottomNavigationBar: (isSelectionMode && currentIndex == 0)
+      bottomNavigationBar:
+          hideMainNavigation // Use the new combined boolean
           ? null
           : BottomAppBar(
               shape: const CircularNotchedRectangle(),
@@ -70,9 +81,9 @@ class AppMainScreen extends ConsumerWidget {
                   onTap: (int idx) {
                     if (idx != 2) {
                       ref.read(screenIndexProvider.notifier).state = idx;
-                      debugPrint('→ Navigated to index $idx');
                     }
                   },
+                  // ... a lot of BottomNavigationBar properties (no changes needed here) ...
                   type: BottomNavigationBarType.fixed,
                   showSelectedLabels: true,
                   showUnselectedLabels: true,
@@ -82,7 +93,6 @@ class AppMainScreen extends ConsumerWidget {
                   unselectedItemColor: Theme.of(
                     context,
                   ).colorScheme.onSurface.withOpacity(0.6),
-
                   items: _navItems.asMap().entries.map((e) {
                     final int idx = e.key;
                     final _NavItem item = e.value;
@@ -108,6 +118,7 @@ class AppMainScreen extends ConsumerWidget {
   }
 }
 
+// ... (_NavItem class and screenIndexProvider remain the same)
 class _NavItem {
   final IconData? unselected;
   final IconData? selected;
