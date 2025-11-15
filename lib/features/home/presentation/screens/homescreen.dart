@@ -11,7 +11,7 @@ final List<Scan> _dummyScans = [
   Scan(
     id: '1',
     title: 'Meeting Notes',
-    imagePath: 'assets/images/doc_thumbnail1.png',
+    imagePath: 'assets/images/dummythumbnails/thumbnailone.png',
     date: 'Oct 26',
     size: '1.2 MB',
     pageCount: '3 pages',
@@ -20,7 +20,7 @@ final List<Scan> _dummyScans = [
   Scan(
     id: '2',
     title: 'Receipt-2023-10-27',
-    imagePath: 'assets/images/doc_thumbnail2.png',
+    imagePath: 'assets/images/dummythumbnails/thumbnailtwo.png',
     date: 'Oct 26',
     size: '128 KB',
     pageCount: '1 page',
@@ -29,7 +29,7 @@ final List<Scan> _dummyScans = [
   Scan(
     id: '3',
     title: 'Invoice #12345',
-    imagePath: 'assets/images/doc_thumbnail3.png',
+    imagePath: 'assets/images/dummythumbnails/thumbnailthree.png',
     date: 'Oct 25',
     size: '1.2 MB',
     pageCount: '12 pages',

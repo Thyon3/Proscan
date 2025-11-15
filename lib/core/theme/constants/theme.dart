@@ -12,7 +12,7 @@ class AppColors {
   static const Color success = Color(0xFF22C55E);
 
   // ──────────────────────── LIGHT MODE ────────────────────────
-  static const Color lightBackground = Color(0xFFF8F9FA); // Soft gray-white
+  static const Color lightBackground = Colors.white; // Soft gray-white
   static const Color lightSurface = Color(0xFFF8FFF9); // Card / Input
   static const Color lightTextPrimary = Color(0xFF111827); // Title
   static const Color lightTextSecondary = Color(0xFF6B7280); // Hint / Label
