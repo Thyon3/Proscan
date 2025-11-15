@@ -18,5 +18,12 @@ final GoRouter router = GoRouter(
         return SignupScreen();
       },
     ),
+    GoRoute(
+      path: '/login',
+      name: 'login',
+      builder: (context, state) {
+        return LoginScreen();
+      },
+    ),
   ],
 );

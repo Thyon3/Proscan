@@ -1,49 +1,37 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
-import 'package:thyscan/core/theme/controllers/theme.dart';
 
-class SignupScreen extends ConsumerStatefulWidget {
-  const SignupScreen({super.key});
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
 
   @override
-  ConsumerState<ConsumerStatefulWidget> createState() {
-    // TODO: implement createState
-    return _SignupScreenState();
-  }
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _SignupScreenState extends ConsumerState<SignupScreen> {
+class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
-  final _confirmCtrl = TextEditingController();
 
-  final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
   final _passFocus = FocusNode();
-  final _confirmFocus = FocusNode();
 
   bool _obscurePass = true;
-  bool _obscureConfirm = true;
+  bool _rememberMe = false;
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
-    _confirmCtrl.dispose();
-    _nameFocus.dispose();
     _emailFocus.dispose();
     _passFocus.dispose();
-    _confirmFocus.dispose();
     super.dispose();
   }
 
-  void _signup() {
+  void _login() {
     if (_formKey.currentState!.validate()) {
       context.go('/home');
     }
@@ -56,6 +44,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: scheme.background,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -63,57 +52,65 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
-
               children: [
-                SizedBox(height: MediaQuery.of(context).size.height * 0.03),
+                const SizedBox(height: 24),
 
-                // Logo + App Name
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(12),
+                // Logo
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
                       ),
-                      child: const Icon(
-                        Icons.document_scanner,
+                    ],
+                  ),
+                  child: const Center(
+                    child: Text(
+                      '[≡]',
+                      style: TextStyle(
+                        fontSize: 36,
                         color: Colors.white,
-                        size: 40,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 32),
 
+                // Title
                 Text(
-                  'Create your account',
+                  'Welcome Back',
                   style: GoogleFonts.inter(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                     color: scheme.onBackground,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 32),
-
-                // Fields with shadow
-                _buildField(
-                  controller: _nameCtrl,
-                  focusNode: _nameFocus,
-                  label: 'Full Name',
-                  hint: 'Enter your full name',
-                  scheme: scheme,
-                  isDark: isDark,
-                  validator: (v) => v!.trim().isEmpty ? 'Required' : null,
+                const SizedBox(height: 8),
+                Text(
+                  'Log in to your ThyScan account',
+                  style: GoogleFonts.inter(
+                    fontSize: 16,
+                    color: scheme.onBackground.withOpacity(0.7),
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 40),
 
+                // Email Field
                 _buildField(
                   controller: _emailCtrl,
                   focusNode: _emailFocus,
-                  label: 'Email Address',
-                  hint: 'Enter your email',
+                  label: 'Email',
+                  hint: 'youname@example.com',
+                  icon: Icons.person_outline,
                   keyboardType: TextInputType.emailAddress,
                   scheme: scheme,
                   isDark: isDark,
@@ -125,11 +122,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // Password Field
                 _buildField(
                   controller: _passCtrl,
                   focusNode: _passFocus,
                   label: 'Password',
                   hint: 'Enter your password',
+                  icon: Icons.lock_outline,
                   isPassword: true,
                   obscureText: _obscurePass,
                   onToggle: () => setState(() => _obscurePass = !_obscurePass),
@@ -137,32 +136,57 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   isDark: isDark,
                   validator: (v) => v!.length < 6 ? 'Min 6 chars' : null,
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                _buildField(
-                  controller: _confirmCtrl,
-                  focusNode: _confirmFocus,
-                  label: 'Confirm Password',
-                  hint: 'Confirm your password',
-                  isPassword: true,
-                  obscureText: _obscureConfirm,
-                  onToggle: () =>
-                      setState(() => _obscureConfirm = !_obscureConfirm),
-                  scheme: scheme,
-                  isDark: isDark,
-                  validator: (v) {
-                    if (v != _passCtrl.text) return 'Passwords don\'t match';
-                    return null;
-                  },
+                // Remember Me + Forgot
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: Checkbox(
+                            value: _rememberMe,
+                            onChanged: (v) => setState(() => _rememberMe = v!),
+                            activeColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Remember me',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: scheme.onBackground.withOpacity(0.8),
+                          ),
+                        ),
+                      ],
+                    ),
+                    GestureDetector(
+                      onTap: () {},
+                      child: Text(
+                        'Forgot password?',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 32),
 
-                // Sign Up Button
+                // Login Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: _signup,
+                    onPressed: _login,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(
@@ -172,7 +196,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       shadowColor: AppColors.primary.withOpacity(0.3),
                     ),
                     child: Text(
-                      'Sign Up',
+                      'Login',
                       style: GoogleFonts.inter(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -209,17 +233,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Google Button with shadow
+                // Google Button
                 _socialButton(
                   label: 'Continue with Google',
                   icon: Icons.g_mobiledata,
+
                   onTap: () {},
                   scheme: scheme,
                   isDark: isDark,
                 ),
                 const SizedBox(height: 16),
 
-                // Apple Button with shadow
+                // Apple Button
                 _socialButton(
                   label: 'Continue with Apple',
                   icon: Icons.apple,
@@ -230,21 +255,21 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Login Link
+                // Sign Up Link
                 Center(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Already have an account? ',
+                        'Don\'t have an account? ',
                         style: GoogleFonts.inter(
                           color: scheme.onBackground.withOpacity(0.7),
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => context.push('/login'),
+                        onTap: () => context.push('/signup'),
                         child: Text(
-                          'Log in',
+                          'Sign Up',
                           style: GoogleFonts.inter(
                             color: AppColors.primary,
                             fontWeight: FontWeight.bold,
@@ -263,12 +288,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-  // TEXT FIELD WITH SHADOW (Light Mode only)
+  // REUSABLE FIELD
   Widget _buildField({
     required TextEditingController controller,
     required FocusNode focusNode,
     required String label,
     required String hint,
+    required IconData icon,
     TextInputType? keyboardType,
     bool isPassword = false,
     bool obscureText = false,
@@ -287,7 +313,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             fontWeight: FontWeight.w500,
           ),
         ),
-        SizedBox(height: MediaQuery.of(context).size.height * 0.01),
+        const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
@@ -312,20 +338,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               hintStyle: GoogleFonts.inter(
                 color: scheme.onBackground.withOpacity(0.5),
               ),
-              filled: true,
-              fillColor: isDark ? scheme.surface : Color(0xFFF8FFF9),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: AppColors.primary, width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 18,
-              ),
+              prefixIcon: Icon(icon, color: AppColors.primary, size: 20),
               suffixIcon: isPassword
                   ? IconButton(
                       icon: Icon(
@@ -337,6 +350,20 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                       onPressed: onToggle,
                     )
                   : null,
+              filled: true,
+              fillColor: isDark ? scheme.surface : Color(0xFFF8FFF9),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: AppColors.primary, width: 2),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 18,
+              ),
             ),
             validator: validator,
           ),
@@ -345,7 +372,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-  // SOCIAL BUTTON WITH SHADOW (Light Mode only)
   Widget _socialButton({
     required String label,
     required IconData icon,
@@ -359,18 +385,24 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       child: Container(
         height: 56,
         decoration: BoxDecoration(
-          color: isDark ? scheme.surface : Color(0xFFF8FFF9),
+          color: isDark ? scheme.surface : const Color(0xFFF8FFF9),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: scheme.onBackground.withOpacity(0.2)),
-          boxShadow: !isDark
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+          boxShadow: [
+            if (!isDark)
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.12),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+
+            if (isDark)
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 12,
+                offset: const Offset(0, 3),
+              ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
