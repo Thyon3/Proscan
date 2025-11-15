@@ -33,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _login() {
     if (_formKey.currentState!.validate()) {
-      context.go('/home');
+      context.go('/homescreen');
     }
   }
 

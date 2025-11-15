@@ -42,6 +42,13 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/homescreen',
+      name: 'homescreen',
+      builder: (context, state) {
+        return HomeScreen();
+      },
+    ),
+    GoRoute(
       path: '/resetpassword',
       name: 'resetpassword',
       builder: (context, state) {
