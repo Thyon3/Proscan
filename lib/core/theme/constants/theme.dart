@@ -3,28 +3,51 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:thyscan/core/theme/constants/app_typography.dart';
 
 class AppColors {
-  // PRIMARY, SECONDARY, TERTIARY
-  static const Color primary = Color(0xFF3DCC4B); // Vibrant Green
+  // ──────────────────────── CORE BRAND COLORS ────────────────────────
+  static const Color primary = Color(0xFF3DCC4B); // Same for Light & Dark
   static const Color secondary = Color(0xFF2563EB); // Rich Blue
   static const Color tertiary = Color(0xFFF5A623); // Warm Amber
 
-  static const Color error = Color(0xFFEF4444); // Vibrant Red
-  static const Color success = Color(0xFF22C55E); // Green
+  static const Color error = Color(0xFFEF4444);
+  static const Color success = Color(0xFF22C55E);
 
-  static const Color lightBackground = Color(0xFFF9FAFB); // Soft Off-white
-  static const Color lightSurface = Color(0xFFFFFFFF); // White cards
-  static const Color lightTextPrimary = Color(0xFF111827); // Near-black
-  static const Color lightTextSecondary = Color(0xFF6B7280); // Gray
-  static const Color lightBorder = Color(0xFFE5E7EB); // Light gray
+  // ──────────────────────── LIGHT MODE ────────────────────────
+  static const Color lightBackground = Color(0xFFF8F9FA); // Soft gray-white
+  static const Color lightSurface = Color(0xFFF8FFF9); // Card / Input
+  static const Color lightTextPrimary = Color(0xFF111827); // Title
+  static const Color lightTextSecondary = Color(0xFF6B7280); // Hint / Label
+  static const Color lightBorder = Color(0xFFE5E7EB); // Input border
   static const Color lightBottomNav = Color(0xFFFFFFFF);
 
-  // DARK MODE
-  static const Color darkPrimary = Color(0xFF34B644); // Brighter green
-  static const Color darkBackground = Color(0xFF111827);
-  static const Color darkSurface = Color(0xFF1F2937);
-  static const Color darkTextPrimary = Color(0xFFF9FAFB);
-  static const Color darkTextSecondary = Color(0xFF9CA3AF);
-  static const Color darkBorder = Color(0xFF374151);
+  // ──────────────────────── DARK MODE ────────────────────────
+  static const Color darkBackground = Color(0xFF0A0E0A); // ThyScan dark
+  static const Color darkSurface = Color(0xFF1A1F1A); // Input / Card
+  static const Color darkTextPrimary = Color(0xFFF9FAFB); // White
+  static const Color darkTextSecondary = Color(0xFF9CA3AF); // Muted
+  static const Color darkBorder = Color(0xFF2D3748);
+
+  // // PRIMARY, SECONDARY, TERTIARY
+  // static const Color primary = Color(0xFF3DCC4B); // Vibrant Green
+  // static const Color secondary = Color(0xFF2563EB); // Rich Blue
+  // static const Color tertiary = Color(0xFFF5A623); // Warm Amber
+
+  // static const Color error = Color(0xFFEF4444); // Vibrant Red
+  // static const Color success = Color(0xFF22C55E); // Green
+
+  // static const Color lightBackground = Color(0xFFF9FAFB); // Soft Off-white
+  // static const Color lightSurface = Color(0xFFFFFFFF); // White cards
+  // static const Color lightTextPrimary = Color(0xFF111827); // Near-black
+  // static const Color lightTextSecondary = Color(0xFF6B7280); // Gray
+  // static const Color lightBorder = Color(0xFFE5E7EB); // Light gray
+  // static const Color lightBottomNav = Color(0xFFFFFFFF);
+
+  // // DARK MODE
+  // static const Color darkPrimary = Color(0xFF34B644); // Brighter green
+  // static const Color darkBackground = Color(0xFF111827);
+  // static const Color darkSurface = Color(0xFF1F2937);
+  // static const Color darkTextPrimary = Color(0xFFF9FAFB);
+  // static const Color darkTextSecondary = Color(0xFF9CA3AF);
+  // static const Color darkBorder = Color(0xFF374151);
   static const Color darkBottomNav = Color(0xFF111827);
 }
 
@@ -115,7 +138,7 @@ class AppTheme {
     scaffoldBackgroundColor: AppColors.darkBackground,
     textTheme: AppTypography.dark,
     colorScheme: const ColorScheme.dark().copyWith(
-      primary: AppColors.darkPrimary,
+      primary: AppColors.primary,
       secondary: AppColors.secondary,
       tertiary: AppColors.tertiary,
       error: AppColors.error,
@@ -136,7 +159,7 @@ class AppTheme {
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.darkPrimary,
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
@@ -157,7 +180,7 @@ class AppTheme {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: AppColors.darkPrimary, width: 2),
+        borderSide: BorderSide(color: AppColors.primary, width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -174,14 +197,14 @@ class AppTheme {
     ),
     bottomNavigationBarTheme: BottomNavigationBarThemeData(
       backgroundColor: AppColors.darkBottomNav,
-      selectedItemColor: AppColors.darkPrimary,
+      selectedItemColor: AppColors.primary,
       unselectedItemColor: AppColors.darkTextSecondary,
       showUnselectedLabels: true,
       type: BottomNavigationBarType.fixed,
       elevation: 8,
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: AppColors.darkPrimary,
+      backgroundColor: AppColors.primary,
       foregroundColor: Colors.white,
     ),
     dividerColor: AppColors.darkBorder,
