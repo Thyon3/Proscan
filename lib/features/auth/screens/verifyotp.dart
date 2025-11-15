@@ -140,9 +140,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
               const SizedBox(height: 32),
 
               ElevatedButton(
-                onPressed: () {
-                  context.push('/resetpassword');
-                },
+                onPressed: _verifyOtp,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.colorScheme.primary,
                   foregroundColor: Colors.white,

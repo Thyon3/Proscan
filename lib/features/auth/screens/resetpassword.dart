@@ -143,7 +143,7 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(
                       vertical: 16,
-                      horizontal: MediaQuery.sizeOf(context).width * 0.3,
+                      horizontal: MediaQuery.sizeOf(context).width * 0.29,
                     ),
 
                     shape: RoundedRectangleBorder(
@@ -183,10 +183,6 @@ class _CreateNewPasswordScreenState extends State<CreateNewPasswordScreen> {
     );
   }
 }
-
-// =============================================================
-// =============== SHARED/REUSABLE WIDGETS =====================
-// =============================================================
 
 class _CustomPasswordField extends StatelessWidget {
   final TextEditingController controller;
@@ -243,7 +239,7 @@ class _CustomPasswordField extends StatelessWidget {
                 isObscured
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
-                color: theme.textTheme.labelMedium?.color,
+                color: theme.colorScheme.primary,
               ),
               onPressed: onToggleVisibility,
             ),
