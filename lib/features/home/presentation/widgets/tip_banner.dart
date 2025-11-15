@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart' show StateProvider;
 
-class TipBanner extends StatelessWidget {
+class TipBanner extends ConsumerWidget {
   const TipBanner({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
     return Padding(
@@ -26,7 +28,7 @@ class TipBanner extends StatelessWidget {
             ),
             IconButton(
               onPressed: () {
-                /* TODO: Dismiss banner */
+                ref.read(tipBannerVisibilityProvider.notifier).state = false;
               },
               icon: const Icon(Icons.close),
               iconSize: 20,
@@ -37,3 +39,7 @@ class TipBanner extends StatelessWidget {
     );
   }
 }
+
+final tipBannerVisibilityProvider = StateProvider<bool>((ref) {
+  return true;
+});

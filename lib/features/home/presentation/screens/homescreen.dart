@@ -41,30 +41,31 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isBannerVisible = ref.watch(tipBannerVisibilityProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final screenHeight = MediaQuery.sizeOf(context).height;
 
     return Scaffold(
-      // The body is a CustomScrollView for advanced scrolling effects and performance
       body: CustomScrollView(
         slivers: [
-          // 1. The custom "app bar" with search
-          const SliverToBoxAdapter(child: HomeAppBar()),
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            elevation: 0,
+            toolbarHeight: MediaQuery.sizeOf(context).height * 0.08,
+            titleSpacing: 0,
+            title: const HomeAppBar(),
+          ),
 
-          // Add some vertical spacing
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-          // 2. The "Tools" section grid
           const SliverToBoxAdapter(child: ToolsSection()),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-          // 3. The "Recent Scans" header and filter chips
+          SliverToBoxAdapter(child: SizedBox(height: screenHeight * 0.04)),
           const SliverToBoxAdapter(child: RecentScansSection()),
 
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-          // 4. The list of recent scans. SliverList is very efficient for long lists.
+          // list of recent scans
           SliverList(
             delegate: SliverChildBuilderDelegate((context, index) {
               return Padding(
@@ -79,51 +80,11 @@ class HomeScreen extends ConsumerWidget {
 
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
-          // 5. The "Tip" banner at the bottom
-          const SliverToBoxAdapter(child: TipBanner()),
+          // tip banner at the bottom
+          if (isBannerVisible) const SliverToBoxAdapter(child: TipBanner()),
 
           // Padding at the very bottom of the scroll view
           const SliverToBoxAdapter(child: SizedBox(height: 120)),
-        ],
-      ),
-      // The large green camera button in the center
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          /* TODO: Handle camera press */
-        },
-        backgroundColor: colorScheme.primary,
-        child: const Icon(Icons.camera_alt, color: Colors.white, size: 32),
-        shape: const CircleBorder(),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-
-      // The bottom navigation bar
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0, // Hardcoded for now
-        onTap: (index) {
-          /* TODO: Handle navigation */
-        },
-        type: BottomNavigationBarType.fixed, // Ensures all items are visible
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_rounded),
-            label: 'Tools',
-          ),
-          // A placeholder item for the FAB space
-          BottomNavigationBarItem(
-            icon: Icon(Icons.camera_alt, color: Colors.transparent),
-            label: '',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.library_books_rounded),
-            label: 'Library',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline_rounded),
-            label: 'Profile',
-          ),
         ],
       ),
     );

@@ -10,10 +10,11 @@ class HomeAppBar extends StatelessWidget {
 
     // Using SafeArea to avoid notches and system UI elements
     return SafeArea(
-      bottom: false, // Only apply padding to the top
+      bottom: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: TextField(
@@ -24,8 +25,7 @@ class HomeAppBar extends StatelessWidget {
                     color: theme.textTheme.bodySmall?.color,
                   ),
                   filled: true,
-                  fillColor: colorScheme
-                      .surfaceVariant, // This color adapts to light/dark
+                  fillColor: colorScheme.surfaceVariant,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(30.0),
                     borderSide: BorderSide.none, // No border
@@ -43,7 +43,7 @@ class HomeAppBar extends StatelessWidget {
                 Icons.workspace_premium_outlined,
                 color: colorScheme.tertiary,
               ),
-              iconSize: 28,
+              iconSize: 40,
             ),
           ],
         ),
