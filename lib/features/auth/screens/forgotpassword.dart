@@ -31,6 +31,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           backgroundColor: AppColors.primary,
         ),
       );
+      context.push('/verifyotp');
     }
   }
 

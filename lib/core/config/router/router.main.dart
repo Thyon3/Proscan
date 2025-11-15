@@ -32,5 +32,23 @@ final GoRouter router = GoRouter(
         return ForgotPasswordScreen();
       },
     ),
+    GoRoute(
+      path: '/verifyotp',
+      name: 'verifyotp',
+      builder: (context, state) {
+        // TODO   pass the email
+        final email = 'asnakemengesha79@gmail.com';
+        return VerifyOtpScreen(email: email);
+      },
+    ),
+    GoRoute(
+      path: '/resetpassword',
+      name: 'resetpassword',
+      builder: (context, state) {
+        // TODO   pass the email
+        final email = 'asnakemengesha79@gmail.com';
+        return CreateNewPasswordScreen();
+      },
+    ),
   ],
 );
