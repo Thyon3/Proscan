@@ -12,6 +12,7 @@ import 'package:thyscan/features/home/presentation/screens/homescreen.dart';
 import 'package:thyscan/features/home/presentation/screens/tools_screen.dart';
 import 'package:thyscan/features/home/presentation/screens/library.dart';
 import 'package:thyscan/features/home/presentation/screens/profile.dart';
+import 'package:thyscan/features/profile/presentation/screens/guest_mode.dart';
 
 class AppMainScreen extends ConsumerWidget {
   const AppMainScreen({super.key});
@@ -45,7 +46,7 @@ class AppMainScreen extends ConsumerWidget {
       const ToolsScreen(),
       const Placeholder(),
       const LibraryScreen(),
-      const ProfileScreen(),
+      const ProfileGuestScreen(),
     ];
 
     return Scaffold(

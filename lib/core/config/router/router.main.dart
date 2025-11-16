@@ -26,6 +26,13 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/guesmodeprofilescreen',
+      name: 'guesmodeprofilescreen',
+      builder: (context, state) {
+        return (ProfileGuestScreen());
+      },
+    ),
+    GoRoute(
       path: '/forgotpassword',
       name: 'forgotpassword',
       builder: (context, state) {
