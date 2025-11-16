@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:thyscan/features/home/controllers/library_state_provider.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_filter_bar.dart';
+import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 

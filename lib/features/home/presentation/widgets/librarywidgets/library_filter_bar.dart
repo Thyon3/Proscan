@@ -19,7 +19,7 @@ class LibraryFilterBar extends StatelessWidget {
         16 * scale,
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min, // ← Critical: prevents overflow
+        mainAxisSize: MainAxisSize.min,
         children: [
           // SEARCH BAR
           TextField(
@@ -33,14 +33,12 @@ class LibraryFilterBar extends StatelessWidget {
                 padding: EdgeInsets.all(8 * scale),
                 child: Icon(
                   Icons.search,
-                  size: 24 * scale, // ← Fixed size
+                  size: 24 * scale,
                   color: colorScheme.primary,
                 ),
               ),
               filled: true,
-              fillColor: isDarkMode
-                  ? colorScheme.surface
-                  : Colors.grey[200], // ← Soft light gray
+              fillColor: isDarkMode ? colorScheme.surface : Colors.grey[200],
               contentPadding: EdgeInsets.symmetric(
                 vertical: 18 * scale,
                 horizontal: 16 * scale,
@@ -61,7 +59,7 @@ class LibraryFilterBar extends StatelessWidget {
           ),
 
           // RESPONSIVE SPACING
-          SizedBox(height: 16 * scale), // ← Safe, responsive gap
+          SizedBox(height: 18 * scale),
           // FILTER ROW
           Row(
             children: [
