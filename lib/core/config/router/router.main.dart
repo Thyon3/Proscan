@@ -84,6 +84,13 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/helpandsupport',
+      name: 'helpandsupport',
+      builder: (context, state) {
+        return HelpSupportScreen();
+      },
+    ),
+    GoRoute(
       path: '/appmainscreen',
       name: 'appmainscreen',
       builder: (context, state) {

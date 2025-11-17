@@ -5,6 +5,7 @@ import 'package:thyscan/features/auth/screens/login.dart'
 import 'package:thyscan/features/auth/screens/resetpassword.dart';
 import 'package:thyscan/features/auth/screens/signup.dart';
 import 'package:thyscan/features/auth/screens/verifyotp.dart';
+import 'package:thyscan/features/help_and_support/presentation/screens/help_and_support.dart';
 import 'package:thyscan/features/home/presentation/screens/appmainscreen.dart';
 import 'package:thyscan/features/home/presentation/screens/homescreen.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';

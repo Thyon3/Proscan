@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:go_router/go_router.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
+import 'package:thyscan/features/help_and_support/presentation/screens/help_and_support.dart';
+import 'package:thyscan/features/help_and_support/presentation/screens/how_to_scan_and_crop.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/controllers/library_state_provider.dart';
 
@@ -49,7 +51,7 @@ class AppMainScreen extends ConsumerWidget {
       const ToolsScreen(),
       const Placeholder(),
       const LibraryScreen(),
-      const EditProfileScreen(),
+      const HelpArticleScanCropScreen(),
     ];
 
     return Scaffold(
