@@ -12,7 +12,10 @@ import 'package:thyscan/features/home/presentation/screens/homescreen.dart';
 import 'package:thyscan/features/home/presentation/screens/tools_screen.dart';
 import 'package:thyscan/features/home/presentation/screens/library.dart';
 import 'package:thyscan/features/home/presentation/screens/profile.dart';
+import 'package:thyscan/features/profile/presentation/screens/edit_profile.dart';
+import 'package:thyscan/features/profile/presentation/screens/free_user.dart';
 import 'package:thyscan/features/profile/presentation/screens/guest_mode.dart';
+import 'package:thyscan/features/profile/presentation/screens/premium_user.dart';
 
 class AppMainScreen extends ConsumerWidget {
   const AppMainScreen({super.key});
@@ -46,7 +49,7 @@ class AppMainScreen extends ConsumerWidget {
       const ToolsScreen(),
       const Placeholder(),
       const LibraryScreen(),
-      const ProfileGuestScreen(),
+      const EditProfileScreen(),
     ];
 
     return Scaffold(

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:thyscan/features/home/controllers/library_state_provider.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_filter_bar.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_scan_list_item.dart';
-import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 
 final List<Scan> _dummyLibraryScans = [
@@ -43,29 +42,26 @@ class LibraryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final libraryState = ref.watch(libraryProvider);
     final libraryNotifier = ref.read(libraryProvider.notifier);
-    final scale = MediaQuery.of(context).size.width / 375;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
+      backgroundColor: colorScheme.background,
       appBar: _buildAppBar(context, libraryState, libraryNotifier),
       bottomNavigationBar: libraryState.isSelectionMode
-          ? const _SelectionActionBottomBar()
+          ? _SelectionActionBottomBar()
           : null,
       body: CustomScrollView(
         slivers: [
-          // FILTER BAR – RESPONSIVE & PINNED
+          // FILTER BAR
           if (!libraryState.isSelectionMode)
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 140 * scale, // Responsive height
-                child: const LibraryFilterBar(),
-              ),
-            ),
+            const SliverToBoxAdapter(child: LibraryFilterBar()),
 
-          // LIST OF SCANS – SAFE PADDING
+          // LIST OF SCANS
           SliverPadding(
-            padding: EdgeInsets.only(
-              top: 16 * scale,
-              bottom: 160 * scale, // FAB + Bottom Nav + Safe Area
+            padding: const EdgeInsets.only(
+              top: 16,
+              bottom: 120, // Extra space for bottom bar
             ),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate((context, index) {
@@ -102,68 +98,112 @@ class LibraryScreen extends ConsumerWidget {
     LibraryNotifier notifier,
   ) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final areAllSelected =
         state.selectedScanIds.length == _dummyLibraryScans.length;
 
     if (state.isSelectionMode) {
       return AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor,
+        backgroundColor: colorScheme.surface,
+        elevation: 1,
+        shadowColor: Colors.black.withOpacity(0.1),
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: colorScheme.onSurface.withOpacity(0.3)),
+            ),
+            child: Icon(Icons.close, size: 20, color: colorScheme.onSurface),
+          ),
           onPressed: notifier.exitSelectionMode,
         ),
         title: Text(
           '${state.selectedScanIds.length} selected',
           style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              if (areAllSelected) {
-                notifier.selectNone();
-              } else {
-                final allIds = _dummyLibraryScans.map((s) => s.id).toList();
-                notifier.selectAll(allIds);
-              }
-            },
-            child: Text(areAllSelected ? 'Select None' : 'Select All'),
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: TextButton(
+              onPressed: () {
+                if (areAllSelected) {
+                  notifier.selectNone();
+                } else {
+                  final allIds = _dummyLibraryScans.map((s) => s.id).toList();
+                  notifier.selectAll(allIds);
+                }
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+              ),
+              child: Text(
+                areAllSelected ? 'Deselect All' : 'Select All',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
         ],
       );
     } else {
       return AppBar(
+        backgroundColor: colorScheme.background,
+        elevation: 0,
+        scrolledUnderElevation: 0.5,
         title: Text(
-          'My Scans',
-          style: theme.textTheme.headlineMedium?.copyWith(
-            fontWeight: FontWeight.bold,
+          'My Library',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onBackground,
           ),
         ),
         centerTitle: false,
-        backgroundColor: theme.scaffoldBackgroundColor,
-        elevation: 0,
         actions: [
           IconButton(
             onPressed: () {},
-            icon: const Icon(Icons.grid_view_outlined),
-          ),
-          TextButton(
-            onPressed: () {
-              if (_dummyLibraryScans.isNotEmpty) {
-                notifier.enterSelectionMode(_dummyLibraryScans.first.id);
-              }
-            },
-            child: Text(
-              'Select',
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
+            icon: Icon(
+              Icons.grid_view_rounded,
+              color: colorScheme.onSurface.withOpacity(0.8),
+              size: 24,
             ),
           ),
           const SizedBox(width: 8),
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: TextButton(
+              onPressed: () {
+                if (_dummyLibraryScans.isNotEmpty) {
+                  notifier.enterSelectionMode(_dummyLibraryScans.first.id);
+                }
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+              ),
+              child: Text(
+                'Select',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ),
+          ),
         ],
       );
     }
@@ -171,44 +211,55 @@ class LibraryScreen extends ConsumerWidget {
 }
 
 class _SelectionActionBottomBar extends StatelessWidget {
-  const _SelectionActionBottomBar();
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
-      height: 80,
+      height: 90,
       decoration: BoxDecoration(
-        color: theme.bottomAppBarTheme.color ?? theme.scaffoldBackgroundColor,
+        color: colorScheme.surface,
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
         ],
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _ActionButton(
-            icon: Icons.share_outlined,
-            label: 'Share',
-            onTap: () {},
-          ),
-          _ActionButton(
-            icon: Icons.upload_file_outlined,
-            label: 'Export',
-            onTap: () {},
-          ),
-          _ActionButton(
-            icon: Icons.drive_file_move_outline,
-            label: 'Move',
-            onTap: () {},
-          ),
-          _ActionButton(
-            icon: Icons.delete_outline,
-            label: 'Delete',
-            color: theme.colorScheme.error,
-            onTap: () {},
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _ActionButton(
+              icon: Icons.share_rounded,
+              label: 'Share',
+              onTap: () {},
+            ),
+            _ActionButton(
+              icon: Icons.upload_rounded,
+              label: 'Export',
+              onTap: () {},
+            ),
+            _ActionButton(
+              icon: Icons.drive_file_move_rounded,
+              label: 'Move',
+              onTap: () {},
+            ),
+            _ActionButton(
+              icon: Icons.delete_rounded,
+              label: 'Delete',
+              color: colorScheme.error,
+              onTap: () {},
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -229,20 +280,33 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final buttonColor = color ?? colorScheme.onSurface;
+
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: buttonColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: buttonColor, size: 20),
+            ),
+            const SizedBox(height: 6),
             Text(
               label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: color),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: buttonColor,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),

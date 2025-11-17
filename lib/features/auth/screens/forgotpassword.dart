@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:thyscan/core/theme/constants/theme.dart';
+import 'package:iconsax/iconsax.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -14,6 +14,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _emailFocus = FocusNode();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -22,304 +23,376 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     super.dispose();
   }
 
-  void _sendCode() {
+  Future<void> _sendCode() async {
     if (_formKey.currentState!.validate()) {
-      // TODO: Send reset code
+      setState(() => _isLoading = true);
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('6-digit code sent to ${_emailCtrl.text}'),
-          backgroundColor: AppColors.primary,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       context.push('/verifyotp');
     }
   }
 
+  // Professional, theme-aware input fill
+  // Light: subtle brand-tinted surface; Dark: subtle white overlay on surface
+  Color _inputFillColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    return isDark
+        ? Color.alphaBlend(Colors.white.withOpacity(0.06), cs.surface)
+        : Color.alphaBlend(cs.primary.withOpacity(0.04), cs.surface);
+  }
+
+  Color _inputBorderColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    return isDark
+        ? Colors.white.withOpacity(0.12)
+        : cs.outline.withOpacity(0.25);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: scheme.background,
-
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 60),
-
-                // Title
-                Text(
-                  'Forgot Password?',
-                  style: GoogleFonts.inter(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: scheme.onBackground,
-                  ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Responsive horizontal padding and max content width
+            final double horizontalPad = (constraints.maxWidth * 0.075).clamp(
+              16.0,
+              28.0,
+            );
+            return Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPad,
+                  24,
+                  horizontalPad,
+                  24 + MediaQuery.viewInsetsOf(context).bottom,
                 ),
-                const SizedBox(height: 12),
-
-                // Subtitle
-                Text(
-                  'Enter your email address and we\'ll send you a 6-digit code to reset your password.',
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    color: scheme.onBackground.withOpacity(0.7),
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 40),
-
-                // Email Field
-                _buildField(
-                  controller: _emailCtrl,
-                  focusNode: _emailFocus,
-                  label: 'Email',
-                  hint: 'Enter your email',
-                  icon: Icons.email_outlined,
-                  keyboardType: TextInputType.emailAddress,
-                  scheme: scheme,
-                  isDark: isDark,
-                  validator: (v) {
-                    if (v!.isEmpty) return 'Required';
-                    if (!v.contains('@')) return 'Invalid email';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 32),
-
-                // Send Code Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _sendCode,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(28),
-                      ),
-                      elevation: 8,
-                      shadowColor: AppColors.primary.withOpacity(0.3),
-                    ),
-                    child: Text(
-                      'Send Code',
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Divider
-                Row(
-                  children: [
-                    Expanded(
-                      child: Divider(
-                        color: scheme.onBackground.withOpacity(0.3),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'or',
-                        style: GoogleFonts.inter(
-                          color: scheme.onBackground.withOpacity(0.6),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Divider(
-                        color: scheme.onBackground.withOpacity(0.3),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Apple Button
-                _socialButton(
-                  label: 'Continue with Apple',
-                  icon: Icons.apple,
-                  onTap: () {},
-                  scheme: scheme,
-                  isDark: isDark,
-                  isApple: true,
-                ),
-                SizedBox(height: 15),
-                _socialButton(
-                  label: 'Continue with Google',
-                  icon: Icons.g_mobiledata,
-                  onTap: () {},
-                  scheme: scheme,
-                  isDark: isDark,
-                  isApple: true,
-                ),
-                const SizedBox(height: 32),
-
-                // Login Link
-                Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      // Title
                       Text(
-                        'Already have an account? ',
+                        'Reset your password',
+                        textAlign: TextAlign.center,
                         style: GoogleFonts.inter(
-                          color: scheme.onBackground.withOpacity(0.7),
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onBackground,
+                          letterSpacing: -0.5,
                         ),
                       ),
-                      GestureDetector(
-                        onTap: () => context.push('/login'),
-                        child: Text(
-                          'Log In',
-                          style: GoogleFonts.inter(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
+                      const SizedBox(height: 12),
+
+                      // Subtitle
+                      Text(
+                        'Enter your email and we\'ll send you a 6-digit code to reset your password.',
+                        style: GoogleFonts.inter(
+                          fontSize: 15,
+                          color: scheme.onBackground.withOpacity(0.6),
+                          fontWeight: FontWeight.w500,
+                          height: 1.4,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 40),
+
+                      // Form
+                      Form(
+                        key: _formKey,
+                        child: Column(
+                          children: [
+                            // Email Field (floating label)
+                            _buildFloatingField(
+                              label: 'Email Address',
+                              hint: 'yourname@example.com',
+                              controller: _emailCtrl,
+                              focusNode: _emailFocus,
+                              icon: Iconsax.sms,
+                              keyboardType: TextInputType.emailAddress,
+                              scheme: scheme,
+                              fillColor: _inputFillColor(context),
+                              borderColor: _inputBorderColor(context),
+                              validator: (v) {
+                                if (v == null || v.trim().isEmpty) {
+                                  return 'Email is required';
+                                }
+                                final emailRx = RegExp(
+                                  r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                                );
+                                if (!emailRx.hasMatch(v.trim())) {
+                                  return 'Please enter a valid email';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 28),
+
+                            // Send Code Button
+                            _buildSendCodeButton(scheme),
+                            const SizedBox(height: 28),
+
+                            // Divider
+                            _buildDivider(scheme),
+                            const SizedBox(height: 24),
+
+                            // Social Login
+                            _buildSocialLogin(scheme),
+                          ],
                         ),
                       ),
+                      const SizedBox(height: 36),
+
+                      // Login Link
+                      _buildLoginSection(scheme),
                     ],
                   ),
                 ),
-                const SizedBox(height: 40),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  // REUSABLE FIELD
-  Widget _buildField({
-    required TextEditingController controller,
-    required FocusNode focusNode,
+  Widget _buildFloatingField({
     required String label,
     required String hint,
+    required TextEditingController controller,
+    required FocusNode focusNode,
     required IconData icon,
-    TextInputType? keyboardType,
     required ColorScheme scheme,
-    required bool isDark,
-    String? Function(String?)? validator,
+    required Color fillColor,
+    required Color borderColor,
+    TextInputType? keyboardType,
+    bool obscureText = false,
+    Widget? suffix,
+    required String? Function(String?) validator,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: Theme.of(context).textTheme.labelLarge!.copyWith(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
+    return TextFormField(
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      textInputAction: TextInputAction.done,
+      onFieldSubmitted: (_) => _sendCode(),
+      style: GoogleFonts.inter(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: scheme.onBackground,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: GoogleFonts.inter(
+          color: scheme.onBackground.withOpacity(0.6),
+          fontWeight: FontWeight.w500,
+        ),
+        floatingLabelStyle: GoogleFonts.inter(
+          color: scheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+        hintStyle: GoogleFonts.inter(
+          color: scheme.onBackground.withOpacity(0.42),
+        ),
+        prefixIcon: Icon(icon, size: 20, color: scheme.primary),
+        suffixIcon: suffix,
+        filled: true,
+        fillColor: fillColor, // refined fill
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 18,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: borderColor, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.error, width: 1.5),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.error, width: 2),
+        ),
+      ),
+      validator: validator,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+    );
+  }
+
+  Widget _buildSendCodeButton(ColorScheme scheme) {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : _sendCode,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: scheme.primary,
+          foregroundColor: scheme.onPrimary,
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: !isDark
-                ? [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.12),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ]
-                : null,
-          ),
-          child: TextFormField(
-            controller: controller,
-            focusNode: focusNode,
-            keyboardType: keyboardType,
-            style: GoogleFonts.inter(color: scheme.onBackground, fontSize: 16),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: GoogleFonts.inter(
-                color: scheme.onBackground.withOpacity(0.5),
+        child: _isLoading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: scheme.onPrimary,
+                ),
+              )
+            : Text(
+                'Send Reset Code',
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              prefixIcon: Icon(icon, color: AppColors.primary, size: 20),
-              filled: true,
-              fillColor: isDark ? scheme.surface : Color(0xFFF8FFF9),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: AppColors.primary, width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 18,
-              ),
+      ),
+    );
+  }
+
+  Widget _buildDivider(ColorScheme scheme) {
+    return Row(
+      children: [
+        Expanded(
+          child: Divider(color: scheme.outline.withOpacity(0.2), thickness: 1),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Or continue with',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: scheme.onBackground.withOpacity(0.5),
+              fontWeight: FontWeight.w500,
             ),
-            validator: validator,
           ),
+        ),
+        Expanded(
+          child: Divider(color: scheme.outline.withOpacity(0.2), thickness: 1),
         ),
       ],
     );
   }
 
-  // SOCIAL BUTTON
-  Widget _socialButton({
-    required String label,
+  Widget _buildSocialLogin(ColorScheme scheme) {
+    final bg = _inputFillColor(context);
+    final border = _inputBorderColor(context);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _buildSocialButton(
+          icon: Icons.g_mobiledata,
+          onTap: () {},
+          bg: bg,
+          borderColor: border,
+          scheme: scheme,
+        ),
+        const SizedBox(width: 16),
+        _buildSocialButton(
+          icon: Icons.apple,
+          onTap: () {},
+          bg: bg,
+          borderColor: border,
+          scheme: scheme,
+        ),
+        const SizedBox(width: 16),
+        _buildSocialButton(
+          icon: Icons.facebook,
+          onTap: () {},
+          bg: bg,
+          borderColor: border,
+          scheme: scheme,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSocialButton({
     required IconData icon,
     required VoidCallback onTap,
     required ColorScheme scheme,
-    required bool isDark,
-    bool isApple = false,
+    required Color bg,
+    required Color borderColor,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 56,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
-          color: isDark ? scheme.surface : const Color(0xFFF8FFF9),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: scheme.onBackground.withOpacity(0.2)),
-          boxShadow: [
-            if (!isDark)
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.12),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            if (isDark)
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 12,
-                offset: const Offset(0, 3),
-              ),
-          ],
+          color: bg,
+          shape: BoxShape.circle,
+          border: Border.all(color: borderColor, width: 1),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 24,
-              color: isApple && !isDark ? Colors.black : null,
-            ),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: scheme.onBackground,
-              ),
-            ),
-          ],
+        child: Icon(
+          icon,
+          color: scheme.onBackground.withOpacity(0.7),
+          size: 22,
         ),
       ),
+    );
+  }
+
+  Widget _buildLoginSection(ColorScheme scheme) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          'Remember your password? ',
+          style: GoogleFonts.inter(
+            fontSize: 15,
+            color: scheme.onBackground.withOpacity(0.7),
+          ),
+        ),
+        GestureDetector(
+          onTap: () => context.push('/login'),
+          child: Text(
+            'Log In',
+            style: GoogleFonts.inter(
+              color: scheme.primary,
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -33,6 +33,27 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/premiumuserprofilescreen',
+      name: 'premiumuserprofilescreen',
+      builder: (context, state) {
+        return (ProUserProfileScreen());
+      },
+    ),
+    GoRoute(
+      path: '/freeuserprofilescreen',
+      name: 'freeuserprofilescreen',
+      builder: (context, state) {
+        return (FreeUserProfileScreen());
+      },
+    ),
+    GoRoute(
+      path: '/editprofilescreen',
+      name: 'editprofilescreen',
+      builder: (context, state) {
+        return (EditProfileScreen());
+      },
+    ),
+    GoRoute(
       path: '/forgotpassword',
       name: 'forgotpassword',
       builder: (context, state) {

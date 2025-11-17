@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:thyscan/core/theme/constants/theme.dart';
 
 class AppTypography {
   // Base TextStyle with Inter font
@@ -9,139 +8,284 @@ class AppTypography {
     double? fontSize,
     FontWeight? fontWeight,
     double? height,
+    double? letterSpacing,
   }) {
     return GoogleFonts.inter(
       color: color,
       fontSize: fontSize,
       fontWeight: fontWeight,
       height: height,
+      letterSpacing: letterSpacing,
     );
   }
 
   // ─────────────────────────────────────────────────────────────
   // LIGHT MODE
   // ─────────────────────────────────────────────────────────────
-  static final TextTheme light = TextTheme(
-    // Headlines
-    displayLarge: _base(
-      fontSize: 16,
-      fontWeight: FontWeight.bold,
-      color: AppColors.lightTextPrimary,
-      height: 1.2,
-    ),
-    displayMedium: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 45,
-      fontWeight: FontWeight.bold,
-    ),
-    displaySmall: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 36,
-      fontWeight: FontWeight.bold,
-    ),
+  static TextTheme get light {
+    const Color onBackground = Color(0xFF111827);
+    const Color onSurfaceVariant = Color(0xFF6B7280);
 
-    headlineLarge: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 32,
-      fontWeight: FontWeight.bold,
-    ),
-    headlineMedium: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 28,
-      fontWeight: FontWeight.bold,
-    ),
-    headlineSmall: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 24,
-      fontWeight: FontWeight.bold,
-    ),
+    return TextTheme(
+      // Display - For large, prominent text
+      displayLarge: _base(
+        color: onBackground,
+        fontSize: 57,
+        fontWeight: FontWeight.w400,
+        height: 1.12,
+        letterSpacing: -0.25,
+      ),
+      displayMedium: _base(
+        color: onBackground,
+        fontSize: 45,
+        fontWeight: FontWeight.w400,
+        height: 1.16,
+      ),
+      displaySmall: _base(
+        color: onBackground,
+        fontSize: 36,
+        fontWeight: FontWeight.w400,
+        height: 1.22,
+      ),
 
-    // Titles
-    titleLarge: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 22,
-      fontWeight: FontWeight.w600,
-    ),
-    titleMedium: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 16,
-      fontWeight: FontWeight.w600,
-      height: 1.5,
-    ),
-    titleSmall: _base(
-      color: AppColors.lightTextSecondary,
-      fontSize: 14,
-      fontWeight: FontWeight.w600,
-      height: 1.5,
-    ),
+      // Headline - For section headers
+      headlineLarge: _base(
+        color: onBackground,
+        fontSize: 32,
+        fontWeight: FontWeight.w400,
+        height: 1.25,
+      ),
+      headlineMedium: _base(
+        color: onBackground,
+        fontSize: 28,
+        fontWeight: FontWeight.w400,
+        height: 1.29,
+      ),
+      headlineSmall: _base(
+        color: onBackground,
+        fontSize: 24,
+        fontWeight: FontWeight.w400,
+        height: 1.33,
+      ),
 
-    // Body
-    bodyLarge: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 16,
-      height: 1.5,
-    ),
-    bodyMedium: _base(
-      color: AppColors.lightTextSecondary,
-      fontSize: 14,
-      height: 1.5,
-    ),
-    bodySmall: _base(
-      color: AppColors.lightTextSecondary,
-      fontSize: 12,
-      height: 1.5,
-    ),
+      // Title - For card titles, dialog titles
+      titleLarge: _base(
+        color: onBackground,
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        height: 1.27,
+      ),
+      titleMedium: _base(
+        color: onBackground,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        height: 1.5,
+        letterSpacing: 0.15,
+      ),
+      titleSmall: _base(
+        color: onSurfaceVariant,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: 1.43,
+        letterSpacing: 0.1,
+      ),
 
-    // Labels
-    labelLarge: _base(
-      color: AppColors.lightTextPrimary,
-      fontSize: 14,
-      fontWeight: FontWeight.w600,
-    ),
-    labelMedium: _base(
-      color: AppColors.lightTextSecondary,
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-    ),
-    labelSmall: _base(
-      color: AppColors.lightTextSecondary,
-      fontSize: 11,
-      fontWeight: FontWeight.w600,
-    ),
-  );
+      // Body - For paragraph text
+      bodyLarge: _base(
+        color: onBackground,
+        fontSize: 16,
+        fontWeight: FontWeight.w400,
+        height: 1.5,
+        letterSpacing: 0.5,
+      ),
+      bodyMedium: _base(
+        color: onSurfaceVariant,
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        height: 1.43,
+        letterSpacing: 0.25,
+      ),
+      bodySmall: _base(
+        color: onSurfaceVariant,
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        height: 1.33,
+        letterSpacing: 0.4,
+      ),
+
+      // Label - For buttons, labels, captions
+      labelLarge: _base(
+        color: onBackground,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: 1.43,
+        letterSpacing: 0.1,
+      ),
+      labelMedium: _base(
+        color: onSurfaceVariant,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        height: 1.33,
+        letterSpacing: 0.5,
+      ),
+      labelSmall: _base(
+        color: onSurfaceVariant,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        height: 1.45,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────
   // DARK MODE
   // ─────────────────────────────────────────────────────────────
-  static final TextTheme dark = light.copyWith(
-    displayLarge: light.displayLarge?.copyWith(
-      color: AppColors.darkTextPrimary,
-    ),
-    displayMedium: light.displayMedium?.copyWith(
-      color: AppColors.darkTextPrimary,
-    ),
-    displaySmall: light.displaySmall?.copyWith(
-      color: AppColors.darkTextPrimary,
-    ),
-    headlineLarge: light.headlineLarge?.copyWith(
-      color: AppColors.darkTextPrimary,
-    ),
-    headlineMedium: light.headlineMedium?.copyWith(
-      color: AppColors.darkTextPrimary,
-    ),
-    headlineSmall: light.headlineSmall?.copyWith(
-      color: AppColors.darkTextPrimary,
-    ),
-    titleLarge: light.titleLarge?.copyWith(color: AppColors.darkTextPrimary),
-    titleMedium: light.titleMedium?.copyWith(color: AppColors.darkTextPrimary),
-    titleSmall: light.titleSmall?.copyWith(color: AppColors.darkTextSecondary),
-    bodyLarge: light.bodyLarge?.copyWith(color: AppColors.darkTextPrimary),
-    bodyMedium: light.bodyMedium?.copyWith(color: AppColors.darkTextSecondary),
-    bodySmall: light.bodySmall?.copyWith(color: AppColors.darkTextSecondary),
-    labelLarge: light.labelLarge?.copyWith(color: AppColors.darkTextPrimary),
-    labelMedium: light.labelMedium?.copyWith(
-      color: AppColors.darkTextSecondary,
-    ),
-    labelSmall: light.labelSmall?.copyWith(color: AppColors.darkTextSecondary),
+  static TextTheme get dark {
+    const Color onBackground = Color(0xFFF9FAFB);
+    const Color onSurfaceVariant = Color(0xFF9CA3AF);
+
+    return TextTheme(
+      // Display - For large, prominent text
+      displayLarge: _base(
+        color: onBackground,
+        fontSize: 57,
+        fontWeight: FontWeight.w400,
+        height: 1.12,
+        letterSpacing: -0.25,
+      ),
+      displayMedium: _base(
+        color: onBackground,
+        fontSize: 45,
+        fontWeight: FontWeight.w400,
+        height: 1.16,
+      ),
+      displaySmall: _base(
+        color: onBackground,
+        fontSize: 36,
+        fontWeight: FontWeight.w400,
+        height: 1.22,
+      ),
+
+      // Headline - For section headers
+      headlineLarge: _base(
+        color: onBackground,
+        fontSize: 32,
+        fontWeight: FontWeight.w400,
+        height: 1.25,
+      ),
+      headlineMedium: _base(
+        color: onBackground,
+        fontSize: 28,
+        fontWeight: FontWeight.w400,
+        height: 1.29,
+      ),
+      headlineSmall: _base(
+        color: onBackground,
+        fontSize: 24,
+        fontWeight: FontWeight.w400,
+        height: 1.33,
+      ),
+
+      // Title - For card titles, dialog titles
+      titleLarge: _base(
+        color: onBackground,
+        fontSize: 22,
+        fontWeight: FontWeight.w600,
+        height: 1.27,
+      ),
+      titleMedium: _base(
+        color: onBackground,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        height: 1.5,
+        letterSpacing: 0.15,
+      ),
+      titleSmall: _base(
+        color: onSurfaceVariant,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: 1.43,
+        letterSpacing: 0.1,
+      ),
+
+      // Body - For paragraph text
+      bodyLarge: _base(
+        color: onBackground,
+        fontSize: 16,
+        fontWeight: FontWeight.w400,
+        height: 1.5,
+        letterSpacing: 0.5,
+      ),
+      bodyMedium: _base(
+        color: onSurfaceVariant,
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        height: 1.43,
+        letterSpacing: 0.25,
+      ),
+      bodySmall: _base(
+        color: onSurfaceVariant,
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        height: 1.33,
+        letterSpacing: 0.4,
+      ),
+
+      // Label - For buttons, labels, captions
+      labelLarge: _base(
+        color: onBackground,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: 1.43,
+        letterSpacing: 0.1,
+      ),
+      labelMedium: _base(
+        color: onSurfaceVariant,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        height: 1.33,
+        letterSpacing: 0.5,
+      ),
+      labelSmall: _base(
+        color: onSurfaceVariant,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        height: 1.45,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // CONVENIENCE GETTERS FOR COMMON TEXT STYLES
+  // ─────────────────────────────────────────────────────────────
+
+  // For app bar titles
+  static TextStyle get appBarTitle =>
+      const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, height: 1.2);
+
+  // For document titles
+  static TextStyle get documentTitle =>
+      const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, height: 1.3);
+
+  // For document metadata (date, size, pages)
+  static TextStyle get documentMetadata =>
+      const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.4);
+
+  // For button text
+  static TextStyle get buttonLarge =>
+      const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.5);
+
+  // For chip labels
+  static TextStyle get chipLabel =>
+      const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, height: 1.4);
+
+  // For section headers
+  static TextStyle get sectionHeader => const TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    height: 1.3,
+    letterSpacing: -0.2,
   );
 }

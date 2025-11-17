@@ -7,79 +7,86 @@ class LibraryFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDarkMode = theme.brightness == Brightness.dark;
-    final scale = MediaQuery.of(context).size.width / 375; // Responsive
 
     return Container(
-      color: theme.scaffoldBackgroundColor,
-      padding: EdgeInsets.fromLTRB(
-        20 * scale,
-        12 * scale,
-        20 * scale,
-        16 * scale,
-      ),
+      color: colorScheme.background,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // SEARCH BAR
-          TextField(
-            style: theme.textTheme.bodyLarge,
-            decoration: InputDecoration(
-              hintText: 'Search by name or content...',
-              hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.5),
-              ),
-              prefixIcon: Padding(
-                padding: EdgeInsets.all(8 * scale),
-                child: Icon(
-                  Icons.search,
-                  size: 24 * scale,
-                  color: colorScheme.primary,
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
+              ],
+            ),
+            child: TextField(
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: colorScheme.onSurface,
               ),
-              filled: true,
-              fillColor: isDarkMode ? colorScheme.surface : Colors.grey[200],
-              contentPadding: EdgeInsets.symmetric(
-                vertical: 18 * scale,
-                horizontal: 16 * scale,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20 * scale),
-                borderSide: BorderSide.none,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20 * scale),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20 * scale),
-                borderSide: BorderSide.none,
+              decoration: InputDecoration(
+                hintText: 'Search documents...',
+                hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurface.withOpacity(0.5),
+                ),
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Icon(
+                    Icons.search_rounded,
+                    size: 24,
+                    color: colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+                filled: true,
+                fillColor: colorScheme.surface,
+                contentPadding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                  horizontal: 16,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: colorScheme.primary, width: 2),
+                ),
               ),
             ),
           ),
 
-          // RESPONSIVE SPACING
-          SizedBox(height: 18 * scale),
+          const SizedBox(height: 20),
+
           // FILTER ROW
           Row(
             children: [
-              Flexible(
+              Expanded(
                 child: _FilterChipButton(
-                  icon: Icons.calendar_today_outlined,
-                  label: 'Sort by Date',
+                  icon: Icons.calendar_today_rounded,
+                  label: 'Date',
                   onTap: () {},
                 ),
               ),
-              SizedBox(width: 12 * scale),
-              Flexible(
+              const SizedBox(width: 12),
+              Expanded(
                 child: _FilterChipButton(
-                  icon: Icons.label_outline,
-                  label: 'Filter by Tags',
+                  icon: Icons.label_rounded,
+                  label: 'Tags',
                   onTap: () {},
                 ),
               ),
-              SizedBox(width: 12 * scale),
-              _FilterIconButton(icon: Icons.folder_open_outlined, onTap: () {}),
+              const SizedBox(width: 12),
+              _FilterIconButton(icon: Icons.filter_list_rounded, onTap: () {}),
             ],
           ),
         ],
@@ -88,9 +95,6 @@ class LibraryFilterBar extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Filter Chip Button
-// ─────────────────────────────────────────────────────────────────────────────
 class _FilterChipButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -106,41 +110,45 @@ class _FilterChipButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-    final scale = MediaQuery.of(context).size.width / 375;
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20 * scale),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: 12 * scale,
-          vertical: 8 * scale,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: isDark ? colorScheme.surface : const Color(0xFFF8FFF9),
-          borderRadius: BorderRadius.circular(20 * scale),
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outline.withOpacity(0.3),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18 * scale, color: colorScheme.primary),
-            SizedBox(width: 6 * scale),
-            Flexible(
-              child: Text(
-                label,
-                style: theme.textTheme.bodyMedium!.copyWith(
-                  color: colorScheme.primary,
-                  fontSize: 14 * scale,
-                ),
-                overflow: TextOverflow.ellipsis,
+            Icon(icon, size: 18, color: colorScheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            SizedBox(width: 4 * scale),
+            const SizedBox(width: 4),
             Icon(
-              Icons.arrow_drop_down,
-              size: 20 * scale,
-              color: colorScheme.primary,
+              Icons.arrow_drop_down_rounded,
+              size: 20,
+              color: colorScheme.onSurface.withOpacity(0.6),
             ),
           ],
         ),
@@ -149,9 +157,6 @@ class _FilterChipButton extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Icon-only Filter Button
-// ─────────────────────────────────────────────────────────────────────────────
 class _FilterIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -160,23 +165,34 @@ class _FilterIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scale = MediaQuery.of(context).size.width / 375;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20 * scale),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: EdgeInsets.all(8 * scale),
+        width: 48,
+        height: 48,
         decoration: BoxDecoration(
-          color: isDark ? colorScheme.surface : const Color(0xFFF8FFF9),
-          borderRadius: BorderRadius.circular(20 * scale),
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outline.withOpacity(0.3),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Icon(
           icon,
-          size: 20 * scale,
-          color: colorScheme.onSurfaceVariant,
+          size: 20,
+          color: colorScheme.onSurface.withOpacity(0.8),
         ),
       ),
     );

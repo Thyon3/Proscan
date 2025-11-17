@@ -44,20 +44,20 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final homeState = ref.watch(homeProvider);
     final homeNotifier = ref.read(homeProvider.notifier);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
+      backgroundColor: colorScheme.background,
       appBar: _buildAppBar(context, homeState, homeNotifier),
       body: CustomScrollView(
         slivers: [
           if (!homeState.isSelectionMode)
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
           const SliverToBoxAdapter(child: ToolsSection()),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 50)),
-
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
           const SliverToBoxAdapter(child: RecentScansSection()),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
           SliverList(
             delegate: SliverChildBuilderDelegate((context, index) {
               final scan = _dummyScans[index];
@@ -65,7 +65,7 @@ class HomeScreen extends ConsumerWidget {
               return Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 20,
-                  vertical: 8,
+                  vertical: 6,
                 ),
                 child: ScanListItem(
                   scan: scan,
@@ -85,7 +85,14 @@ class HomeScreen extends ConsumerWidget {
               );
             }, childCount: _dummyScans.length),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 120)),
+          // FIXED: Add proper bottom padding based on selection mode
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: homeState.isSelectionMode
+                  ? 120
+                  : 40, // Increased padding for selection mode
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: _buildBottomBar(context, homeState, homeNotifier),
@@ -101,45 +108,64 @@ class HomeScreen extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
 
     if (state.isSelectionMode) {
-      // THE FIX STARTS HERE: Determine if all items are selected.
       final areAllSelected = state.selectedScanIds.length == _dummyScans.length;
 
-      // Build Selection AppBar
       return AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor,
+        backgroundColor: colorScheme.surface,
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.1),
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: colorScheme.onSurface.withOpacity(0.3)),
+            ),
+            child: Icon(Icons.close, size: 20, color: colorScheme.onSurface),
+          ),
           onPressed: notifier.exitSelectionMode,
         ),
         title: Text(
           '${state.selectedScanIds.length} selected',
           style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
           ),
         ),
         actions: [
-          // Conditionally build the 'Select All' or 'Select None' button.
-          TextButton(
-            onPressed: () {
-              if (areAllSelected) {
-                // If all are selected, the action is to clear the selection.
-                // We can reuse the exitSelectionMode method for this.
-                notifier.exitSelectionMode();
-              } else {
-                // If not all are selected, the action is to select all.
-                final allIds = _dummyScans.map((scan) => scan.id).toList();
-                notifier.selectAll(allIds);
-              }
-            },
-            // Use the 'areAllSelected' boolean to choose the button's text.
-            child: Text(areAllSelected ? 'Select None' : 'Select All'),
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: TextButton(
+              onPressed: () {
+                if (areAllSelected) {
+                  notifier.exitSelectionMode();
+                } else {
+                  final allIds = _dummyScans.map((scan) => scan.id).toList();
+                  notifier.selectAll(allIds);
+                }
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: colorScheme.primary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+              ),
+              child: Text(
+                areAllSelected ? 'Deselect All' : 'Select All',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: colorScheme.primary,
+                ),
+              ),
+            ),
           ),
         ],
       );
     } else {
-      // Build Normal AppBar (No changes needed in this part)
       return AppBar(
-        backgroundColor: theme.scaffoldBackgroundColor,
+        backgroundColor: colorScheme.background,
         elevation: 0,
         scrolledUnderElevation: 0.5,
         toolbarHeight: 90.0,
@@ -148,33 +174,69 @@ class HomeScreen extends ConsumerWidget {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Search',
-                    prefixIcon: Icon(
-                      Icons.search,
-                      color: theme.textTheme.bodySmall?.color,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search documents...',
+                      hintStyle: TextStyle(
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        color: colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                      filled: true,
+                      fillColor: colorScheme.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
                     ),
-                    filled: true,
-                    fillColor: colorScheme.surfaceVariant,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30.0),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    style: TextStyle(color: colorScheme.onSurface),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
-              IconButton(
-                onPressed: () {
-                  /* TODO: Handle Pro button press */
-                },
-                icon: Icon(
-                  Icons.workspace_premium_outlined,
-                  color: colorScheme.tertiary,
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      colorScheme.primary,
+                      colorScheme.primary.withOpacity(0.8),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colorScheme.primary.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-                iconSize: 28,
+                child: IconButton(
+                  onPressed: () {
+                    /* TODO: Handle Pro button press */
+                  },
+                  icon: Icon(
+                    Icons.workspace_premium_rounded,
+                    color: colorScheme.onPrimary,
+                  ),
+                  iconSize: 24,
+                ),
               ),
             ],
           ),
@@ -183,61 +245,70 @@ class HomeScreen extends ConsumerWidget {
     }
   }
 
-  // Helper method to build the correct BottomNavigationBar
   Widget? _buildBottomBar(
     BuildContext context,
     HomeState state,
     HomeNotifier notifier,
   ) {
     if (state.isSelectionMode) {
-      // Build Selection Action Bar
       return const _SelectionActionBottomBar();
     }
-    // Return null to use the main app's BottomNavigationBar from Appmainscreen
     return null;
   }
 }
 
-// Private widget for the selection action bar, keeping HomeScreen clean
 class _SelectionActionBottomBar extends StatelessWidget {
   const _SelectionActionBottomBar();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
-      height: 80,
+      height: 90,
       decoration: BoxDecoration(
-        color: theme.bottomAppBarTheme.color,
+        color: colorScheme.surface,
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
         ],
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _ActionButton(
-            icon: Icons.share_outlined,
-            label: 'Share',
-            onTap: () {},
-          ),
-          _ActionButton(
-            icon: Icons.upload_file_outlined,
-            label: 'Export',
-            onTap: () {},
-          ),
-          _ActionButton(
-            icon: Icons.drive_file_move_outline,
-            label: 'Move',
-            onTap: () {},
-          ),
-          _ActionButton(
-            icon: Icons.delete_outline,
-            label: 'Delete',
-            color: theme.colorScheme.error,
-            onTap: () {},
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _ActionButton(
+              icon: Icons.share_rounded,
+              label: 'Share',
+              onTap: () {},
+            ),
+            _ActionButton(
+              icon: Icons.upload_rounded,
+              label: 'Export',
+              onTap: () {},
+            ),
+            _ActionButton(
+              icon: Icons.drive_file_move_rounded,
+              label: 'Move',
+              onTap: () {},
+            ),
+            _ActionButton(
+              icon: Icons.delete_rounded,
+              label: 'Delete',
+              color: colorScheme.error,
+              onTap: () {},
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -258,20 +329,33 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final buttonColor = color ?? colorScheme.onSurface;
+
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: buttonColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: buttonColor, size: 20),
+            ),
+            const SizedBox(height: 6),
             Text(
               label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: color),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: buttonColor,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
