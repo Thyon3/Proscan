@@ -4,16 +4,21 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_cropper/image_cropper.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 
 class EditScanScreen extends StatefulWidget {
   final String imagePath;
-  const EditScanScreen({super.key, required this.imagePath});
+  final ScanMode initialMode;
+  const EditScanScreen({
+    super.key,
+    required this.imagePath,
+    required this.initialMode,
+  });
 
   @override
   State<EditScanScreen> createState() => _EditScanScreenState();
@@ -182,21 +187,23 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   Future<void> _captureAdditionalPage() async {
     try {
-      final picker = ImagePicker();
-      final shot = await picker.pickImage(source: ImageSource.camera);
-      if (shot == null) return;
+      final path = await context.push<String>(
+        '/camerascreen',
+        extra: CameraScreenConfig(
+          initialMode: widget.initialMode,
+          restrictToInitialMode: true,
+          returnCapturePath: true,
+        ),
+      );
 
-      final dir = await getTemporaryDirectory();
-      final filename = 'scan_page_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final newPath = '${dir.path}/$filename';
-      await File(shot.path).copy(newPath);
+      if (path == null || !mounted) return;
 
-      if (!mounted) return;
       setState(() {
-        _pages.add(newPath);
+        _pages.add(path);
         _currentIndex = _pages.length - 1;
-        _currentPath = newPath;
+        _currentPath = path;
       });
+
       await _pageController.animateToPage(
         _currentIndex,
         duration: const Duration(milliseconds: 300),

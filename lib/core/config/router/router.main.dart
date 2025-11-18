@@ -101,12 +101,39 @@ final GoRouter router = GoRouter(
       path: '/camerascreen',
       name: 'camerascreen',
       builder: (context, state) {
-        return SmartCameraScreen(initialMode: ScanMode.document);
+        final extra = state.extra;
+        CameraScreenConfig? config;
+        if (extra is CameraScreenConfig) {
+          config = extra;
+        } else if (extra is ScanMode) {
+          config = CameraScreenConfig(initialMode: extra);
+        }
+
+        return SmartCameraScreen(
+          initialMode: config?.initialMode ?? ScanMode.document,
+          restrictToInitialMode: config?.restrictToInitialMode ?? false,
+          returnCapturePath: config?.returnCapturePath ?? false,
+        );
       },
     ),
     GoRoute(
       path: '/editscanscreen',
-      builder: (_, state) => EditScanScreen(imagePath: state.extra as String),
+      builder: (_, state) {
+        final extra = state.extra;
+        if (extra is EditScanArgs) {
+          return EditScanScreen(
+            imagePath: extra.imagePath,
+            initialMode: extra.initialMode,
+          );
+        } else if (extra is String && extra.isNotEmpty) {
+          // Backwards compatibility: allow passing just the image path.
+          return EditScanScreen(
+            imagePath: extra,
+            initialMode: ScanMode.document,
+          );
+        }
+        throw ArgumentError('EditScanScreen requires image path.');
+      },
     ),
     GoRoute(
       path: '/resetpassword',

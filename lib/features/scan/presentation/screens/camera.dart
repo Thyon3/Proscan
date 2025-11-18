@@ -8,61 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
-enum ScanMode {
-  slides,
-  excel,
-  timestamp,
-  extractText,
-  word,
-  document,
-  idCard,
-  question,
-  translate,
-  book;
-
-  String get name => switch (this) {
-    slides => 'Slides',
-    excel => 'Excel',
-    timestamp => 'Timestamp',
-    extractText => 'Extract Text',
-    word => 'Word',
-    document => 'Scan',
-    idCard => 'ID Card',
-    question => 'Question',
-    translate => 'Translate',
-    book => 'Book',
-  };
-
-  IconData get icon => switch (this) {
-    slides => Icons.slideshow_rounded,
-    excel => Icons.grid_on_rounded,
-    timestamp => Icons.schedule_rounded,
-    extractText => Icons.text_snippet_rounded,
-    word => Icons.text_fields_rounded,
-    document => Icons.document_scanner_rounded,
-    idCard => Icons.credit_card_rounded,
-    question => Icons.quiz_rounded,
-    translate => Icons.translate_rounded,
-    book => Icons.menu_book_rounded,
-  };
-
-  String get hint => switch (this) {
-    slides => 'Capture slide fully',
-    excel => 'Align table with grid',
-    timestamp => 'Include date/time',
-    extractText => 'Capture any text',
-    word => 'Place page flat',
-    document => 'Align document within frame',
-    idCard => 'Center ID card perfectly',
-    question => 'Capture question clearly',
-    translate => 'Point at text to translate',
-    book => 'Open book flat, avoid shadows',
-  };
-
-  bool get showGrid => this == ScanMode.excel || this == ScanMode.slides;
-  bool get showIdFrame => this == ScanMode.idCard;
-  bool get autoDewarpHint => this == ScanMode.book || this == ScanMode.document;
-}
+import '../../model/scan_flow_models.dart';
 
 class CameraSettings {
   bool autoCapture;
@@ -98,7 +44,15 @@ class CameraSettings {
 
 class SmartCameraScreen extends StatefulWidget {
   final ScanMode initialMode;
-  const SmartCameraScreen({super.key, this.initialMode = ScanMode.document});
+  final bool restrictToInitialMode;
+  final bool returnCapturePath;
+
+  const SmartCameraScreen({
+    super.key,
+    this.initialMode = ScanMode.document,
+    this.restrictToInitialMode = false,
+    this.returnCapturePath = false,
+  });
 
   @override
   State<SmartCameraScreen> createState() => _SmartCameraScreenState();
@@ -111,6 +65,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   bool _isBusy = false;
   FlashMode _flashMode = FlashMode.auto;
   late ScanMode _currentMode;
+  late final List<ScanMode> _availableModes;
   CameraSettings _settings = CameraSettings();
 
   // Camera switching
@@ -121,6 +76,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   void initState() {
     super.initState();
     _currentMode = widget.initialMode;
+    _availableModes = widget.restrictToInitialMode
+        ? [widget.initialMode]
+        : ScanMode.values;
     WidgetsBinding.instance.addObserver(this);
     _initFuture = _initCamera(preserveIndex: false);
   }
@@ -192,6 +150,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   }
 
   Future<void> _changeMode(ScanMode mode) async {
+    if (!_availableModes.contains(mode)) return;
     setState(() => _currentMode = mode);
     await _applyModeSettings();
   }
@@ -227,7 +186,14 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       await File(xFile.path).copy(path);
 
       if (!mounted) return;
-      context.push('/editscanscreen', extra: path);
+      if (widget.returnCapturePath) {
+        context.pop(path);
+      } else {
+        context.push(
+          '/editscanscreen',
+          extra: EditScanArgs(imagePath: path, initialMode: _currentMode),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -235,7 +201,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
-      setState(() => _isBusy = false);
+      if (mounted) {
+        setState(() => _isBusy = false);
+      }
     }
   }
 
@@ -252,7 +220,14 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       await File(file.path).copy(path);
 
       if (!mounted) return;
-      context.push('/editscanscreen', extra: path);
+      if (widget.returnCapturePath) {
+        context.pop(path);
+      } else {
+        context.push(
+          '/editscanscreen',
+          extra: EditScanArgs(imagePath: path, initialMode: _currentMode),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -484,6 +459,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
                 currentMode: _currentMode,
                 onModeChanged: _changeMode,
                 colorScheme: colorScheme,
+                modes: _availableModes,
               ),
             ),
           ),
@@ -726,24 +702,30 @@ class _ModeSelector extends StatelessWidget {
   final ScanMode currentMode;
   final Function(ScanMode) onModeChanged;
   final ColorScheme colorScheme;
+  final List<ScanMode> modes;
 
   const _ModeSelector({
     required this.currentMode,
     required this.onModeChanged,
     required this.colorScheme,
+    required this.modes,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (modes.isEmpty) return const SizedBox.shrink();
     return Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: ScanMode.values.length,
+        physics: modes.length <= 1
+            ? const NeverScrollableScrollPhysics()
+            : const BouncingScrollPhysics(),
+        itemCount: modes.length,
         separatorBuilder: (context, index) => const SizedBox(width: 24),
         itemBuilder: (context, index) {
-          final mode = ScanMode.values[index];
+          final mode = modes[index];
           final isSelected = currentMode == mode;
 
           return GestureDetector(

@@ -14,6 +14,7 @@ import 'package:thyscan/features/profile/presentation/screens/edit_profile.dart'
 import 'package:thyscan/features/profile/presentation/screens/free_user.dart';
 import 'package:thyscan/features/profile/presentation/screens/guest_mode.dart';
 import 'package:thyscan/features/profile/presentation/screens/premium_user.dart';
+import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 import 'package:thyscan/features/scan/presentation/screens/camera.dart';
 import 'package:thyscan/features/scan/presentation/screens/edit_scan.dart';
 import 'package:thyscan/features/splash/screens/splash.dart';
