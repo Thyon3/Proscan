@@ -98,6 +98,17 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/camerascreen',
+      name: 'camerascreen',
+      builder: (context, state) {
+        return SmartCameraScreen(initialMode: ScanMode.document);
+      },
+    ),
+    GoRoute(
+      path: '/editscanscreen',
+      builder: (_, state) => EditScanScreen(imagePath: state.extra as String),
+    ),
+    GoRoute(
       path: '/resetpassword',
       name: 'resetpassword',
       builder: (context, state) {

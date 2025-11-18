@@ -46,9 +46,12 @@ class HomeScreen extends ConsumerWidget {
     final homeNotifier = ref.read(homeProvider.notifier);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = Theme.of(context).colorScheme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: isDark
+          ? const Color.fromARGB(98, 0, 0, 0)
+          : Colors.white,
       appBar: _buildAppBar(context, homeState, homeNotifier),
       body: CustomScrollView(
         slivers: [

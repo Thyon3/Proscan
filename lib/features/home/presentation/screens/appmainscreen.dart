@@ -61,7 +61,7 @@ class AppMainScreen extends ConsumerWidget {
           hideMainNavigation // Use the new combined boolean
           ? null
           : FloatingActionButton(
-              onPressed: () => context.push('/scan'),
+              onPressed: () => context.push('/camerascreen'),
               backgroundColor: AppColors.primary,
               elevation: 12,
               child: const Icon(

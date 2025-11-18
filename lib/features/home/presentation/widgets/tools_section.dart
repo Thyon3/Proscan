@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:thyscan/core/theme/controllers/theme.dart';
 import 'package:thyscan/features/home/presentation/widgets/tool_card.dart';
 
 class _ToolData {
@@ -44,11 +46,11 @@ const List<_ToolData> _tools = [
   _ToolData(Icons.more_horiz_rounded, 'More Tools', color: Colors.grey),
 ];
 
-class ToolsSection extends StatelessWidget {
+class ToolsSection extends ConsumerWidget {
   const ToolsSection({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -61,6 +63,12 @@ class ToolsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          IconButton(
+            onPressed: () {
+              ref.watch(themeControllerProvider.notifier).toggleTheme();
+            },
+            icon: Icon(Icons.dark_mode),
+          ),
           // Section Header
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 20),
