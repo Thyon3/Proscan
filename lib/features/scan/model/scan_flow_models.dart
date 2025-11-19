@@ -74,3 +74,4 @@ class CameraScreenConfig {
     this.returnCapturePath = false,
   });
 }
+

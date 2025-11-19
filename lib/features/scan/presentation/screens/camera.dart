@@ -1,14 +1,16 @@
 // features/scan/presentation/screens/smart_camera_screen.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:thyscan/features/scan/core/edge_detector.dart';
 
 import '../../model/scan_flow_models.dart';
+import 'edge_overlay.dart';
 
 class CameraSettings {
   bool autoCapture;
@@ -71,6 +73,8 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   // Camera switching
   List<CameraDescription> _cameras = [];
   int _cameraIndex = 0; // set after fetching cameras
+  final EdgeDetector _edgeDetector = EdgeDetector();
+  List<Offset>? _detectedEdges;
 
   @override
   void initState() {
@@ -86,8 +90,35 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_stopImageStreamIfNeeded());
     _controller?.dispose();
+    _edgeDetector.dispose();
     super.dispose();
+  }
+
+  Future<void> _startImageStream() async {
+    if (_controller == null || _controller!.value.isStreamingImages) return;
+    await _controller!.startImageStream((image) async {
+      if (!mounted) return;
+      final edges = await _edgeDetector.detect(
+        image,
+        _currentMode,
+        _controller!.description,
+      );
+      if (!mounted) return;
+      setState(() => _detectedEdges = edges);
+    });
+  }
+
+  Future<void> _stopImageStreamIfNeeded() async {
+    if (_controller == null) return;
+    if (_controller!.value.isStreamingImages) {
+      try {
+        await _controller!.stopImageStream();
+      } catch (_) {
+        // ignored
+      }
+    }
   }
 
   @override
@@ -95,6 +126,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
+      unawaited(_stopImageStreamIfNeeded());
       c.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initFuture = _initCamera(preserveIndex: true);
@@ -121,6 +153,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     );
 
     await _controller!.initialize();
+    await _startImageStream();
 
     // Front cameras often don't support flash
     final isFront =
@@ -151,7 +184,10 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
   Future<void> _changeMode(ScanMode mode) async {
     if (!_availableModes.contains(mode)) return;
-    setState(() => _currentMode = mode);
+    setState(() {
+      _currentMode = mode;
+      _detectedEdges = null;
+    });
     await _applyModeSettings();
   }
 
@@ -248,6 +284,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       final idx = _cameras.indexWhere((c) => c.lensDirection == desired);
       final newIndex = idx != -1 ? idx : (_cameraIndex + 1) % _cameras.length;
 
+      await _stopImageStreamIfNeeded();
       await _controller?.dispose();
       _controller = CameraController(
         _cameras[newIndex],
@@ -402,6 +439,16 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
               );
             },
           ),
+
+          if (_detectedEdges != null && _detectedEdges!.length == 4)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: EdgeOverlay(
+                  points: _detectedEdges,
+                  size: MediaQuery.of(context).size,
+                ),
+              ),
+            ),
 
           // Overlays
           if (_currentMode.showGrid && _settings.grid) const _GridOverlay(),
