@@ -1,4 +1,7 @@
+import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,7 +14,8 @@ class SignupScreen extends ConsumerStatefulWidget {
   ConsumerState<ConsumerStatefulWidget> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends ConsumerState<SignupScreen> {
+class _SignupScreenState extends ConsumerState<SignupScreen>
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -28,6 +32,64 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   bool _isLoading = false;
   bool _agreeToTerms = false;
 
+  // Animations
+  late final AnimationController _nebulaController;
+  late final AnimationController _shimmerController;
+  late final AnimationController _entranceController;
+  late final List<AnimationController> _starControllers;
+  final List<Star> _stars = [];
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Background Animations (Only visible in Dark Mode)
+    _nebulaController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 20),
+    )..repeat(reverse: true);
+
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+
+    _starControllers = List.generate(10, (index) {
+      return AnimationController(
+        vsync: this,
+        duration: Duration(milliseconds: 2000 + (index * 500)),
+      )..repeat(reverse: true);
+    });
+
+    _initializeStars();
+    for (final controller in _starControllers) controller.forward();
+
+    // Entrance Animation
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) _entranceController.forward();
+    });
+  }
+
+  void _initializeStars() {
+    final random = Random();
+    for (int i = 0; i < 60; i++) {
+      _stars.add(
+        Star(
+          x: random.nextDouble(),
+          y: random.nextDouble(),
+          size: random.nextDouble() * 1.5 + 0.5,
+          opacity: random.nextDouble(),
+          controllerIndex: random.nextInt(_starControllers.length),
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -38,25 +100,29 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     _emailFocus.dispose();
     _passFocus.dispose();
     _confirmFocus.dispose();
+    _nebulaController.dispose();
+    _shimmerController.dispose();
+    _entranceController.dispose();
+    for (var c in _starControllers) c.dispose();
     super.dispose();
   }
 
   Future<void> _signup() async {
+    HapticFeedback.mediumImpact();
     if (_formKey.currentState!.validate()) {
       if (!_agreeToTerms) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Please agree to the Terms & Conditions'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+            content: Text(
+              'Please agree to the Terms & Conditions',
+              style: GoogleFonts.inter(),
             ),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
           ),
         );
         return;
       }
-
       setState(() => _isLoading = true);
       await Future.delayed(const Duration(seconds: 2));
       if (!mounted) return;
@@ -65,379 +131,424 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     }
   }
 
-  // Theme-aware polished fill & border (matches Login/Forgot)
-  Color _inputFillColor(BuildContext context) {
-    final t = Theme.of(context);
-    final cs = t.colorScheme;
-    final isDark = t.brightness == Brightness.dark;
-    return isDark
-        ? Color.alphaBlend(Colors.white.withOpacity(0.06), cs.surface)
-        : Color.alphaBlend(cs.primary.withOpacity(0.04), cs.surface);
-  }
-
-  Color _inputBorderColor(BuildContext context) {
-    final t = Theme.of(context);
-    final cs = t.colorScheme;
-    final isDark = t.brightness == Brightness.dark;
-    return isDark
-        ? Colors.white.withOpacity(0.12)
-        : cs.outline.withOpacity(0.25);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final size = MediaQuery.of(context).size;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Colors
+    final bgColor = isDark ? const Color(0xFF050508) : Colors.white;
+    final textColor = isDark
+        ? Colors.white
+        : const Color(0xFF1E293B); // Slate-800
+    final primaryColor = isDark
+        ? const Color(0xFF4FACFE)
+        : const Color(0xFF2563EB); // Bright Blue
 
     return Scaffold(
-      backgroundColor: scheme.background,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Responsive horizontal padding + max width, keyboard-safe bottom inset
-            final double horizontalPad = (constraints.maxWidth * 0.075).clamp(
-              16.0,
-              28.0,
-            );
+      backgroundColor: bgColor,
+      body: Stack(
+        children: [
+          // 1. Background: Stars/Nebula ONLY for Dark Mode
+          if (isDark) _buildNightSky(size),
 
-            return Center(
+          // 2. Content
+          SafeArea(
+            child: Center(
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
-                  horizontalPad,
                   24,
-                  horizontalPad,
+                  24,
+                  24,
                   24 + MediaQuery.viewInsetsOf(context).bottom,
                 ),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Title
-                      Text(
-                        'Create your account',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onBackground,
-                          letterSpacing: -0.5,
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        _buildAnimatedEntry(
+                          delay: 0,
+                          child: Center(
+                            child: Text(
+                              'Create your account',
+                              style: GoogleFonts.inter(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w700,
+                                color: textColor,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 40),
 
-                      // Form
-                      Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            // Name
-                            _buildFloatingField(
-                              context: context,
-                              label: 'Name',
-                              hint: 'Enter your full name',
-                              controller: _nameCtrl,
-                              focusNode: _nameFocus,
-                              icon: Iconsax.user,
-                              scheme: scheme,
-                              fillColor: _inputFillColor(context),
-                              borderColor: _inputBorderColor(context),
-                              onSubmitted: (_) => FocusScope.of(
-                                context,
-                              ).requestFocus(_emailFocus),
-                              validator: (v) {
-                                final value = v?.trim() ?? '';
-                                if (value.isEmpty) return 'Name is required';
-                                if (value.length < 2) {
-                                  return 'Please enter a valid name';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 20),
+                        const SizedBox(height: 40),
 
-                            // Email
-                            _buildFloatingField(
-                              label: 'Email',
-                              context: context,
-                              hint: 'yourname@example.com',
-                              controller: _emailCtrl,
-                              focusNode: _emailFocus,
-                              icon: Iconsax.sms,
-                              keyboardType: TextInputType.emailAddress,
-                              scheme: scheme,
-                              fillColor: _inputFillColor(context),
-                              borderColor: _inputBorderColor(context),
-                              onSubmitted: (_) => FocusScope.of(
-                                context,
-                              ).requestFocus(_passFocus),
-                              validator: (v) {
-                                final value = v?.trim() ?? '';
-                                if (value.isEmpty) return 'Email is required';
-                                final rx = RegExp(
-                                  r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
-                                );
-                                if (!rx.hasMatch(value)) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 20),
+                        // Form Fields
+                        _buildAnimatedEntry(
+                          delay: 100,
+                          child: Column(
+                            children: [
+                              _buildField(
+                                label: 'Full Name',
+                                controller: _nameCtrl,
+                                focusNode: _nameFocus,
+                                icon: Iconsax.user,
+                                nextFocus: _emailFocus,
+                                isDark: isDark,
+                                primaryColor: primaryColor,
+                              ),
+                              const SizedBox(height: 16),
 
-                            // Password
-                            _buildFloatingField(
-                              context: context,
-                              label: 'Password',
-                              hint: 'Create a strong password',
-                              controller: _passCtrl,
-                              focusNode: _passFocus,
-                              icon: Iconsax.lock,
-                              obscureText: _obscurePass,
-                              scheme: scheme,
-                              fillColor: _inputFillColor(context),
-                              borderColor: _inputBorderColor(context),
-                              onSubmitted: (_) => FocusScope.of(
-                                context,
-                              ).requestFocus(_confirmFocus),
-                              suffix: IconButton(
-                                icon: Icon(
-                                  _obscurePass
-                                      ? Iconsax.eye_slash
-                                      : Iconsax.eye,
-                                  size: 20,
-                                  color: scheme.onSurface.withOpacity(0.5),
-                                ),
-                                onPressed: () => setState(
+                              _buildField(
+                                label: 'Email Address',
+                                controller: _emailCtrl,
+                                focusNode: _emailFocus,
+                                icon: Iconsax.sms,
+                                nextFocus: _passFocus,
+                                keyboardType: TextInputType.emailAddress,
+                                isDark: isDark,
+                                primaryColor: primaryColor,
+                              ),
+                              const SizedBox(height: 16),
+
+                              _buildField(
+                                label: 'Password',
+                                controller: _passCtrl,
+                                focusNode: _passFocus,
+                                icon: Iconsax.lock,
+                                nextFocus: _confirmFocus,
+                                obscureText: _obscurePass,
+                                isDark: isDark,
+                                primaryColor: primaryColor,
+                                toggleObscure: () => setState(
                                   () => _obscurePass = !_obscurePass,
                                 ),
                               ),
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return 'Password is required';
-                                }
-                                if (v.length < 8) {
-                                  return 'Password must be at least 8 characters';
-                                }
-                                if (!RegExp(
-                                  r'^(?=.*[a-zA-Z])(?=.*\d)',
-                                ).hasMatch(v)) {
-                                  return 'Must contain letters and numbers';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 20),
+                              const SizedBox(height: 16),
 
-                            // Confirm Password
-                            _buildFloatingField(
-                              context: context,
-                              label: 'Confirm Password',
-                              hint: 'Confirm your password',
-                              controller: _confirmCtrl,
-                              focusNode: _confirmFocus,
-                              icon: Iconsax.lock_1,
-                              obscureText: _obscureConfirm,
-                              scheme: scheme,
-                              fillColor: _inputFillColor(context),
-                              borderColor: _inputBorderColor(context),
-                              onSubmitted: (_) => _signup(),
-                              suffix: IconButton(
-                                icon: Icon(
-                                  _obscureConfirm
-                                      ? Iconsax.eye_slash
-                                      : Iconsax.eye,
-                                  size: 20,
-                                  color: scheme.onSurface.withOpacity(0.5),
-                                ),
-                                onPressed: () => setState(
+                              _buildField(
+                                label: 'Confirm Password',
+                                controller: _confirmCtrl,
+                                focusNode: _confirmFocus,
+                                icon: Iconsax.lock_1,
+                                obscureText: _obscureConfirm,
+                                isLast: true,
+                                isDark: isDark,
+                                primaryColor: primaryColor,
+                                onSubmitted: (_) => _signup(),
+                                toggleObscure: () => setState(
                                   () => _obscureConfirm = !_obscureConfirm,
                                 ),
+                                validator: (v) => v != _passCtrl.text
+                                    ? 'Passwords do not match'
+                                    : null,
                               ),
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return 'Please confirm your password';
-                                }
-                                if (v != _passCtrl.text) {
-                                  return 'Passwords do not match';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Terms Agreement
-                            _buildTermsAgreement(scheme),
-                            const SizedBox(height: 28),
-
-                            // Sign Up Button
-                            _buildSignupButton(scheme),
-                            const SizedBox(height: 28),
-
-                            // Divider
-                            _buildDivider(scheme),
-                            const SizedBox(height: 24),
-
-                            // Social Sign Up
-                            _buildSocialLogin(scheme),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 36),
 
-                      // Login Link
-                      _buildLoginSection(scheme),
-                    ],
+                        const SizedBox(height: 24),
+
+                        // Terms
+                        _buildAnimatedEntry(
+                          delay: 200,
+                          child: _buildTermsAgreement(
+                            isDark,
+                            primaryColor,
+                            textColor,
+                          ),
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        // Button
+                        _buildAnimatedEntry(
+                          delay: 300,
+                          child: _buildButton(primaryColor),
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        // Divider
+                        _buildAnimatedEntry(
+                          delay: 400,
+                          child: _buildDivider(isDark, textColor),
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        // Socials
+                        _buildAnimatedEntry(
+                          delay: 500,
+                          child: _buildSocialRow(isDark),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Login Link
+                        _buildAnimatedEntry(
+                          delay: 600,
+                          child: _buildLoginLink(primaryColor, textColor),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildFloatingField({
+  // --- Widgets ---
+
+  Widget _buildNightSky(Size size) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: AnimatedBuilder(
+            animation: _nebulaController,
+            builder: (context, child) {
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(
+                      0.6 + sin(_nebulaController.value) * 0.2,
+                      -0.3,
+                    ),
+                    radius: 1.5,
+                    colors: const [Color(0xFF1A1F35), Colors.transparent],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        ..._stars.map(
+          (star) => Positioned(
+            left: size.width * star.x,
+            top: size.height * star.y,
+            child: AnimatedBuilder(
+              animation: _starControllers[star.controllerIndex],
+              builder: (context, child) {
+                final val = _starControllers[star.controllerIndex].value;
+                return Opacity(
+                  opacity: star.opacity * (0.5 + sin(val * pi) * 0.5),
+                  child: Container(
+                    width: star.size,
+                    height: star.size,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnimatedEntry({required int delay, required Widget child}) {
+    return AnimatedBuilder(
+      animation: _entranceController,
+      builder: (context, _) {
+        final double start = delay / 1000;
+        final double end = start + 0.4;
+        final curve = CurvedAnimation(
+          parent: _entranceController,
+          curve: Interval(start, end, curve: Curves.easeOutQuart),
+        );
+        return FadeTransition(
+          opacity: curve,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.1),
+              end: Offset.zero,
+            ).animate(curve),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildField({
     required String label,
-    required String hint,
     required TextEditingController controller,
     required FocusNode focusNode,
     required IconData icon,
-    required ColorScheme scheme,
-    required Color fillColor,
-    required Color borderColor,
-    required BuildContext context,
-    TextInputType? keyboardType,
+    required bool isDark,
+    required Color primaryColor,
+    FocusNode? nextFocus,
     bool obscureText = false,
-    Widget? suffix,
+    bool isLast = false,
+    VoidCallback? toggleObscure,
+    TextInputType? keyboardType,
     String? Function(String?)? validator,
     void Function(String)? onSubmitted,
   }) {
-    return TextFormField(
-      controller: controller,
-      focusNode: focusNode,
-      keyboardType: keyboardType,
-      obscureText: obscureText,
-      textInputAction: obscureText
-          ? TextInputAction.done
-          : TextInputAction.next,
-      onFieldSubmitted: onSubmitted,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
-      style: GoogleFonts.inter(
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-        color: scheme.onBackground,
-      ),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: GoogleFonts.inter(
-          color: scheme.onBackground.withOpacity(0.6),
-          fontWeight: FontWeight.w500,
-        ),
-        floatingLabelStyle: GoogleFonts.inter(
-          color: scheme.primary,
-          fontWeight: FontWeight.w600,
-        ),
-        hintStyle: GoogleFonts.inter(
-          color: scheme.onBackground.withOpacity(0.42),
-        ),
-        prefixIcon: Icon(icon, size: 20, color: scheme.primary),
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: fillColor,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 18,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: borderColor, width: 1),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: scheme.primary, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: scheme.error, width: 1.5),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: scheme.error, width: 2),
-        ),
-      ),
-      validator: validator,
+    return AnimatedBuilder(
+      animation: focusNode,
+      builder: (context, child) {
+        final isFocused = focusNode.hasFocus;
+
+        // PROFESSIONAL LIGHT MODE COLORS
+        // Fill: Very subtle gray (#F8FAFC)
+        // Border: Light gray (#E2E8F0)
+        // Focus: Primary Color
+
+        final fillColor = isDark
+            ? Colors.white.withOpacity(0.05)
+            : const Color(0xFFF8FAFC);
+
+        final borderColor = isDark
+            ? Colors.white.withOpacity(0.1)
+            : const Color(0xFFE2E8F0);
+
+        final iconColor = isDark
+            ? Colors.white54
+            : const Color(0xFF94A3B8); // Slate-400
+
+        final labelColor = isDark
+            ? Colors.white60
+            : const Color(0xFF64748B); // Slate-500
+
+        final textColor = isDark
+            ? Colors.white
+            : const Color(0xFF0F172A); // Slate-900
+
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            color: isFocused
+                ? (isDark ? Colors.white.withOpacity(0.08) : Colors.white)
+                : fillColor,
+            border: Border.all(
+              color: isFocused ? primaryColor : borderColor,
+              width: isFocused ? 1.5 : 1,
+            ),
+            boxShadow: isFocused && !isDark
+                ? [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
+          ),
+          child: TextFormField(
+            controller: controller,
+            focusNode: focusNode,
+            keyboardType: keyboardType,
+            obscureText: obscureText,
+            textInputAction: isLast
+                ? TextInputAction.done
+                : TextInputAction.next,
+            onFieldSubmitted: (v) {
+              if (onSubmitted != null) onSubmitted(v);
+              if (nextFocus != null)
+                FocusScope.of(context).requestFocus(nextFocus);
+            },
+            style: GoogleFonts.inter(
+              color: textColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              labelText: label,
+              labelStyle: GoogleFonts.inter(
+                color: isFocused ? primaryColor : labelColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              prefixIcon: Icon(
+                icon,
+                color: isFocused ? primaryColor : iconColor,
+                size: 20,
+              ),
+              suffixIcon: toggleObscure != null
+                  ? IconButton(
+                      icon: Icon(
+                        obscureText ? Iconsax.eye_slash : Iconsax.eye,
+                        color: iconColor,
+                        size: 20,
+                      ),
+                      onPressed: toggleObscure,
+                    )
+                  : null,
+            ),
+            validator:
+                validator ??
+                (v) => (v == null || v.isEmpty) ? '$label is required' : null,
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildTermsAgreement(ColorScheme scheme) {
+  Widget _buildTermsAgreement(
+    bool isDark,
+    Color primaryColor,
+    Color textColor,
+  ) {
+    final borderColor = isDark ? Colors.white38 : const Color(0xFFCBD5E1);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
-          onTap: () => setState(() => _agreeToTerms = !_agreeToTerms),
-          child: Container(
-            width: 20,
-            height: 20,
-            margin: const EdgeInsets.only(top: 2),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _agreeToTerms = !_agreeToTerms);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 22,
+            height: 22,
+            margin: const EdgeInsets.only(top: 2, right: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(6),
+              color: _agreeToTerms ? primaryColor : Colors.transparent,
               border: Border.all(
-                color: _agreeToTerms
-                    ? scheme.primary
-                    : scheme.onBackground.withOpacity(0.3),
-                width: 2,
+                color: _agreeToTerms ? primaryColor : borderColor,
+                width: 1.5,
               ),
-              color: _agreeToTerms ? scheme.primary : Colors.transparent,
             ),
             child: _agreeToTerms
-                ? Icon(Icons.check, size: 14, color: scheme.onPrimary)
+                ? const Icon(Icons.check, size: 16, color: Colors.white)
                 : null,
           ),
         ),
-        const SizedBox(width: 12),
         Expanded(
           child: RichText(
             text: TextSpan(
               style: GoogleFonts.inter(
+                color: textColor.withOpacity(0.6),
                 fontSize: 14,
-                color: scheme.onBackground.withOpacity(0.7),
-                fontWeight: FontWeight.w500,
               ),
               children: [
                 const TextSpan(text: 'I agree to the '),
-                WidgetSpan(
-                  child: GestureDetector(
-                    onTap: () => context.push('/terms'),
-                    child: Text(
-                      'Terms & Conditions',
-                      style: GoogleFonts.inter(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-                const TextSpan(text: ' and '),
-                WidgetSpan(
-                  child: GestureDetector(
-                    onTap: () => context.push('/privacy'),
-                    child: Text(
-                      'Privacy Policy',
-                      style: GoogleFonts.inter(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
-                    ),
+                TextSpan(
+                  text: 'Terms & Conditions',
+                  style: GoogleFonts.inter(
+                    color: textColor,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -448,147 +559,145 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
   }
 
-  Widget _buildSignupButton(ColorScheme scheme) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed: _isLoading ? null : _signup,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: scheme.primary,
-          foregroundColor: scheme.onPrimary,
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+  Widget _buildButton(Color primaryColor) {
+    return GestureDetector(
+      onTap: _isLoading ? null : _signup,
+      child: Container(
+        height: 54,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          color: primaryColor,
+          boxShadow: [
+            BoxShadow(
+              color: primaryColor.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
-        child: _isLoading
-            ? SizedBox(
-                width: 20,
-                height: 20,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (_isLoading)
+              const SizedBox(
+                width: 24,
+                height: 24,
                 child: CircularProgressIndicator(
+                  color: Colors.white,
                   strokeWidth: 2,
-                  color: scheme.onPrimary,
                 ),
               )
-            : Text(
+            else
+              Text(
                 'Create Account',
                 style: GoogleFonts.inter(
+                  color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildDivider(ColorScheme scheme) {
+  Widget _buildDivider(bool isDark, Color textColor) {
+    final divColor = isDark
+        ? Colors.white.withOpacity(0.1)
+        : const Color(0xFFE2E8F0);
     return Row(
       children: [
-        Expanded(
-          child: Divider(color: scheme.outline.withOpacity(0.2), thickness: 1),
-        ),
+        Expanded(child: Divider(color: divColor)),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'Or sign up with',
             style: GoogleFonts.inter(
+              color: textColor.withOpacity(0.5),
               fontSize: 13,
-              color: scheme.onBackground.withOpacity(0.5),
               fontWeight: FontWeight.w500,
             ),
           ),
         ),
-        Expanded(
-          child: Divider(color: scheme.outline.withOpacity(0.2), thickness: 1),
-        ),
+        Expanded(child: Divider(color: divColor)),
       ],
     );
   }
 
-  Widget _buildSocialLogin(ColorScheme scheme) {
-    final bg = _inputFillColor(context);
-    final border = _inputBorderColor(context);
+  Widget _buildSocialRow(bool isDark) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildSocialButton(
-          icon: Icons.g_mobiledata,
-          onTap: () {},
-          scheme: scheme,
-          bg: bg,
-          borderColor: border,
-        ),
-        const SizedBox(width: 16),
-        _buildSocialButton(
-          icon: Icons.apple,
-          onTap: () {},
-          scheme: scheme,
-          bg: bg,
-          borderColor: border,
-        ),
-        const SizedBox(width: 16),
-        _buildSocialButton(
-          icon: Icons.facebook,
-          onTap: () {},
-          scheme: scheme,
-          bg: bg,
-          borderColor: border,
-        ),
+        _socialButton(Icons.g_mobiledata, isDark),
+        const SizedBox(width: 20),
+        _socialButton(Icons.apple, isDark),
+        const SizedBox(width: 20),
+        _socialButton(Icons.facebook, isDark),
       ],
     );
   }
 
-  Widget _buildSocialButton({
-    required IconData icon,
-    required VoidCallback onTap,
-    required ColorScheme scheme,
-    required Color bg,
-    required Color borderColor,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: bg,
-          shape: BoxShape.circle,
-          border: Border.all(color: borderColor, width: 1),
-        ),
-        child: Icon(
-          icon,
-          color: scheme.onBackground.withOpacity(0.7),
-          size: 22,
-        ),
+  Widget _socialButton(IconData icon, bool isDark) {
+    final bgColor = isDark ? Colors.white.withOpacity(0.05) : Colors.white;
+    final borderColor = isDark
+        ? Colors.white.withOpacity(0.1)
+        : const Color(0xFFE2E8F0);
+    final iconColor = isDark ? Colors.white : const Color(0xFF1E293B);
+
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
+      child: Icon(icon, color: iconColor, size: 24),
     );
   }
 
-  Widget _buildLoginSection(ColorScheme scheme) {
+  Widget _buildLoginLink(Color primaryColor, Color textColor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           'Already have an account? ',
-          style: GoogleFonts.inter(
-            fontSize: 15,
-            color: scheme.onBackground.withOpacity(0.7),
-          ),
+          style: GoogleFonts.inter(color: textColor.withOpacity(0.6)),
         ),
         GestureDetector(
           onTap: () => context.push('/login'),
           child: Text(
-            'Log In',
+            'Sign In',
             style: GoogleFonts.inter(
-              color: scheme.primary,
+              color: primaryColor,
               fontWeight: FontWeight.w600,
-              fontSize: 15,
             ),
           ),
         ),
       ],
     );
   }
+}
+
+class Star {
+  final double x, y, size, opacity;
+  final int controllerIndex;
+  Star({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.opacity,
+    required this.controllerIndex,
+  });
 }
