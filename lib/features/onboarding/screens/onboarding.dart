@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -13,353 +14,352 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen>
     with TickerProviderStateMixin {
   final PageController _pageController = PageController();
-  int _currentPage = 0;
-
-  late final AnimationController _glowController;
-  late final AnimationController _pulseController;
-  late final Animation<double> _glowAnimation;
-  late final Animation<double> _pulseAnimation;
+  late final AnimationController _nebulaController;
+  late final AnimationController _shimmerController;
+  late final List<AnimationController> _starControllers;
 
   final List<OnboardingItem> _items = [
     OnboardingItem(
-      title: 'Scan Your Documents',
-      description:
-          'AI captures, cleans, and enhances every page with precision.',
-      icon: Icons.document_scanner,
+      title: 'Precision Scan',
+      description: 'Our AI beam detects edges and enhances clarity instantly.',
+      icon: Icons.document_scanner_rounded,
+      gradient: [Color(0xFF4FACFE), Color(0xFF00F2FE)],
+      iconAnimation: IconAnimationType.scan,
     ),
     OnboardingItem(
-      title: 'Unlock Your Text',
+      title: 'Smart Extraction',
       description:
-          'Extract, edit, search, and copy text from any scan instantly.',
-      icon: Icons.text_fields,
+          'Watch raw pixels transform into editable text before your eyes.',
+      icon: Icons.text_snippet_rounded,
+      gradient: [Color(0xFFD4FC79), Color(0xFF96E6A1)],
+      iconAnimation: IconAnimationType.text,
     ),
     OnboardingItem(
-      title: 'Never Lose a Scan',
-      description: 'Secure cloud sync — access your files anywhere, anytime.',
-      icon: Icons.cloud_done,
+      title: 'Cloud Sync',
+      description: 'Documents float seamlessly to your secure private storage.',
+      icon: Icons.cloud_upload_rounded,
+      gradient: [Color(0xFFF093FB), Color(0xFFF5576C)],
+      iconAnimation: IconAnimationType.cloud,
     ),
   ];
+
+  final List<Star> _stars = [];
 
   @override
   void initState() {
     super.initState();
-    _glowController = AnimationController(
+
+    // Background Nebula Breathing
+    _nebulaController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 20),
+    )..repeat(reverse: true);
+
+    // Button Shimmer
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
     )..repeat();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
 
-    _glowAnimation = Tween<double>(begin: 0.2, end: 0.5).animate(
-      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
-    );
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeOutBack),
-    );
-
-    _pageController.addListener(() {
-      setState(() => _currentPage = _pageController.page?.round() ?? 0);
-      if (_pageController.page?.remainder(1) == 0) {
-        _pulseController.forward(from: 0);
-      }
+    // Star Twinkling
+    _starControllers = List.generate(10, (index) {
+      return AnimationController(
+        vsync: this,
+        duration: Duration(milliseconds: 2000 + (index * 500)),
+      )..repeat(reverse: true);
     });
+
+    _initializeStars();
+
+    for (final controller in _starControllers) controller.forward();
+  }
+
+  void _initializeStars() {
+    final random = Random();
+    for (int i = 0; i < 120; i++) {
+      _stars.add(
+        Star(
+          x: random.nextDouble(),
+          y: random.nextDouble(),
+          size: random.nextDouble() * 2 + 0.5,
+          depth: random.nextDouble(),
+          opacity: random.nextDouble(),
+          controllerIndex: random.nextInt(_starControllers.length),
+        ),
+      );
+    }
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _glowController.dispose();
-    _pulseController.dispose();
+    _nebulaController.dispose();
+    _shimmerController.dispose();
+    for (var c in _starControllers) c.dispose();
     super.dispose();
   }
 
-  void _onGetStarted() => context.go('/signup');
+  void _onGetStarted() {
+    HapticFeedback.mediumImpact();
+    context.go('/signup');
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final size = MediaQuery.of(context).size;
-    final scale = size.width / 375;
 
     return Scaffold(
+      backgroundColor: const Color(0xFF050508), // Deepest black/blue
       body: Stack(
         children: [
-          // ULTRA PREMIUM BACKGROUND
-          _PremiumBackground(glow: _glowAnimation, scheme: scheme),
+          // 1. Persistent Night Sky Background
+          _buildNightSky(size),
 
-          // PAGE CONTENT WITH 3D TILT
-          PageView.builder(
-            controller: _pageController,
-            itemCount: _items.length,
-            itemBuilder: (context, index) {
-              final progress =
-                  (_pageController.hasClients && _pageController.page != null)
-                  ? (_pageController.page! - index).abs().clamp(0.0, 1.0)
-                  : 1.0;
-              final tilt = progress * 15;
+          // 2. Page Content
+          Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: _items.length,
+                  // This keeps pages alive so animations don't reset
+                  allowImplicitScrolling: true,
+                  itemBuilder: (context, index) {
+                    return OnboardingPageWidget(item: _items[index]);
+                  },
+                ),
+              ),
 
-              return Transform(
-                transform: Matrix4.identity()
-                  ..setEntry(3, 2, 0.001)
-                  ..rotateY((index - _currentPage) * 0.1)
-                  ..rotateX(tilt * pi / 180),
-                alignment: Alignment.center,
-                child: _buildPremiumCard(_items[index], scale, scheme),
-              );
-            },
+              // 3. Bottom Controls (Restored Layout)
+              _buildBottomControls(),
+            ],
           ),
+        ],
+      ),
+    );
+  }
 
-          // BOTTOM CONTROLS
-          Positioned(
-            bottom: 70,
-            left: 32,
-            right: 32,
+  Widget _buildNightSky(Size size) {
+    return AnimatedBuilder(
+      animation: _pageController,
+      builder: (context, child) {
+        double scrollOffset = 0;
+        if (_pageController.hasClients &&
+            _pageController.position.haveDimensions) {
+          scrollOffset = _pageController.page ?? 0;
+        }
+
+        return Stack(
+          children: [
+            // Animated Gradient Nebula
+            Positioned.fill(
+              child: AnimatedBuilder(
+                animation: _nebulaController,
+                builder: (context, child) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(
+                          0.2 + sin(_nebulaController.value) * 0.2,
+                          -0.4 + cos(_nebulaController.value) * 0.2,
+                        ),
+                        radius: 1.2,
+                        colors: [Color(0xFF1A1F35), Colors.transparent],
+                        stops: const [0.0, 1.0],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // Parallax Stars
+            ..._stars.map((star) {
+              double parallaxX =
+                  (size.width * star.x) - (scrollOffset * 40 * star.depth);
+
+              return Positioned(
+                left: parallaxX,
+                top: size.height * star.y,
+                child: AnimatedBuilder(
+                  animation: _starControllers[star.controllerIndex],
+                  builder: (context, child) {
+                    final val = _starControllers[star.controllerIndex].value;
+                    final twinkle = 0.3 + (sin(val * pi) + 1) / 2 * 0.7;
+
+                    return Opacity(
+                      opacity: star.opacity * twinkle,
+                      child: Container(
+                        width: star.size,
+                        height: star.size,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: star.size > 1.5
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.white.withOpacity(0.4),
+                                    blurRadius: 3,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- RESTORED BUTTON LAYOUT ---
+  Widget _buildBottomControls() {
+    return AnimatedBuilder(
+      animation: _pageController,
+      builder: (context, child) {
+        int page = 0;
+        if (_pageController.hasClients &&
+            _pageController.position.haveDimensions) {
+          page = _pageController.page?.round() ?? 0;
+        }
+        final isLast = page == _items.length - 1;
+        final currentGradient = _items[page % _items.length].gradient;
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(30, 0, 30, 30),
             child: Column(
               children: [
-                _buildPremiumDots(scale, scheme),
-                const SizedBox(height: 32),
-                _buildPremiumButton(scale, scheme),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+                // 1. Indicators
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(_items.length, (index) {
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: index == page ? 32 : 8,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: index == page
+                            ? currentGradient.first
+                            : Colors.white12,
+                        borderRadius: BorderRadius.circular(3),
+                        boxShadow: index == page
+                            ? [
+                                BoxShadow(
+                                  color: currentGradient.first.withOpacity(0.5),
+                                  blurRadius: 8,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    );
+                  }),
+                ),
 
-  // PREMIUM CARD
-  Widget _buildPremiumCard(
-    OnboardingItem item,
-    double scale,
-    ColorScheme scheme,
-  ) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 32 * scale),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(flex: 2),
+                const SizedBox(height: 30),
 
-          // GLASSMORPHIC ICON CARD
-          ClipRRect(
-            borderRadius: BorderRadius.circular(32 * scale),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: EdgeInsets.all(36 * scale),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(32 * scale),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.2),
-                    width: 1.5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: scheme.primary.withOpacity(0.3),
-                      blurRadius: 40,
-                      spreadRadius: 8,
+                // 2. Main Button
+                GestureDetector(
+                  onTap: isLast
+                      ? _onGetStarted
+                      : () => _pageController.nextPage(
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeOutCubic,
+                        ),
+                  child: Container(
+                    height: 56,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: currentGradient),
+                      borderRadius: BorderRadius.circular(
+                        28,
+                      ), // Full pill shape
+                      boxShadow: [
+                        BoxShadow(
+                          color: currentGradient.first.withOpacity(0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Icon(item.icon, size: 88 * scale, color: Colors.white),
-              ),
-            ),
-          ),
-
-          SizedBox(height: 56 * scale),
-
-          // TITLE
-          Text(
-            item.title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium!.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              height: 1.2,
-              letterSpacing: -0.5,
-              shadows: [
-                Shadow(
-                  color: scheme.primary.withOpacity(0.4),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-          ),
-
-          SizedBox(height: 20 * scale),
-
-          // DESCRIPTION
-          Text(
-            item.description,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-              color: Colors.white70,
-              height: 1.6,
-              fontSize: 15 * scale,
-            ),
-          ),
-
-          const Spacer(flex: 3),
-        ],
-      ),
-    );
-  }
-
-  // ANIMATED DOTS WITH PULSE
-  Widget _buildPremiumDots(double scale, ColorScheme scheme) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_items.length, (i) {
-        final isActive = _currentPage == i;
-        return GestureDetector(
-          onTap: () => _pageController.animateToPage(
-            i,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-          ),
-          child: AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (context, child) {
-              final pulse = isActive ? _pulseAnimation.value : 1.0;
-              return Transform.scale(
-                scale: pulse,
-                child: Container(
-                  margin: EdgeInsets.symmetric(horizontal: 8 * scale),
-                  height: 12 * scale,
-                  width: isActive ? 36 * scale : 12 * scale,
-                  decoration: BoxDecoration(
-                    gradient: isActive
-                        ? LinearGradient(
-                            colors: [
-                              scheme.primary,
-                              scheme.primary.withOpacity(0.7),
-                            ],
-                          )
-                        : null,
-                    color: isActive ? null : Colors.white38,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: isActive
-                        ? [
-                            BoxShadow(
-                              color: scheme.primary.withOpacity(0.5),
-                              blurRadius: 16,
-                              spreadRadius: 6,
-                            ),
-                          ]
-                        : null,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Text(
+                          isLast ? "Get Started" : "Continue",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        // Shimmer Overlay
+                        AnimatedBuilder(
+                          animation: _shimmerController,
+                          builder: (context, child) {
+                            return Positioned.fill(
+                              child: FractionallySizedBox(
+                                widthFactor: 0.5,
+                                child: Transform.translate(
+                                  offset: Offset(
+                                    MediaQuery.of(context).size.width *
+                                            _shimmerController.value *
+                                            2 -
+                                        200,
+                                    0,
+                                  ),
+                                  child: Transform.rotate(
+                                    angle: 0.5,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.transparent,
+                                            Colors.white24,
+                                            Colors.transparent,
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              );
-            },
-          ),
-        );
-      }),
-    );
-  }
 
-  // PREMIUM BUTTON
-  Widget _buildPremiumButton(double scale, ColorScheme scheme) {
-    final isLast = _currentPage == _items.length - 1;
-    return GestureDetector(
-      onTap: isLast
-          ? _onGetStarted
-          : () => _pageController.nextPage(
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOut,
-            ),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        height: 64 * scale,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [scheme.primary, scheme.primary.withBlue(150)],
-          ),
-          borderRadius: BorderRadius.circular(32 * scale),
-          boxShadow: [
-            BoxShadow(
-              color: scheme.primary.withOpacity(0.5),
-              blurRadius: 30,
-              offset: const Offset(0, 12),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            isLast ? 'Get Started' : 'Continue',
-            style: TextStyle(
-              color: scheme.onPrimary,
-              fontSize: 18 * scale,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.2,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+                const SizedBox(height: 20),
+
+                // 3. Skip Button (Restored)
+                Opacity(
+                  opacity: isLast ? 0.0 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: isLast,
+                    child: TextButton(
+                      onPressed: _onGetStarted,
+                      child: Text(
+                        "Skip for now",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// BACKGROUND WITH PARTICLES
-class _PremiumBackground extends StatelessWidget {
-  final Animation<double> glow;
-  final ColorScheme scheme;
-
-  const _PremiumBackground({required this.glow, required this.scheme});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: glow,
-      builder: (context, child) {
-        return Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF0A0E0A), Color(0xFF12181B), Color(0xFF0A0E0A)],
-            ),
-          ),
-          child: Stack(
-            children: [
-              // Animated glow orbs
-              _GlowOrb(
-                left: -120,
-                top: -80,
-                size: 380,
-                opacity: glow.value * 0.4,
-              ),
-              _GlowOrb(
-                right: -100,
-                bottom: -120,
-                size: 420,
-                opacity: glow.value * 0.3,
-              ),
-              _GlowOrb(
-                left: 50,
-                top: 200,
-                size: 300,
-                opacity: glow.value * 0.2,
-              ),
-
-              // Subtle particles
-              ...List.generate(6, (i) => _Particle(i: i, glow: glow.value)),
-            ],
           ),
         );
       },
@@ -367,78 +367,378 @@ class _PremiumBackground extends StatelessWidget {
   }
 }
 
-class _GlowOrb extends StatelessWidget {
-  final double? left, right, top, bottom;
-  final double size;
-  final double opacity;
+// ==============================================================================
+// SEPARATE WIDGET TO HANDLE PERSISTENT ANIMATION STATE
+// ==============================================================================
+class OnboardingPageWidget extends StatefulWidget {
+  final OnboardingItem item;
+  const OnboardingPageWidget({super.key, required this.item});
 
-  const _GlowOrb({
-    this.left,
-    this.right,
-    this.top,
-    this.bottom,
-    required this.size,
-    required this.opacity,
-  });
+  @override
+  State<OnboardingPageWidget> createState() => _OnboardingPageWidgetState();
+}
+
+class _OnboardingPageWidgetState extends State<OnboardingPageWidget>
+    with AutomaticKeepAliveClientMixin, SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(); // CONTINUOUS LOOP
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  // THIS IS THE MAGIC KEY: Keeps the animation running even when scrolled partially away
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      left: left,
-      right: right,
-      top: top,
-      bottom: bottom,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Theme.of(context).colorScheme.primary.withOpacity(opacity),
-        ),
+    super.build(context); // Required for KeepAlive
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 30),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Spacer(flex: 2),
+          _buildHeroIcon(),
+          const SizedBox(height: 50),
+          _buildText(),
+          const Spacer(flex: 3),
+        ],
       ),
     );
   }
-}
 
-class _Particle extends StatelessWidget {
-  final int i;
-  final double glow;
+  Widget _buildHeroIcon() {
+    return SizedBox(
+      width: 240,
+      height: 240,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 1. Ambient Glow
+          Container(
+            width: 200,
+            height: 200,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  widget.item.gradient.first.withOpacity(0.25),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
 
-  const _Particle({required this.i, required this.glow});
+          // 2. Glassmorphic Container
+          ClipRRect(
+            borderRadius: BorderRadius.circular(120),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+              child: Container(
+                width: 240,
+                height: 240,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.1),
+                    width: 1,
+                  ),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withOpacity(0.1),
+                      Colors.white.withOpacity(0.02),
+                    ],
+                  ),
+                ),
+                child: _buildAnimationContent(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final random = Random(i);
-    final left = random.nextDouble() * 400 - 50;
-    final top = random.nextDouble() * 800;
-    final size = random.nextDouble() * 4 + 2;
+  Widget _buildAnimationContent() {
+    // We use specific "Seamless Loops" here
+    switch (widget.item.iconAnimation) {
+      case IconAnimationType.scan:
+        return _buildSeamlessScan();
+      case IconAnimationType.text:
+        return _buildSeamlessText();
+      case IconAnimationType.cloud:
+        return _buildSeamlessCloud();
+    }
+  }
 
-    return Positioned(
-      left: left,
-      top: top,
-      child: AnimatedOpacity(
-        opacity: glow,
-        duration: const Duration(seconds: 2),
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withOpacity(0.6),
+  // --- SEAMLESS SCAN ANIMATION ---
+  Widget _buildSeamlessScan() {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        // Sawtooth wave 0 -> 1
+        final t = _controller.value;
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // Document Outline
+            Container(
+              width: 100,
+              height: 140,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white30, width: 2),
+                color: Colors.white.withOpacity(0.05),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: List.generate(3, (i) {
+                  // Lines light up as scanner passes them
+                  final linePos = (i + 1) / 4;
+                  // Smooth fade in/out based on scanner distance
+                  final dist = (t - linePos).abs();
+                  final glow = (1.0 - (dist * 5)).clamp(0.0, 1.0);
+
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Color.lerp(
+                        Colors.white24,
+                        widget.item.gradient.first,
+                        glow,
+                      ),
+                      borderRadius: BorderRadius.circular(3),
+                      boxShadow: glow > 0.5
+                          ? [
+                              BoxShadow(
+                                color: widget.item.gradient.first,
+                                blurRadius: 8,
+                              ),
+                            ]
+                          : null,
+                    ),
+                  );
+                }),
+              ),
+            ),
+            // Scanner Beam
+            Positioned(
+              top: 50 + (t * 140) - 20, // Moves continuously top to bottom
+              child: Opacity(
+                // Fade out at very top and very bottom for seamless look
+                opacity:
+                    1.0 -
+                    (2 * (0.5 - t).abs() - 0.8).clamp(0.0, 1.0) *
+                        5, // Complex fade logic
+                child: Container(
+                  width: 160,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        widget.item.gradient.first,
+                        widget.item.gradient.last,
+                        Colors.transparent,
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.item.gradient.first,
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- SEAMLESS TEXT ANIMATION ---
+  Widget _buildSeamlessText() {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.image_outlined, size: 80, color: Colors.white12),
+            ...List.generate(3, (i) {
+              // Staggered Sine Waves
+              // Each line has a different phase shift so they bob independently
+              final t = _controller.value;
+              final offset = i * (2 * pi / 3);
+              final yShift = sin(t * 2 * pi + offset) * 8;
+              final opacity = (sin(t * 2 * pi + offset) + 1) / 2 * 0.5 + 0.5;
+
+              return Positioned(
+                top: 100 + (i * 20.0) + yShift,
+                left: 120 + (i % 2 == 0 ? 10.0 : -10.0), // Zigzag layout
+                child: Container(
+                  width: 60 + (i * 10.0),
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: widget.item.gradient[i % 2].withOpacity(opacity),
+                    borderRadius: BorderRadius.circular(5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.item.gradient[i % 2].withOpacity(0.4),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- SEAMLESS CLOUD ANIMATION ---
+  Widget _buildSeamlessCloud() {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // Cloud Base
+            Positioned(
+              top: 70,
+              child: Icon(Icons.cloud_queue, size: 80, color: Colors.white),
+            ),
+            // Flowing Data Dots
+            ...List.generate(6, (i) {
+              // Infinite flow logic
+              final step = 1.0 / 6; // spacing
+              final rawPos = (t + (i * step)) % 1.0; // 0 -> 1 loop
+
+              // Path: Bottom (170) to Cloud (100)
+              final yPos = 170 - (rawPos * 70);
+
+              // Fade in at bottom, fade out entering cloud
+              double opacity = 1.0;
+              if (rawPos < 0.2) opacity = rawPos * 5;
+              if (rawPos > 0.8) opacity = (1 - rawPos) * 5;
+
+              // Gentle sway
+              final xSway = sin(rawPos * pi * 4) * 5;
+
+              return Positioned(
+                top: yPos,
+                left: 115 + xSway,
+                child: Opacity(
+                  opacity: opacity,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: widget.item.gradient.last,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: widget.item.gradient.first,
+                          blurRadius: 5,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildText() {
+    return Column(
+      children: [
+        Text(
+          widget.item.title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
           ),
         ),
-      ),
+        const SizedBox(height: 16),
+        Text(
+          widget.item.description,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.6),
+            fontSize: 16,
+            height: 1.5,
+          ),
+        ),
+      ],
     );
   }
 }
+
+// MODELS
+
+class Star {
+  final double x;
+  final double y;
+  final double size;
+  final double depth;
+  final double opacity;
+  final int controllerIndex;
+
+  Star({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.depth,
+    required this.opacity,
+    required this.controllerIndex,
+  });
+}
+
+enum IconAnimationType { scan, text, cloud }
 
 class OnboardingItem {
   final String title;
   final String description;
   final IconData icon;
+  final List<Color> gradient;
+  final IconAnimationType iconAnimation;
+
   OnboardingItem({
     required this.title,
     required this.description,
     required this.icon,
+    required this.gradient,
+    required this.iconAnimation,
   });
 }
