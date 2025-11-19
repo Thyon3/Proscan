@@ -10,6 +10,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/features/scan/core/edge_detector.dart';
+import 'package:thyscan/features/scan/core/services/barcode_scanner_service.dart';
+import 'package:thyscan/features/scan/presentation/widgets/barcode_result_sheet.dart';
+import 'package:flutter/services.dart';
 
 import '../../model/scan_flow_models.dart';
 import 'edge_overlay.dart';
@@ -82,6 +85,10 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   int _cameraIndex = 0;
   final EdgeDetector _edgeDetector = EdgeDetector();
   List<ui.Offset>? _detectedEdges;
+  
+  // Barcode scanning
+  final BarcodeScannerService _barcodeScannerService = BarcodeScannerService();
+  bool _isBarcodeResultShowing = false;
 
   @override
   void initState() {
@@ -104,6 +111,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     unawaited(_stopImageStreamIfNeeded());
     _controller?.dispose();
     _edgeDetector.dispose();
+    unawaited(_barcodeScannerService.dispose());
     super.dispose();
   }
 
@@ -113,6 +121,24 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     await _controller!.startImageStream((image) async {
       if (!mounted || _isBusy) return;
 
+      // Handle barcode scanning mode
+      if (_currentMode == ScanMode.scanCode && !_isBarcodeResultShowing) {
+        final barcodeData = await _barcodeScannerService.processImage(
+          image,
+          _controller!.description,
+        );
+
+        if (barcodeData != null && mounted && !_isBarcodeResultShowing) {
+          // Trigger haptic feedback
+          HapticFeedback.heavyImpact();
+          
+          // Show result sheet
+          _showBarcodeResult(barcodeData);
+        }
+        return;
+      }
+
+      // Regular edge detection for other modes
       final edges = await _edgeDetector.detect(
         image,
         _currentMode,
@@ -215,11 +241,60 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
   Future<void> _changeMode(ScanMode mode) async {
     if (!_availableModes.contains(mode)) return;
+    
+    // Handle mode switching for barcode scanning
+    if (_currentMode == ScanMode.scanCode && mode != ScanMode.scanCode) {
+      // Switching away from barcode mode - resume if paused
+      _barcodeScannerService.resume();
+      _isBarcodeResultShowing = false;
+    } else if (mode == ScanMode.scanCode && _currentMode != ScanMode.scanCode) {
+      // Switching to barcode mode - ensure it's ready
+      await _barcodeScannerService.initialize();
+      _barcodeScannerService.resume();
+      _isBarcodeResultShowing = false;
+    }
+    
     setState(() {
       _currentMode = mode;
       _detectedEdges = null;
     });
     await _applyModeSettings();
+  }
+
+  void _showBarcodeResult(BarcodeData barcodeData) {
+    if (_isBarcodeResultShowing || !mounted) return;
+    
+    setState(() {
+      _isBarcodeResultShowing = true;
+    });
+    
+    // Pause barcode scanning while showing result
+    _barcodeScannerService.pause();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BarcodeResultSheet(
+        barcodeData: barcodeData,
+        onDismiss: () {
+          Navigator.of(context).pop();
+          // Resume scanning after dismissing
+          setState(() {
+            _isBarcodeResultShowing = false;
+          });
+          _barcodeScannerService.resume();
+        },
+      ),
+    ).then((_) {
+      // Ensure we resume even if dismissed by other means
+      if (mounted) {
+        setState(() {
+          _isBarcodeResultShowing = false;
+        });
+        _barcodeScannerService.resume();
+      }
+    });
   }
 
   Future<void> _toggleFlash() async {

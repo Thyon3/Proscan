@@ -10,7 +10,8 @@ enum ScanMode {
   idCard,
   question,
   translate,
-  book;
+  book,
+  scanCode;
 
   String get name => switch (this) {
     slides => 'Slides',
@@ -23,6 +24,7 @@ enum ScanMode {
     question => 'Question',
     translate => 'Translate',
     book => 'Book',
+    scanCode => 'Scan Code',
   };
 
   IconData get icon => switch (this) {
@@ -36,6 +38,7 @@ enum ScanMode {
     question => Icons.quiz_rounded,
     translate => Icons.translate_rounded,
     book => Icons.menu_book_rounded,
+    scanCode => Icons.qr_code_scanner_rounded,
   };
 
   String get hint => switch (this) {
@@ -49,6 +52,7 @@ enum ScanMode {
     question => 'Capture question clearly',
     translate => 'Point at text to translate',
     book => 'Open book flat, avoid shadows',
+    scanCode => 'Point camera at QR code or barcode',
   };
 
   bool get showGrid => this == ScanMode.excel || this == ScanMode.slides;
