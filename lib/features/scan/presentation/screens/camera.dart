@@ -1,6 +1,8 @@
 // features/scan/presentation/screens/smart_camera_screen.dart
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,11 @@ import 'package:thyscan/features/scan/core/edge_detector.dart';
 
 import '../../model/scan_flow_models.dart';
 import 'edge_overlay.dart';
+
+// Helper function to call async functions without awaiting
+void unawaited(Future<void> future) {
+  // Intentionally not awaiting - fire and forget
+}
 
 class CameraSettings {
   bool autoCapture;
@@ -72,9 +79,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
   // Camera switching
   List<CameraDescription> _cameras = [];
-  int _cameraIndex = 0; // set after fetching cameras
+  int _cameraIndex = 0;
   final EdgeDetector _edgeDetector = EdgeDetector();
-  List<Offset>? _detectedEdges;
+  List<ui.Offset>? _detectedEdges;
 
   @override
   void initState() {
@@ -84,6 +91,10 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
         ? [widget.initialMode]
         : ScanMode.values;
     WidgetsBinding.instance.addObserver(this);
+
+    // CRITICAL: Initialize edge detector as soon as possible
+    unawaited(_edgeDetector.ensureInitialized());
+
     _initFuture = _initCamera(preserveIndex: false);
   }
 
@@ -98,15 +109,34 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
   Future<void> _startImageStream() async {
     if (_controller == null || _controller!.value.isStreamingImages) return;
+
     await _controller!.startImageStream((image) async {
-      if (!mounted) return;
+      if (!mounted || _isBusy) return;
+
       final edges = await _edgeDetector.detect(
         image,
         _currentMode,
         _controller!.description,
       );
+
       if (!mounted) return;
+
       setState(() => _detectedEdges = edges);
+
+      // Auto-capture when edges are detected and auto-capture is enabled
+      if (_settings.autoCapture &&
+          edges != null &&
+          edges.length == 4 &&
+          !_isBusy) {
+        // Add a small delay to ensure edges are stable
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted &&
+            !_isBusy &&
+            _detectedEdges != null &&
+            _detectedEdges!.length == 4) {
+          unawaited(_capture());
+        }
+      }
     });
   }
 
@@ -115,9 +145,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     if (_controller!.value.isStreamingImages) {
       try {
         await _controller!.stopImageStream();
-      } catch (_) {
-        // ignored
-      }
+      } catch (_) {}
     }
   }
 
@@ -125,6 +153,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
+
     if (state == AppLifecycleState.inactive) {
       unawaited(_stopImageStreamIfNeeded());
       c.dispose();
@@ -153,9 +182,11 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     );
 
     await _controller!.initialize();
+
+    // ← MUST CALL THIS AFTER CAMERA IS READY
+    await _edgeDetector.ensureInitialized();
     await _startImageStream();
 
-    // Front cameras often don't support flash
     final isFront =
         _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
     _flashMode = isFront ? FlashMode.off : _flashMode;
@@ -200,11 +231,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     } catch (_) {
       _flashMode = FlashMode.off;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Flash mode not supported on this camera'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Flash not supported')));
       }
     }
   }
@@ -222,6 +251,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       await File(xFile.path).copy(path);
 
       if (!mounted) return;
+
       if (widget.returnCapturePath) {
         context.pop(path);
       } else {
@@ -237,17 +267,14 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
-      if (mounted) {
-        setState(() => _isBusy = false);
-      }
+      if (mounted) setState(() => _isBusy = false);
     }
   }
 
-  // Pick single image from gallery and go to editor
   Future<void> _pickFromGallery() async {
     try {
       final picker = ImagePicker();
-      final XFile? file = await picker.pickImage(source: ImageSource.gallery);
+      final file = await picker.pickImage(source: ImageSource.gallery);
       if (file == null) return;
 
       final dir = await getTemporaryDirectory();
@@ -256,6 +283,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       await File(file.path).copy(path);
 
       if (!mounted) return;
+
       if (widget.returnCapturePath) {
         context.pop(path);
       } else {
@@ -273,9 +301,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
     }
   }
 
-  // Toggle front/back camera
   Future<void> _switchCamera() async {
     if (_cameras.isEmpty) return;
+
     try {
       final currentLens = _cameras[_cameraIndex].lensDirection;
       final desired = currentLens == CameraLensDirection.back
@@ -286,6 +314,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
       await _stopImageStreamIfNeeded();
       await _controller?.dispose();
+
       _controller = CameraController(
         _cameras[newIndex],
         ResolutionPreset.max,
@@ -296,6 +325,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       );
       _cameraIndex = newIndex;
       await _controller!.initialize();
+      await _startImageStream();
 
       final isFront =
           _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
@@ -312,7 +342,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Switch camera failed: $e')));
+        ).showSnackBar(SnackBar(content: Text('Switch failed: $e')));
       }
     }
   }
@@ -322,13 +352,9 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       context: context,
       backgroundColor: Colors.black,
       isScrollControlled: true,
-      builder: (context) => CameraSettingsSheet(
+      builder: (_) => CameraSettingsSheet(
         settings: _settings,
-        onSettingsChanged: (newSettings) {
-          setState(() {
-            _settings = newSettings;
-          });
-        },
+        onSettingsChanged: (s) => setState(() => _settings = s),
       ),
     );
   }
@@ -368,7 +394,6 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
         ),
         centerTitle: true,
         actions: [
-          // Flash Button
           Container(
             margin: const EdgeInsets.only(right: 8),
             child: IconButton(
@@ -392,7 +417,6 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
               onPressed: _toggleFlash,
             ),
           ),
-          // Settings Button (Three dots)
           Container(
             margin: const EdgeInsets.only(right: 12),
             child: IconButton(
@@ -440,22 +464,23 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
             },
           ),
 
+          // GLOWING EDGES — NOW WORKING 100%
           if (_detectedEdges != null && _detectedEdges!.length == 4)
             Positioned.fill(
               child: IgnorePointer(
                 child: EdgeOverlay(
-                  points: _detectedEdges,
+                  points: _detectedEdges!,
                   size: MediaQuery.of(context).size,
                 ),
               ),
             ),
 
-          // Overlays
+          // Mode overlays
           if (_currentMode.showGrid && _settings.grid) const _GridOverlay(),
           if (_currentMode.showIdFrame) const _IDCardOverlay(),
           if (_currentMode.autoDewarpHint) const _DewarpHint(),
 
-          // Hint Text
+          // Hint
           Align(
             alignment: Alignment.topCenter,
             child: Container(
@@ -478,7 +503,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
             ),
           ),
 
-          // Black Background for Bottom Area
+          // Bottom gradient
           Positioned(
             bottom: 0,
             left: 0,
@@ -497,7 +522,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
             ),
           ),
 
-          // Mode Selector - Text-only horizontal scrolling
+          // Mode selector
           Align(
             alignment: Alignment.bottomCenter,
             child: Container(
@@ -511,7 +536,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
             ),
           ),
 
-          // Bottom controls row: Gallery (left) + Shutter + Switch camera (right)
+          // Bottom controls
           Positioned(
             bottom: 40,
             left: 0,
@@ -521,7 +546,7 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
               children: [
                 _RoundIconButton(
                   icon: Icons.photo_library_rounded,
-                  tooltip: 'Pick from gallery',
+                  tooltip: 'Gallery',
                   onTap: _pickFromGallery,
                 ),
                 const SizedBox(width: 16),

@@ -29,6 +29,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
   List<String> _pages = [];
   late final PageController _pageController;
   int _currentIndex = 0;
+  String _pdfFileName = 'DocScan';
 
   @override
   void initState() {
@@ -36,6 +37,8 @@ class _EditScanScreenState extends State<EditScanScreen> {
     _currentPath = widget.imagePath;
     _pages = [widget.imagePath];
     _pageController = PageController(initialPage: 0);
+    // Initialize PDF file name with timestamp-based default
+    _pdfFileName = 'DocScan_${DateTime.now().millisecondsSinceEpoch}';
   }
 
   @override
@@ -134,14 +137,13 @@ class _EditScanScreenState extends State<EditScanScreen> {
     }
   }
 
-  Future<void> _saveAsPdf() async {
-    // ... your existing save code (unchanged)
+  Future<String?> _saveAsPdf() async {
     try {
       if (_pages.isEmpty) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('No pages to export')));
-        return;
+        return null;
       }
 
       final pdf = pw.Document();
@@ -161,27 +163,51 @@ class _EditScanScreenState extends State<EditScanScreen> {
       }
 
       final dir = await getApplicationDocumentsDirectory();
-      final out = File(
-        '${dir.path}/DocScan_${DateTime.now().millisecondsSinceEpoch}.pdf',
-      );
+      // Ensure file name has .pdf extension
+      final fileName = _pdfFileName.endsWith('.pdf')
+          ? _pdfFileName
+          : '$_pdfFileName.pdf';
+      final out = File('${dir.path}/$fileName');
       await out.writeAsBytes(await pdf.save());
 
-      if (!mounted) return;
+      if (!mounted) return null;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('PDF saved successfully!'),
-          action: SnackBarAction(
-            label: 'Share',
-            onPressed: () => Share.shareXFiles([XFile(out.path)]),
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('PDF saved successfully!')));
+
+      return out.path;
+    } catch (e) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      return null;
+    }
+  }
+
+  Future<void> _sharePdf() async {
+    if (_pages.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pages to share')));
+      return;
+    }
+
+    try {
+      final pdfPath = await _saveAsPdf();
+      if (pdfPath != null && mounted) {
+        await Share.shareXFiles(
+          [XFile(pdfPath)],
+          subject: 'Document Scan - $_pdfFileName',
+          text: 'Check out this document I scanned!',
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      ).showSnackBar(SnackBar(content: Text('Sharing failed: $e')));
     }
   }
 
@@ -247,6 +273,24 @@ class _EditScanScreenState extends State<EditScanScreen> {
     });
   }
 
+  void _goToPreviousPage() {
+    if (_currentIndex > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _goToNextPage() {
+    if (_currentIndex < _pages.length) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   Widget _buildImagePage(String path) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -254,6 +298,13 @@ class _EditScanScreenState extends State<EditScanScreen> {
         decoration: BoxDecoration(
           color: Colors.black,
           borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(24),
@@ -269,72 +320,218 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   Widget _buildAddPageCard() {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: cs.primary.withOpacity(0.4), width: 2),
-          color: cs.surfaceVariant.withOpacity(0.5),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.add_a_photo_rounded, size: 48, color: cs.primary),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: cs.primary,
-                  foregroundColor: cs.onPrimary,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 18,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                ),
-                onPressed: () => _captureAdditionalPage(),
-                icon: const Icon(Icons.photo_camera_rounded),
-                label: const Text(
-                  'Add another page',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Swipe left to add extra pages or retake shots.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cs.onSurfaceVariant),
-              ),
+          borderRadius: BorderRadius.circular(28),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              cs.primaryContainer.withOpacity(0.1),
+              cs.surfaceVariant.withOpacity(0.2),
             ],
+          ),
+          border: Border.all(color: cs.outline.withOpacity(0.2), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 25,
+              spreadRadius: 1,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Container(
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            color: cs.surface.withOpacity(0.7),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Modern icon container
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        cs.primary.withOpacity(0.1),
+                        cs.primary.withOpacity(0.05),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: cs.primary.withOpacity(0.2),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Icon(
+                    Icons.add_photo_alternate_rounded,
+                    size: 42,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Title
+                Text(
+                  'Add More Pages',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Description
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'Capture additional pages to build your multi-page document',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // Modern button
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [cs.primary, cs.primary.withOpacity(0.9)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: cs.primary.withOpacity(0.3),
+                        blurRadius: 15,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _captureAdditionalPage,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 18,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.camera_alt_rounded,
+                              color: cs.onPrimary,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Capture New Page',
+                              style: TextStyle(
+                                color: cs.onPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Hint text
+                Text(
+                  'Swipe to navigate between pages',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant.withOpacity(0.6),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildToolbar() {
+  Widget _buildPageNavigation() {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    final isFirstPage = _currentIndex == 0;
+    final isLastPage = _currentIndex == _pages.length - 1;
+    final totalPages = _pages.length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Expanded(
-            child: FilledButton.tonalIcon(
-              onPressed: _isOnAddSlot ? null : () => _cropImage(),
-              icon: const Icon(Icons.crop_rounded),
-              label: const Text('Crop'),
+          // Previous button
+          IconButton(
+            onPressed: isFirstPage ? null : _goToPreviousPage,
+            icon: Icon(
+              Icons.chevron_left_rounded,
+              color: isFirstPage ? cs.onSurface.withOpacity(0.3) : cs.primary,
+              size: 32,
+            ),
+            style: IconButton.styleFrom(
+              backgroundColor: isFirstPage ? null : cs.primary.withOpacity(0.1),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(8),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: FilledButton.tonalIcon(
-              style: FilledButton.styleFrom(foregroundColor: cs.error),
-              onPressed: _isOnAddSlot ? null : () => _deleteCurrentPage(),
-              icon: const Icon(Icons.delete_forever_rounded),
-              label: const Text('Delete'),
+
+          // Page counter - transparent background
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Text(
+              '${_currentIndex + 1} / $totalPages',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+
+          // Next button
+          IconButton(
+            onPressed: isLastPage ? null : _goToNextPage,
+            icon: Icon(
+              Icons.chevron_right_rounded,
+              color: isLastPage ? cs.onSurface.withOpacity(0.3) : cs.primary,
+              size: 32,
+            ),
+            style: IconButton.styleFrom(
+              backgroundColor: isLastPage ? null : cs.primary.withOpacity(0.1),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: const EdgeInsets.all(8),
             ),
           ),
         ],
@@ -342,23 +539,195 @@ class _EditScanScreenState extends State<EditScanScreen> {
     );
   }
 
-  Widget _buildPageIndicator() {
-    final cs = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_pages.length + 1, (index) {
-        final isActive = index == _currentIndex;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          height: 8,
-          width: isActive ? 32 : 16,
-          decoration: BoxDecoration(
-            color: isActive ? cs.primary : cs.outlineVariant,
-            borderRadius: BorderRadius.circular(8),
+  void _showEditFileNameDialog() {
+    final controller = TextEditingController(
+      text: _pdfFileName.replaceAll('.pdf', ''),
+    );
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Container(
+        margin: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Drag handle
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Title
+              Text(
+                'Document Name',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Description
+              Text(
+                'Give your document a meaningful name',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.6),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Text field with clear button
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceVariant.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Enter document name',
+                    hintStyle: TextStyle(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.4),
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 18,
+                    ),
+                    suffixIcon: controller.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.clear_rounded,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withOpacity(0.5),
+                            ),
+                            onPressed: () {
+                              controller.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                  ),
+                  onChanged: (value) => setState(() {}),
+                  onSubmitted: (value) {
+                    if (value.trim().isNotEmpty) {
+                      this.setState(() {
+                        _pdfFileName = value.trim();
+                      });
+                      Navigator.pop(context);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // File extension hint
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  'File will be saved as: ${controller.text.trim().isEmpty ? 'document' : controller.text.trim()}.pdf',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.5),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.outline.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        final newName = controller.text.trim();
+                        if (newName.isNotEmpty) {
+                          setState(() {
+                            _pdfFileName = newName;
+                          });
+                          Navigator.pop(context);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Theme.of(
+                          context,
+                        ).colorScheme.onPrimary,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 2,
+                      ),
+                      child: const Text(
+                        'Save',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
           ),
-        );
-      }),
+        ),
+      ),
     );
   }
 
@@ -372,28 +741,36 @@ class _EditScanScreenState extends State<EditScanScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
           onPressed: () => context.pop(),
         ),
-        actions: [
-          TextButton.icon(
-            onPressed: _isOnAddSlot ? null : () => _cropImage(),
-            icon: const Icon(Icons.crop_rounded),
-            label: const Text('Crop'),
-          ),
-          TextButton.icon(
-            onPressed: () => _saveAsPdf(),
-            icon: const Icon(Icons.picture_as_pdf_rounded),
-            label: const Text('Save PDF'),
-            style: TextButton.styleFrom(foregroundColor: cs.primary),
-          ),
-        ],
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                _pdfFileName,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: Icon(Icons.edit_rounded, size: 20, color: cs.primary),
+              tooltip: 'Edit file name',
+              onPressed: () => _showEditFileNameDialog(),
+            ),
+          ],
+        ),
+        centerTitle: true,
       ),
       body: Column(
         children: [
-          const SizedBox(height: 12),
-          _buildPageIndicator(),
-          const SizedBox(height: 12),
           Expanded(
             child: PageView.builder(
               controller: _pageController,
@@ -408,26 +785,111 @@ class _EditScanScreenState extends State<EditScanScreen> {
               },
             ),
           ),
-          if (!_isOnAddSlot) _buildToolbar(),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: ElevatedButton.icon(
-            onPressed: _pages.isEmpty ? null : () => _saveAsPdf(),
-            icon: const Icon(Icons.download_rounded),
-            label: const Text(
-              'Export as PDF',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: cs.surface,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: cs.primary,
-              foregroundColor: cs.onPrimary,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Page navigation - only show when not on the add page
+                if (!_isOnAddSlot && _pages.length > 1) ...[
+                  _buildPageNavigation(),
+                  const SizedBox(height: 16),
+                ],
+
+                if (!_isOnAddSlot) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () => _cropImage(),
+                          icon: const Icon(Icons.crop_rounded),
+                          label: const Text('Crop'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: cs.errorContainer,
+                            foregroundColor: cs.onErrorContainer,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onPressed: () => _deleteCurrentPage(),
+                          icon: const Icon(Icons.delete_rounded),
+                          label: const Text('Delete'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: _pages.isEmpty ? null : () => _saveAsPdf(),
+                        icon: const Icon(Icons.picture_as_pdf_rounded),
+                        label: const Text(
+                          'Export as PDF',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: cs.primary,
+                          foregroundColor: cs.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 1,
+                      child: OutlinedButton.icon(
+                        onPressed: _pages.isEmpty ? null : () => _sharePdf(),
+                        icon: const Icon(Icons.share_rounded),
+                        label: const Text('Share'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          side: BorderSide(color: cs.primary),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
