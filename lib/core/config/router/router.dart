@@ -18,6 +18,7 @@ import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 import 'package:thyscan/features/scan/presentation/screens/camera.dart';
 import 'package:thyscan/features/scan/presentation/screens/edit_scan.dart';
 import 'package:thyscan/features/scan/presentation/screens/save_pdf_screen.dart';
+import 'package:thyscan/features/scan/presentation/screens/text_editor_screen.dart';
 import 'package:thyscan/features/splash/screens/splash.dart';
 
 part 'router.main.dart';

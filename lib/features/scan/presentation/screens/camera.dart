@@ -252,7 +252,14 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
       if (!mounted) return;
 
-      if (widget.returnCapturePath) {
+      // Handle Extract Text mode differently
+      if (_currentMode == ScanMode.extractText) {
+        // Navigate to text editor screen with OCR processing
+        context.push(
+          '/texteditorscreen',
+          extra: {'imagePath': path},
+        );
+      } else if (widget.returnCapturePath) {
         context.pop(path);
       } else {
         context.push(
@@ -284,7 +291,14 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
       if (!mounted) return;
 
-      if (widget.returnCapturePath) {
+      // Handle Extract Text mode differently
+      if (_currentMode == ScanMode.extractText) {
+        // Navigate to text editor screen with OCR processing
+        context.push(
+          '/texteditorscreen',
+          extra: {'imagePath': path},
+        );
+      } else if (widget.returnCapturePath) {
         context.pop(path);
       } else {
         context.push(

@@ -149,6 +149,30 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/texteditorscreen',
+      builder: (_, state) {
+        final extra = state.extra;
+        if (extra is Map<String, dynamic>) {
+          final imagePath = extra['imagePath'] as String?;
+          final extractedText = extra['extractedText'] as String?;
+          
+          if (extractedText != null) {
+            return TextEditorScreen(
+              extractedText: extractedText,
+              imagePath: imagePath,
+            );
+          } else if (imagePath != null) {
+            // If only imagePath is provided, we'll process OCR in the screen
+            return TextEditorScreen(
+              extractedText: '',
+              imagePath: imagePath,
+            );
+          }
+        }
+        throw ArgumentError('TextEditorScreen requires imagePath or extractedText.');
+      },
+    ),
+    GoRoute(
       path: '/resetpassword',
       name: 'resetpassword',
       builder: (context, state) {

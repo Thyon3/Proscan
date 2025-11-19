@@ -247,11 +247,14 @@ class _EditScanScreenState extends State<EditScanScreen> {
         _currentPath = path;
       });
 
-      await _pageController.animateToPage(
-        _currentIndex,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      // Ensure PageView is updated before animating
+      if (_pageController.hasClients) {
+        await _pageController.animateToPage(
+          _currentIndex,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -286,8 +289,14 @@ class _EditScanScreenState extends State<EditScanScreen> {
       _currentIndex = index;
       if (index < _pages.length) {
         _currentPath = _pages[index];
+      } else {
+        // On add slot, clear current path
+        _currentPath = '';
       }
     });
+    
+    // If user swiped to add slot, automatically trigger capture if desired
+    // But for now, just ensure the add slot is accessible
   }
 
   Future<void> _retakeCurrentPage() async {
@@ -1097,6 +1106,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
               physics: const BouncingScrollPhysics(),
               onPageChanged: _handlePageChanged,
               itemCount: _pages.length + 1,
+              allowImplicitScrolling: false,
               itemBuilder: (context, index) {
                 if (index < _pages.length) {
                   return _buildImagePage(_pages[index]);
