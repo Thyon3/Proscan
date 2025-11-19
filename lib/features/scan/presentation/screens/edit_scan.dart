@@ -1,8 +1,10 @@
 // features/scan/presentation/screens/edit_scan_screen.dart
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -24,12 +26,27 @@ class EditScanScreen extends StatefulWidget {
   State<EditScanScreen> createState() => _EditScanScreenState();
 }
 
+enum ImageFilter {
+  none,
+  grayscale,
+  sepia,
+  invert,
+  brightness,
+  contrast,
+  vintage,
+  blackAndWhite,
+}
+
 class _EditScanScreenState extends State<EditScanScreen> {
   late String _currentPath;
   List<String> _pages = [];
   late final PageController _pageController;
   int _currentIndex = 0;
   String _pdfFileName = 'DocScan';
+  
+  // Store filter and rotation for each page
+  Map<int, ImageFilter> _pageFilters = {};
+  Map<int, int> _pageRotations = {}; // Rotation in degrees (0, 90, 180, 270)
 
   @override
   void initState() {
@@ -273,6 +290,157 @@ class _EditScanScreenState extends State<EditScanScreen> {
     });
   }
 
+  Future<void> _retakeCurrentPage() async {
+    if (_isOnAddSlot) return;
+    
+    try {
+      final path = await context.push<String>(
+        '/camerascreen',
+        extra: CameraScreenConfig(
+          initialMode: widget.initialMode,
+          restrictToInitialMode: true,
+          returnCapturePath: true,
+        ),
+      );
+
+      if (path == null || !mounted) return;
+
+      setState(() {
+        _pages[_currentIndex] = path;
+        _currentPath = path;
+        // Reset filter and rotation for this page
+        _pageFilters.remove(_currentIndex);
+        _pageRotations.remove(_currentIndex);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not retake: $e')),
+      );
+    }
+  }
+
+  Future<void> _rotateCurrentPage() async {
+    if (_isOnAddSlot) return;
+    
+    try {
+      final currentRotation = _pageRotations[_currentIndex] ?? 0;
+      final newRotation = (currentRotation + 90) % 360;
+      
+      // Always rotate 90 degrees from current state
+      final file = File(_pages[_currentIndex]);
+      final bytes = await file.readAsBytes();
+      final image = img.decodeImage(bytes);
+      
+      if (image == null) return;
+      
+      // Rotate 90 degrees clockwise
+      final rotatedImage = img.copyRotate(image, angle: 90);
+      final rotatedBytes = Uint8List.fromList(img.encodeJpg(rotatedImage, quality: 95));
+      
+      // Save rotated image
+      final dir = await getTemporaryDirectory();
+      final filename = 'rotated_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final newPath = '${dir.path}/$filename';
+      await File(newPath).writeAsBytes(rotatedBytes);
+      
+      setState(() {
+        _pages[_currentIndex] = newPath;
+        _currentPath = newPath;
+        _pageRotations[_currentIndex] = newRotation;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Rotation failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _applyFilter(ImageFilter filter) async {
+    if (_isOnAddSlot) return;
+    
+    try {
+      final file = File(_pages[_currentIndex]);
+      final bytes = await file.readAsBytes();
+      var image = img.decodeImage(bytes);
+      
+      if (image == null) return;
+      
+      switch (filter) {
+        case ImageFilter.grayscale:
+          image = img.grayscale(image);
+          break;
+        case ImageFilter.sepia:
+          image = img.sepia(image);
+          break;
+        case ImageFilter.invert:
+          image = img.invert(image);
+          break;
+        case ImageFilter.brightness:
+          image = img.adjustColor(image, brightness: 1.2);
+          break;
+        case ImageFilter.contrast:
+          image = img.adjustColor(image, contrast: 1.3);
+          break;
+        case ImageFilter.vintage:
+          image = img.sepia(image);
+          image = img.adjustColor(image, brightness: 0.9, contrast: 1.1);
+          break;
+        case ImageFilter.blackAndWhite:
+          image = img.grayscale(image);
+          image = img.adjustColor(image, contrast: 1.5);
+          break;
+        case ImageFilter.none:
+          // No filter applied, use original
+          break;
+      }
+      
+      if (filter != ImageFilter.none) {
+        final filteredBytes = Uint8List.fromList(img.encodeJpg(image, quality: 95));
+        
+        // Save filtered image
+        final dir = await getTemporaryDirectory();
+        final filename = 'filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final newPath = '${dir.path}/$filename';
+        await File(newPath).writeAsBytes(filteredBytes);
+        
+        setState(() {
+          _pages[_currentIndex] = newPath;
+          _currentPath = newPath;
+          _pageFilters[_currentIndex] = filter;
+        });
+      } else {
+        // Reset to original - would need to store original paths
+        setState(() {
+          _pageFilters[_currentIndex] = filter;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Filter application failed: $e')),
+      );
+    }
+  }
+
+  void _navigateToSavePdf() {
+    if (_pages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pages to save')),
+      );
+      return;
+    }
+    
+    context.push(
+      '/savepdfscreen',
+      extra: {
+        'imagePaths': _pages,
+        'pdfFileName': _pdfFileName,
+      },
+    );
+  }
+
   void _goToPreviousPage() {
     if (_currentIndex > 0) {
       _pageController.previousPage(
@@ -300,7 +468,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -314,6 +482,158 @@ class _EditScanScreenState extends State<EditScanScreen> {
             child: Image.file(File(path), fit: BoxFit.contain),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFilterListView() {
+    final cs = Theme.of(context).colorScheme;
+    final currentFilter = _pageFilters[_currentIndex] ?? ImageFilter.none;
+    
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: ImageFilter.values.map((filter) {
+          final isSelected = filter == currentFilter;
+          return GestureDetector(
+            onTap: () => _applyFilter(filter),
+            child: Container(
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected ? cs.primaryContainer : cs.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected ? cs.primary : cs.outline.withValues(alpha: 0.3),
+                  width: isSelected ? 2 : 1,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  _getFilterName(filter),
+                  style: TextStyle(
+                    color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
+                    fontSize: 14,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  String _getFilterName(ImageFilter filter) {
+    switch (filter) {
+      case ImageFilter.none:
+        return 'Original';
+      case ImageFilter.grayscale:
+        return 'Grayscale';
+      case ImageFilter.sepia:
+        return 'Sepia';
+      case ImageFilter.invert:
+        return 'Invert';
+      case ImageFilter.brightness:
+        return 'Bright';
+      case ImageFilter.contrast:
+        return 'Contrast';
+      case ImageFilter.vintage:
+        return 'Vintage';
+      case ImageFilter.blackAndWhite:
+        return 'B&W';
+    }
+  }
+
+  Widget _buildBottomIcons() {
+    final cs = Theme.of(context).colorScheme;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildBottomIcon(
+            icon: Icons.camera_alt_rounded,
+            label: 'Retake',
+            onTap: _retakeCurrentPage,
+            color: cs.onSurface,
+          ),
+          _buildBottomIcon(
+            icon: Icons.rotate_right_rounded,
+            label: 'Right',
+            onTap: _rotateCurrentPage,
+            color: cs.onSurface,
+          ),
+          _buildBottomIcon(
+            icon: Icons.crop_rounded,
+            label: 'Crop',
+            onTap: _cropImage,
+            color: cs.onSurface,
+          ),
+          _buildBottomIcon(
+            icon: Icons.text_fields_rounded,
+            label: 'Extract Text',
+            onTap: () {
+              // Placeholder for extract text functionality
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Extract text feature coming soon')),
+              );
+            },
+            color: cs.onSurface,
+          ),
+          _buildBottomIcon(
+            icon: Icons.check_circle_rounded,
+            label: 'Confirm',
+            onTap: _navigateToSavePdf,
+            color: cs.onPrimary,
+            backgroundColor: cs.primary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomIcon({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+    Color? backgroundColor,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: backgroundColor ?? Colors.transparent,
+              shape: BoxShape.circle,
+              border: backgroundColor == null
+                  ? Border.all(
+                      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+                    )
+                  : null,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -787,113 +1107,31 @@ class _EditScanScreenState extends State<EditScanScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Page navigation - only show when not on the add page
-                if (!_isOnAddSlot && _pages.length > 1) ...[
-                  _buildPageNavigation(),
-                  const SizedBox(height: 16),
-                ],
-
-                if (!_isOnAddSlot) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () => _cropImage(),
-                          icon: const Icon(Icons.crop_rounded),
-                          label: const Text('Crop'),
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: cs.errorContainer,
-                            foregroundColor: cs.onErrorContainer,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          onPressed: () => _deleteCurrentPage(),
-                          icon: const Icon(Icons.delete_rounded),
-                          label: const Text('Delete'),
-                        ),
-                      ),
-                    ],
+      bottomNavigationBar: _isOnAddSlot
+          ? null
+          : Container(
+              decoration: BoxDecoration(
+                color: cs.surface,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
                   ),
-                  const SizedBox(height: 12),
                 ],
-                Row(
+              ),
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      flex: 2,
-                      child: FilledButton.icon(
-                        onPressed: _pages.isEmpty ? null : () => _saveAsPdf(),
-                        icon: const Icon(Icons.picture_as_pdf_rounded),
-                        label: const Text(
-                          'Export as PDF',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: cs.primary,
-                          foregroundColor: cs.onPrimary,
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 2,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 1,
-                      child: OutlinedButton.icon(
-                        onPressed: _pages.isEmpty ? null : () => _sharePdf(),
-                        icon: const Icon(Icons.share_rounded),
-                        label: const Text('Share'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          side: BorderSide(color: cs.primary),
-                        ),
-                      ),
-                    ),
+                    // Filter list view
+                    _buildFilterListView(),
+                    // 5 Icons with labels
+                    _buildBottomIcons(),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

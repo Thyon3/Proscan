@@ -136,6 +136,19 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/savepdfscreen',
+      builder: (_, state) {
+        final extra = state.extra;
+        if (extra is Map<String, dynamic>) {
+          return SavePdfScreen(
+            imagePaths: extra['imagePaths'] as List<String>,
+            pdfFileName: extra['pdfFileName'] as String,
+          );
+        }
+        throw ArgumentError('SavePdfScreen requires imagePaths and pdfFileName.');
+      },
+    ),
+    GoRoute(
       path: '/resetpassword',
       name: 'resetpassword',
       builder: (context, state) {
