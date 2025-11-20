@@ -1217,9 +1217,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Filter list view
+                    // Professional-style page navigation: 1 / N with prev/next
+                    _buildPageNavigation(),
+                    // Filter list with live image previews
                     _buildFilterListView(),
-                    // 5 Icons with labels
+                    // Bottom action icons (Retake, Rotate, Crop, Extract, Confirm)
                     _buildBottomIcons(),
                   ],
                 ),
