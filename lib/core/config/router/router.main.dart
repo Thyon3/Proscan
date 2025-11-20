@@ -145,7 +145,9 @@ final GoRouter router = GoRouter(
             pdfFileName: extra['pdfFileName'] as String,
           );
         }
-        throw ArgumentError('SavePdfScreen requires imagePaths and pdfFileName.');
+        throw ArgumentError(
+          'SavePdfScreen requires imagePaths and pdfFileName.',
+        );
       },
     ),
     GoRoute(
@@ -155,7 +157,7 @@ final GoRouter router = GoRouter(
         if (extra is Map<String, dynamic>) {
           final imagePath = extra['imagePath'] as String?;
           final extractedText = extra['extractedText'] as String?;
-          
+
           if (extractedText != null) {
             return TextEditorScreen(
               extractedText: extractedText,
@@ -163,13 +165,12 @@ final GoRouter router = GoRouter(
             );
           } else if (imagePath != null) {
             // If only imagePath is provided, we'll process OCR in the screen
-            return TextEditorScreen(
-              extractedText: '',
-              imagePath: imagePath,
-            );
+            return TextEditorScreen(extractedText: '', imagePath: imagePath);
           }
         }
-        throw ArgumentError('TextEditorScreen requires imagePath or extractedText.');
+        throw ArgumentError(
+          'TextEditorScreen requires imagePath or extractedText.',
+        );
       },
     ),
     GoRoute(
@@ -179,6 +180,13 @@ final GoRouter router = GoRouter(
         // TODO   pass the email
         final email = 'asnakemengesha79@gmail.com';
         return CreateNewPasswordScreen();
+      },
+    ),
+    GoRoute(
+      path: '/translationeditorscreen',
+      name: 'translationeditorscreen',
+      builder: (context, state) {
+        return TranslationEditorScreen();
       },
     ),
   ],

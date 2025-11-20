@@ -61,6 +61,7 @@ dependencies:
   archive: ^3.4.0
   xml: ^6.4.0
   intl: ^0.20.2
+  translator: ^1.0.4+1
   
 dev_dependencies:
   flutter_test:

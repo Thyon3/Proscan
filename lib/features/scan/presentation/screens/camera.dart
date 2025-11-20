@@ -8,11 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/features/scan/core/edge_detector.dart';
 import 'package:thyscan/features/scan/core/services/barcode_scanner_service.dart';
 import 'package:thyscan/features/scan/presentation/widgets/barcode_result_sheet.dart';
+import 'package:thyscan/features/scan/presentation/widgets/loading_overlay.dart';
+import 'package:thyscan/features/scan/providers/translation_provider.dart';
 import 'package:flutter/services.dart';
 import 'package:thyscan/providers/timestamp_provider.dart';
 
@@ -332,6 +335,25 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       // Apply timestamp overlay only in Timestamp mode
       await _applyTimestampIfNeeded(path);
       if (!mounted) return;
+
+      // NEW: Translate mode flow – OCR -> Translate -> Navigate
+      if (_currentMode == ScanMode.translate) {
+        final inputImage = InputImage.fromFilePath(path);
+
+        await LoadingOverlay.runWithDelay<void>(
+          context: context,
+          message: 'Scanning & translating…',
+          action: () => ref
+              .read(translationProvider.notifier)
+              .processInputImage(inputImage),
+        );
+
+        if (!mounted) return;
+
+        // Navigate to translation editor screen which consumes translationProvider
+        context.push('/translationeditorscreen');
+        return;
+      }
 
       // Handle Extract Text mode differently
       if (_currentMode == ScanMode.extractText) {
