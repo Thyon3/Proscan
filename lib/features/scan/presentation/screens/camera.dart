@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -13,6 +14,7 @@ import 'package:thyscan/features/scan/core/edge_detector.dart';
 import 'package:thyscan/features/scan/core/services/barcode_scanner_service.dart';
 import 'package:thyscan/features/scan/presentation/widgets/barcode_result_sheet.dart';
 import 'package:flutter/services.dart';
+import 'package:thyscan/providers/timestamp_provider.dart';
 
 import '../../model/scan_flow_models.dart';
 import 'edge_overlay.dart';
@@ -54,7 +56,7 @@ class CameraSettings {
   }
 }
 
-class SmartCameraScreen extends StatefulWidget {
+class SmartCameraScreen extends ConsumerStatefulWidget {
   final ScanMode initialMode;
   final bool restrictToInitialMode;
   final bool returnCapturePath;
@@ -67,10 +69,10 @@ class SmartCameraScreen extends StatefulWidget {
   });
 
   @override
-  State<SmartCameraScreen> createState() => _SmartCameraScreenState();
+  ConsumerState<SmartCameraScreen> createState() => _SmartCameraScreenState();
 }
 
-class _SmartCameraScreenState extends State<SmartCameraScreen>
+class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     with WidgetsBindingObserver {
   CameraController? _controller;
   Future<void>? _initFuture;
@@ -327,6 +329,10 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
 
       if (!mounted) return;
 
+      // Apply timestamp overlay only in Timestamp mode
+      await _applyTimestampIfNeeded(path);
+      if (!mounted) return;
+
       // Handle Extract Text mode differently
       if (_currentMode == ScanMode.extractText) {
         // Navigate to text editor screen with OCR processing
@@ -364,6 +370,10 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
       final path = '${dir.path}/$filename';
       await File(file.path).copy(path);
 
+      if (!mounted) return;
+
+      // Apply timestamp overlay only in Timestamp mode
+      await _applyTimestampIfNeeded(path);
       if (!mounted) return;
 
       // Handle Extract Text mode differently
@@ -446,6 +456,55 @@ class _SmartCameraScreenState extends State<SmartCameraScreen>
         onSettingsChanged: (s) => setState(() => _settings = s),
       ),
     );
+  }
+
+  /// Applies a timestamp overlay to the image at [path] when the current
+  /// scan mode is [ScanMode.timestamp]. Processing happens in memory and,
+  /// if it exceeds 600ms, a non‑dismissible loading dialog is shown.
+  Future<void> _applyTimestampIfNeeded(String path) async {
+    if (_currentMode != ScanMode.timestamp) return;
+
+    final controller = ref.read(timestampControllerProvider.notifier);
+
+    bool dialogShown = false;
+    var completed = false;
+
+    // After 600ms, show a blocking loading dialog if processing is still running.
+    final timer = Timer(const Duration(milliseconds: 600), () {
+      if (!completed && mounted) {
+        dialogShown = true;
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          barrierColor: Colors.black.withOpacity(0.5),
+          builder: (ctx) => const _TimestampLoadingDialog(),
+        );
+      }
+    });
+
+    try {
+      final bytes = await File(path).readAsBytes();
+      final stampedBytes = await controller.addTimestamp(bytes);
+      completed = true;
+      timer.cancel();
+
+      // Close the dialog if it was shown.
+      if (dialogShown && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      // Overwrite the file with the stamped image.
+      await File(path).writeAsBytes(stampedBytes, flush: true);
+    } catch (_) {
+      completed = true;
+      timer.cancel();
+
+      if (dialogShown && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      // Fail silently here; the caller will still navigate with the
+      // original image if processing fails.
+    }
   }
 
   @override
@@ -1120,5 +1179,50 @@ class _RoundIconButton extends StatelessWidget {
     );
     if (tooltip == null) return btn;
     return Tooltip(message: tooltip!, child: btn);
+  }
+}
+
+/// Non‑dismissible modal dialog shown while timestamp processing takes longer
+/// than 600ms. Back button is disabled until processing completes.
+class _TimestampLoadingDialog extends StatelessWidget {
+  const _TimestampLoadingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: Dialog(
+        elevation: 0,
+        backgroundColor: Colors.black.withOpacity(0.8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Flexible(
+                child: Text(
+                  'Embedding timestamp…',
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
