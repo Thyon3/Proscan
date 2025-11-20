@@ -398,6 +398,24 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       await _applyTimestampIfNeeded(path);
       if (!mounted) return;
 
+      // NEW: Translate mode flow for gallery images – OCR -> Translate -> Navigate
+      if (_currentMode == ScanMode.translate) {
+        final inputImage = InputImage.fromFilePath(path);
+
+        await LoadingOverlay.runWithDelay<void>(
+          context: context,
+          message: 'Scanning & translating…',
+          action: () => ref
+              .read(translationProvider.notifier)
+              .processInputImage(inputImage),
+        );
+
+        if (!mounted) return;
+
+        context.push('/translationeditorscreen');
+        return;
+      }
+
       // Handle Extract Text mode differently
       if (_currentMode == ScanMode.extractText) {
         // Navigate to text editor screen with OCR processing

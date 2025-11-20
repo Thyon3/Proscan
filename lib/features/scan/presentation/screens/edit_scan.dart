@@ -48,6 +48,10 @@ class _EditScanScreenState extends State<EditScanScreen> {
   Map<int, ImageFilter> _pageFilters = {};
   Map<int, int> _pageRotations = {}; // Rotation in degrees (0, 90, 180, 270)
 
+  // Filter preview thumbnails for the current page
+  Map<ImageFilter, String> _filterPreviews = {};
+  bool _isGeneratingPreviews = false;
+
   @override
   void initState() {
     super.initState();
@@ -56,6 +60,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
     _pageController = PageController(initialPage: 0);
     // Initialize PDF file name with timestamp-based default
     _pdfFileName = 'DocScan_${DateTime.now().millisecondsSinceEpoch}';
+
+    // Generate initial filter previews for the first page
+    _generateFilterPreviewsForCurrentPage();
   }
 
   @override
@@ -295,6 +302,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
       }
     });
 
+    // Regenerate filter previews for the newly selected page
+    _generateFilterPreviewsForCurrentPage();
+
     // If user swiped to add slot, automatically trigger capture if desired
     // But for now, just ensure the add slot is accessible
   }
@@ -501,40 +511,70 @@ class _EditScanScreenState extends State<EditScanScreen> {
     final cs = Theme.of(context).colorScheme;
     final currentFilter = _pageFilters[_currentIndex] ?? ImageFilter.none;
 
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+    return SizedBox(
+      height: 110,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: ImageFilter.values.map((filter) {
           final isSelected = filter == currentFilter;
+          final previewPath = _filterPreviews[filter];
+
           return GestureDetector(
             onTap: () => _applyFilter(filter),
             child: Container(
               margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? cs.primaryContainer
-                    : cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected
-                      ? cs.primary
-                      : cs.outline.withValues(alpha: 0.3),
-                  width: isSelected ? 2 : 1,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  _getFilterName(filter),
-                  style: TextStyle(
-                    color: isSelected ? cs.onPrimaryContainer : cs.onSurface,
-                    fontSize: 14,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              width: 72,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected ? cs.primary : Colors.transparent,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: previewPath != null && !_isGeneratingPreviews
+                          ? Image.file(
+                              File(previewPath),
+                              width: 64,
+                              height: 64,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              width: 64,
+                              height: 64,
+                              color: cs.surfaceContainerHighest,
+                              child: _isGeneratingPreviews
+                                  ? const Center(
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _getFilterName(filter),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isSelected ? cs.primary : cs.onSurface,
+                      fontSize: 11,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
           );
@@ -561,6 +601,86 @@ class _EditScanScreenState extends State<EditScanScreen> {
         return 'Vintage';
       case ImageFilter.blackAndWhite:
         return 'B&W';
+    }
+  }
+
+  Future<void> _generateFilterPreviewsForCurrentPage() async {
+    if (_isOnAddSlot) return;
+
+    try {
+      setState(() {
+        _isGeneratingPreviews = true;
+        _filterPreviews = {};
+      });
+
+      final path = _currentPath;
+      if (path.isEmpty) return;
+      final file = File(path);
+      if (!await file.exists()) return;
+
+      final bytes = await file.readAsBytes();
+      final original = img.decodeImage(bytes);
+      if (original == null) return;
+
+      // Work on a downscaled copy for performance
+      final baseThumb = img.copyResize(original, width: 220);
+      final dir = await getTemporaryDirectory();
+
+      for (final filter in ImageFilter.values) {
+        img.Image previewImage;
+        switch (filter) {
+          case ImageFilter.grayscale:
+            previewImage = img.grayscale(baseThumb.clone());
+            break;
+          case ImageFilter.sepia:
+            previewImage = img.sepia(baseThumb.clone());
+            break;
+          case ImageFilter.invert:
+            previewImage = img.invert(baseThumb.clone());
+            break;
+          case ImageFilter.brightness:
+            previewImage =
+                img.adjustColor(baseThumb.clone(), brightness: 1.2);
+            break;
+          case ImageFilter.contrast:
+            previewImage =
+                img.adjustColor(baseThumb.clone(), contrast: 1.3);
+            break;
+          case ImageFilter.vintage:
+            previewImage = img.sepia(baseThumb.clone());
+            previewImage = img.adjustColor(
+              previewImage,
+              brightness: 0.9,
+              contrast: 1.1,
+            );
+            break;
+          case ImageFilter.blackAndWhite:
+            previewImage = img.grayscale(baseThumb.clone());
+            previewImage =
+                img.adjustColor(previewImage, contrast: 1.5);
+            break;
+          case ImageFilter.none:
+            previewImage = baseThumb.clone();
+            break;
+        }
+
+        final previewBytes = Uint8List.fromList(
+          img.encodeJpg(previewImage, quality: 80),
+        );
+        final filterName = filter.toString().split('.').last;
+        final previewPath =
+            '${dir.path}/preview_${filterName}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        await File(previewPath).writeAsBytes(previewBytes, flush: true);
+
+        _filterPreviews[filter] = previewPath;
+      }
+    } catch (_) {
+      // Ignore preview generation errors; user can still use filters.
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isGeneratingPreviews = false;
+      });
     }
   }
 
