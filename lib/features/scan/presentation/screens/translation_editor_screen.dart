@@ -26,17 +26,6 @@ class _TranslationEditorScreenState
   void initState() {
     super.initState();
     _controller = TextEditingController();
-
-    // Keep TextEditingController in sync with translated text.
-    ref.listen<TranslationState>(
-      translationProvider,
-      (previous, next) {
-        if (previous?.translatedText != next.translatedText &&
-            _controller.text != next.translatedText) {
-          _controller.text = next.translatedText;
-        }
-      },
-    );
   }
 
   @override
@@ -201,6 +190,15 @@ class _TranslationEditorScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(translationProvider);
+
+    // Keep controller synchronized with provider state in a safe way.
+    if (_controller.text != state.translatedText) {
+      _controller.text = state.translatedText;
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: _controller.text.length),
+      );
+    }
+
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 

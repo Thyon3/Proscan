@@ -60,6 +60,39 @@ enum ScanMode {
   bool get autoDewarpHint => this == ScanMode.book || this == ScanMode.document;
 }
 
+// Add this inside scan_flow_models.dart or a new file
+extension ScanModeX on ScanMode {
+  IconData get icon => switch (this) {
+    ScanMode.document => Icons.document_scanner_rounded,
+    ScanMode.idCard => Icons.credit_card_rounded,
+    ScanMode.book => Icons.menu_book_rounded,
+    ScanMode.excel => Icons.grid_on_rounded,
+    ScanMode.slides => Icons.slideshow_rounded,
+    ScanMode.word => Icons.description_rounded,
+    ScanMode.question => Icons.quiz_rounded,
+    ScanMode.translate => Icons.translate_rounded,
+    ScanMode.timestamp => Icons.schedule_rounded,
+    ScanMode.extractText => Icons.text_snippet_rounded,
+    // TODO: Handle this case.
+    ScanMode.scanCode => throw UnimplementedError(),
+  };
+
+  Color get color => switch (this) {
+    ScanMode.document => const Color(0xFF3B82F6),
+    ScanMode.idCard => const Color(0xFF8B5CF6),
+    ScanMode.book => const Color(0xFFEC4899),
+    ScanMode.excel => const Color(0xFF10B981),
+    ScanMode.slides => const Color(0xFFF59E0B),
+    ScanMode.word => const Color(0xFF6366F1),
+    ScanMode.question => const Color(0xFFE11D48),
+    ScanMode.translate => const Color(0xFF06B6D4),
+    ScanMode.timestamp => const Color(0xFF8B5CF6),
+    ScanMode.extractText => const Color(0xFF10B981),
+    // TODO: Handle this case.
+    ScanMode.scanCode => throw UnimplementedError(),
+  };
+}
+
 class EditScanArgs {
   final String imagePath;
   final ScanMode initialMode;
@@ -78,4 +111,3 @@ class CameraScreenConfig {
     this.returnCapturePath = false,
   });
 }
-

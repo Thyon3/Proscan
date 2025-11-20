@@ -9,6 +9,7 @@ import 'package:thyscan/features/help_and_support/presentation/screens/help_and_
 import 'package:thyscan/features/home/presentation/screens/appmainscreen.dart';
 import 'package:thyscan/features/home/presentation/screens/homescreen.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
+import 'package:thyscan/features/home/presentation/screens/tools_screen.dart';
 import 'package:thyscan/features/onboarding/screens/onboarding.dart';
 import 'package:thyscan/features/profile/presentation/screens/edit_profile.dart';
 import 'package:thyscan/features/profile/presentation/screens/free_user.dart';

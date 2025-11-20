@@ -183,6 +183,11 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/toolscreen',
+      name: 'toolscreen',
+      builder: (context, state) => ToolsScreen(),
+    ),
+    GoRoute(
       path: '/translationeditorscreen',
       name: 'translationeditorscreen',
       builder: (context, state) {

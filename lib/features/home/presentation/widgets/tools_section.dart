@@ -1,107 +1,77 @@
+// features/home/presentation/widgets/tools_section.dart
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:thyscan/core/theme/controllers/theme.dart';
+import 'package:go_router/go_router.dart';
 import 'package:thyscan/features/home/presentation/widgets/tool_card.dart';
+import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 
-class _ToolData {
-  final IconData icon;
-  final String label;
-  final String? badgeText;
-  final Color? color; // accent color per tool
-  const _ToolData(this.icon, this.label, {this.badgeText, this.color});
-}
-
-// Descriptive tools + distinct colors
-const List<_ToolData> _tools = [
-  _ToolData(Icons.document_scanner_rounded, 'Smart Scan'), // theme primary
-  _ToolData(Icons.picture_as_pdf_rounded, 'PDF Tools', color: Colors.redAccent),
-  _ToolData(
-    Icons.image_search_rounded,
-    'Image Scan',
-    badgeText: 'New',
-    color: Colors.blueAccent,
-  ),
-  _ToolData(
-    Icons.file_upload_rounded,
-    'Import Files',
-    color: Colors.indigoAccent,
-  ),
-  _ToolData(
-    Icons.credit_card_rounded,
-    'ID Cards',
-    color: Colors.deepPurpleAccent,
-  ),
-  _ToolData(
-    Icons.text_fields_rounded,
-    'Text Extract',
-    badgeText: 'Pro',
-    color: Colors.amber,
-  ),
-  _ToolData(
-    Icons.auto_awesome_rounded,
-    'AI Enhance',
-    badgeText: 'New',
-    color: Colors.cyan,
-  ),
-  _ToolData(Icons.more_horiz_rounded, 'More Tools', color: Colors.grey),
-];
-
-class ToolsSection extends ConsumerWidget {
+class ToolsSection extends StatelessWidget {
   const ToolsSection({super.key});
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  // Main 7 modes shown on home screen + "More Tools"
+  static final List<_ToolData> _mainTools = [
+    _ToolData(ScanMode.document, 'Smart Scan', color: const Color(0xFF3B82F6)),
+    _ToolData(ScanMode.idCard, 'ID Card', color: Color(0xFF8B5CF6)),
+    _ToolData(
+      ScanMode.book,
+      'Book Scan',
+      badgeText: 'Pro',
+      color: const Color(0xFFEC4899),
+    ),
+    _ToolData(
+      ScanMode.excel,
+      'To Excel',
+      badgeText: 'New',
+      color: const Color(0xFF10B981),
+    ),
+    _ToolData(ScanMode.slides, 'Slides', color: const Color(0xFFF59E0B)),
+    _ToolData(ScanMode.word, 'To Word', color: const Color(0xFF6366F1)),
+    _ToolData(ScanMode.translate, 'Translate', color: const Color(0xFF06B6D4)),
+    _ToolData(ScanMode.scanCode, 'Scan Code', color: const Color(0xFF22C55E)),
+    _ToolData(
+      null,
+      'More Tools',
+      icon: Icons.apps_rounded,
+      color: const Color(0xFF94A3B8),
+    ),
+  ];
 
-    // Height scales with text size to avoid vertical overflow
-    final textScale = MediaQuery.textScaleFactorOf(context);
-    final double tileHeight = 116 + (textScale - 1.0) * 24; // key fix
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            onPressed: () {
-              ref.watch(themeControllerProvider.notifier).toggleTheme();
-            },
-            icon: Icon(Icons.dark_mode),
-          ),
-          // Section Header
-          Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 20),
-            child: Text(
-              'Quick Tools',
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: colorScheme.onBackground,
-                fontWeight: FontWeight.w700,
-                fontSize: 20,
-              ),
+          Text(
+            'Quick Tools',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: cs.onBackground,
             ),
           ),
+          const SizedBox(height: 20),
 
-          // Tools Grid (NO background container)
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _tools.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            itemCount: _mainTools.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 4,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              // explicit vertical extent so tiles never overflow
-              mainAxisExtent: tileHeight,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 20,
+              mainAxisExtent: 110,
             ),
             itemBuilder: (context, index) {
-              final tool = _tools[index];
+              final tool = _mainTools[index];
               return ToolCard(
-                icon: tool.icon,
+                icon: tool.icon ?? Icons.category_rounded,
                 label: tool.label,
                 badgeText: tool.badgeText,
-                accentColor: tool.color, // per-tool color
-                onTap: () => _handleToolTap(context, tool.label),
+                accentColor: tool.color,
+                onTap: () => _handleTap(context, tool.mode),
               );
             },
           ),
@@ -110,13 +80,34 @@ class ToolsSection extends ConsumerWidget {
     );
   }
 
-  void _handleToolTap(BuildContext context, String toolName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$toolName tapped'),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+  void _handleTap(BuildContext context, ScanMode? mode) {
+    if (mode == null) {
+      context.push('/toolscreen'); // Go to full tools screen
+    } else {
+      // Open camera locked to the selected mode
+      context.push(
+        '/camerascreen',
+        extra: CameraScreenConfig(
+          initialMode: mode,
+          restrictToInitialMode: true,
+        ),
+      );
+    }
   }
+}
+
+class _ToolData {
+  final ScanMode? mode;
+  final String label;
+  final IconData? icon;
+  final String? badgeText;
+  final Color color;
+
+  const _ToolData(
+    this.mode,
+    this.label, {
+    this.icon,
+    this.badgeText,
+    required this.color,
+  });
 }
