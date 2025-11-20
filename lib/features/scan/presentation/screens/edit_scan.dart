@@ -43,7 +43,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
   late final PageController _pageController;
   int _currentIndex = 0;
   String _pdfFileName = 'DocScan';
-  
+
   // Store filter and rotation for each page
   Map<int, ImageFilter> _pageFilters = {};
   Map<int, int> _pageRotations = {}; // Rotation in degrees (0, 90, 180, 270)
@@ -294,14 +294,14 @@ class _EditScanScreenState extends State<EditScanScreen> {
         _currentPath = '';
       }
     });
-    
+
     // If user swiped to add slot, automatically trigger capture if desired
     // But for now, just ensure the add slot is accessible
   }
 
   Future<void> _retakeCurrentPage() async {
     if (_isOnAddSlot) return;
-    
+
     try {
       final path = await context.push<String>(
         '/camerascreen',
@@ -323,36 +323,38 @@ class _EditScanScreenState extends State<EditScanScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not retake: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not retake: $e')));
     }
   }
 
   Future<void> _rotateCurrentPage() async {
     if (_isOnAddSlot) return;
-    
+
     try {
       final currentRotation = _pageRotations[_currentIndex] ?? 0;
       final newRotation = (currentRotation + 90) % 360;
-      
+
       // Always rotate 90 degrees from current state
       final file = File(_pages[_currentIndex]);
       final bytes = await file.readAsBytes();
       final image = img.decodeImage(bytes);
-      
+
       if (image == null) return;
-      
+
       // Rotate 90 degrees clockwise
       final rotatedImage = img.copyRotate(image, angle: 90);
-      final rotatedBytes = Uint8List.fromList(img.encodeJpg(rotatedImage, quality: 95));
-      
+      final rotatedBytes = Uint8List.fromList(
+        img.encodeJpg(rotatedImage, quality: 95),
+      );
+
       // Save rotated image
       final dir = await getTemporaryDirectory();
       final filename = 'rotated_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final newPath = '${dir.path}/$filename';
       await File(newPath).writeAsBytes(rotatedBytes);
-      
+
       setState(() {
         _pages[_currentIndex] = newPath;
         _currentPath = newPath;
@@ -360,22 +362,22 @@ class _EditScanScreenState extends State<EditScanScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Rotation failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Rotation failed: $e')));
     }
   }
 
   Future<void> _applyFilter(ImageFilter filter) async {
     if (_isOnAddSlot) return;
-    
+
     try {
       final file = File(_pages[_currentIndex]);
       final bytes = await file.readAsBytes();
       var image = img.decodeImage(bytes);
-      
+
       if (image == null) return;
-      
+
       switch (filter) {
         case ImageFilter.grayscale:
           image = img.grayscale(image);
@@ -404,16 +406,19 @@ class _EditScanScreenState extends State<EditScanScreen> {
           // No filter applied, use original
           break;
       }
-      
+
       if (filter != ImageFilter.none) {
-        final filteredBytes = Uint8List.fromList(img.encodeJpg(image, quality: 95));
-        
+        final filteredBytes = Uint8List.fromList(
+          img.encodeJpg(image, quality: 95),
+        );
+
         // Save filtered image
         final dir = await getTemporaryDirectory();
-        final filename = 'filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final filename =
+            'filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
         final newPath = '${dir.path}/$filename';
         await File(newPath).writeAsBytes(filteredBytes);
-        
+
         setState(() {
           _pages[_currentIndex] = newPath;
           _currentPath = newPath;
@@ -427,26 +432,23 @@ class _EditScanScreenState extends State<EditScanScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Filter application failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Filter application failed: $e')));
     }
   }
 
   void _navigateToSavePdf() {
     if (_pages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pages to save')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pages to save')));
       return;
     }
-    
+
     context.push(
       '/savepdfscreen',
-      extra: {
-        'imagePaths': _pages,
-        'pdfFileName': _pdfFileName,
-      },
+      extra: {'imagePaths': _pages, 'pdfFileName': _pdfFileName},
     );
   }
 
@@ -498,7 +500,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
   Widget _buildFilterListView() {
     final cs = Theme.of(context).colorScheme;
     final currentFilter = _pageFilters[_currentIndex] ?? ImageFilter.none;
-    
+
     return Container(
       height: 60,
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -513,10 +515,14 @@ class _EditScanScreenState extends State<EditScanScreen> {
               margin: const EdgeInsets.only(right: 12),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isSelected ? cs.primaryContainer : cs.surfaceContainerHighest,
+                color: isSelected
+                    ? cs.primaryContainer
+                    : cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: isSelected ? cs.primary : cs.outline.withValues(alpha: 0.3),
+                  color: isSelected
+                      ? cs.primary
+                      : cs.outline.withValues(alpha: 0.3),
                   width: isSelected ? 2 : 1,
                 ),
               ),
@@ -560,7 +566,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   Widget _buildBottomIcons() {
     final cs = Theme.of(context).colorScheme;
-    
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -590,7 +596,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
             onTap: () {
               // Placeholder for extract text functionality
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Extract text feature coming soon')),
+                const SnackBar(
+                  content: Text('Extract text feature coming soon'),
+                ),
               );
             },
             color: cs.onSurface,
@@ -627,7 +635,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
               shape: BoxShape.circle,
               border: backgroundColor == null
                   ? Border.all(
-                      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withValues(alpha: 0.3),
                     )
                   : null,
             ),
@@ -704,10 +714,13 @@ class _EditScanScreenState extends State<EditScanScreen> {
                       width: 1.5,
                     ),
                   ),
-                  child: Icon(
-                    Icons.add_photo_alternate_rounded,
-                    size: 42,
-                    color: cs.primary,
+                  child: InkWell(
+                    onTap: _captureAdditionalPage,
+                    child: Icon(
+                      Icons.add_photo_alternate_rounded,
+                      size: 42,
+                      color: cs.primary,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -736,56 +749,6 @@ class _EditScanScreenState extends State<EditScanScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Modern button
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [cs.primary, cs.primary.withOpacity(0.9)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cs.primary.withOpacity(0.3),
-                        blurRadius: 15,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _captureAdditionalPage,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 18,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.camera_alt_rounded,
-                              color: cs.onPrimary,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Capture New Page',
-                              style: TextStyle(
-                                color: cs.onPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 16),
 
                 // Hint text
