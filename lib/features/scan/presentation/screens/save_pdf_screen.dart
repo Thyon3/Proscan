@@ -2,12 +2,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
+import 'package:thyscan/services/document_service.dart';
 
 class SavePdfScreen extends StatefulWidget {
   final List<String> imagePaths;
@@ -281,10 +284,212 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     );
   }
 
-  void _convertToWord() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Convert to Word feature coming soon')),
+  /// Exports document as Word (.docx) file
+  Future<void> _convertToWord() async {
+    if (_pages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pages to export')),
+      );
+      return;
+    }
+
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.description_rounded,
+              color: Theme.of(context).colorScheme.primary,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            const Text('Export as Word'),
+          ],
+        ),
+        content: const Text(
+          'Export this document as a Word (.docx) file?\n\nThe file will open in Microsoft Word, Google Docs, and other compatible apps.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Export'),
+          ),
+        ],
+      ),
     );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      // Generate DOCX file
+      final fileName = widget.pdfFileName.replaceAll('.pdf', '');
+      final docxPath = await DocxGeneratorService.instance.generateDocxFromImages(
+        imagePaths: _pages,
+        fileName: fileName,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isSaving = false;
+      });
+
+      // Show success with Open and Share options
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Word document saved!',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          action: SnackBarAction(
+            label: 'Open',
+            textColor: Colors.white,
+            onPressed: () async {
+              await OpenFilex.open(docxPath);
+            },
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+
+      // Show share option after delay
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.share_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Want to share this document?',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Theme.of(context).colorScheme.secondary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            action: SnackBarAction(
+              label: 'Share',
+              textColor: Colors.white,
+              onPressed: () async {
+                await Share.shareXFiles(
+                  [XFile(docxPath)],
+                  subject: fileName,
+                  text: 'Check out this Word document!',
+                );
+              },
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to export Word document: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Saves PDF to Hive database and shows success
+  Future<void> _savePdfToLibrary() async {
+    if (_pages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pages to export')),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      // Save document with UUID key
+      final doc = await DocumentService.instance.saveDocument(
+        pageImagePaths: _pages,
+        title: widget.pdfFileName.replaceAll('.pdf', ''),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isSaving = false;
+        _savedPdfPath = doc.filePath;
+      });
+
+      // Show success toast
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'PDF saved to library!',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          action: SnackBarAction(
+            label: 'Open',
+            textColor: Colors.white,
+            onPressed: () async {
+              await OpenFilex.open(doc.filePath);
+            },
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      // Navigate back after short delay
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) {
+          context.pop();
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showAppBarMenu() {
@@ -300,11 +505,21 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.save_rounded),
-              title: const Text('Save PDF'),
+              leading: const Icon(Icons.picture_as_pdf_rounded),
+              title: const Text('Export as PDF'),
+              subtitle: const Text('Save to library'),
               onTap: () {
                 Navigator.pop(context);
-                _saveAsPdf();
+                _savePdfToLibrary();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.description_rounded),
+              title: const Text('Export as Word'),
+              subtitle: const Text('Save as .docx file'),
+              onTap: () {
+                Navigator.pop(context);
+                _convertToWord();
               },
             ),
             ListTile(

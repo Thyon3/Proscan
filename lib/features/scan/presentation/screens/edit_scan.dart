@@ -448,6 +448,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
     }
   }
 
+
+
+  /// Navigate to document preview/save screen
   void _navigateToSavePdf() {
     if (_pages.isEmpty) {
       ScaffoldMessenger.of(
@@ -738,7 +741,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
   Widget _buildBottomIcon({
     required IconData icon,
     required String label,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     required Color color,
     Color? backgroundColor,
   }) {
