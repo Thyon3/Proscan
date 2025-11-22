@@ -34,23 +34,32 @@ class ScanListItem extends StatelessWidget {
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
               ? colorScheme.primary.withOpacity(0.08)
               : colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20), // More rounded
           border: isSelected
               ? Border.all(color: colorScheme.primary, width: 2)
-              : Border.all(color: colorScheme.outline.withOpacity(0.1)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+              : Border.all(color: colorScheme.outline.withOpacity(0.05)),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: colorScheme.primary.withOpacity(0.1),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Row(
           children: [
@@ -63,6 +72,7 @@ class ScanListItem extends StatelessWidget {
                   ? Container(
                       width: 24,
                       height: 24,
+                      margin: const EdgeInsets.only(right: 16),
                       decoration: BoxDecoration(
                         color: isSelected
                             ? colorScheme.primary
@@ -86,77 +96,77 @@ class ScanListItem extends StatelessWidget {
                     )
                   : const SizedBox.shrink(key: ValueKey('empty')),
             ),
-            if (isSelectionMode) const SizedBox(width: 16),
 
             // Thumbnail with professional styling
-            Container(
-              width: 64,
-              height: 84,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Stack(
-                  children: [
-                    scan.tags.contains('Text')
-                        ? Container(
-                            width: 64,
-                            height: 84,
-                            color: colorScheme.primaryContainer,
-                            child: Icon(
-                              Icons.description_rounded,
-                              size: 32,
-                              color: colorScheme.primary,
-                            ),
-                          )
-                        : File(scan.imagePath).existsSync()
-                            ? Image.file(
-                                File(scan.imagePath),
-                                width: 64,
-                                height: 84,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: colorScheme.surfaceVariant,
-                                  child: Icon(
-                                    Icons.image_not_supported,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              )
-                            : Image.asset(
-                                scan.imagePath,
-                                width: 64,
-                                height: 84,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: colorScheme.surfaceVariant,
-                                  child: Icon(
-                                    Icons.image_not_supported,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.1),
-                          ],
-                        ),
-                      ),
+            Hero(
+              tag: 'scan_thumb_${scan.id}',
+              child: Container(
+                width: 70,
+                height: 90,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
                   ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      scan.tags.contains('Text')
+                          ? Container(
+                              color: colorScheme.primaryContainer,
+                              child: Center(
+                                child: Icon(
+                                  Icons.description_rounded,
+                                  size: 32,
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            )
+                          : File(scan.imagePath).existsSync()
+                              ? Image.file(
+                                  File(scan.imagePath),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: colorScheme.surfaceVariant,
+                                    child: Icon(
+                                      Icons.image_not_supported,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                )
+                              : Image.asset(
+                                  scan.imagePath,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: colorScheme.surfaceVariant,
+                                    child: Icon(
+                                      Icons.image_not_supported,
+                                      color: colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                      // Gradient Overlay
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.2),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -171,23 +181,46 @@ class ScanListItem extends StatelessWidget {
                     scan.title,
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       fontSize: 16,
+                      letterSpacing: -0.5,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    isSelected
-                        ? 'Scanned today'
-                        : '${scan.date} • ${scan.size} • ${scan.pageCount}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: isSelected
-                          ? colorScheme.primary
-                          : colorScheme.onSurface.withOpacity(0.6),
-                      fontWeight: FontWeight.w500,
-                    ),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_rounded,
+                        size: 12,
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        scan.date,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        width: 3,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: colorScheme.onSurface.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      Text(
+                        scan.pageCount,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
 
@@ -202,17 +235,14 @@ class ScanListItem extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: colorScheme.primary.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: colorScheme.primary.withOpacity(0.2),
-                            ),
+                            color: colorScheme.primary.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
                             tag,
                             style: TextStyle(
                               color: colorScheme.primary,
-                              fontSize: 10,
+                              fontSize: 11,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -225,21 +255,19 @@ class ScanListItem extends StatelessWidget {
 
             // More options button (only in normal mode)
             if (!isSelectionMode)
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: colorScheme.onSurface.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  onPressed: () => _showOptionsMenu(context),
-                  icon: Icon(
-                    Icons.more_vert_rounded,
-                    size: 18,
-                    color: colorScheme.onSurface.withOpacity(0.7),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _showOptionsMenu(context),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
+                      Icons.more_vert_rounded,
+                      size: 20,
+                      color: colorScheme.onSurface.withOpacity(0.4),
+                    ),
                   ),
-                  padding: EdgeInsets.zero,
                 ),
               ),
           ],

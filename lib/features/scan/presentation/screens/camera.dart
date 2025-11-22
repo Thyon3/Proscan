@@ -801,101 +801,107 @@ class _CameraSettingsSheetState extends State<CameraSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.8),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border(
+              top: BorderSide(color: Colors.white.withOpacity(0.1)),
             ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            'Camera Settings',
-            style: GoogleFonts.inter(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Configure your camera preferences',
-            style: GoogleFonts.inter(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _SettingsItem(
-            title: 'Auto Capture',
-            subtitle: 'Automatically capture when document is detected',
-            value: _currentSettings.autoCapture,
-            onChanged: (value) => _updateSetting(value, 'autoCapture'),
-          ),
-          _SettingsItem(
-            title: 'Orientation',
-            subtitle: 'Adjust orientation automatically',
-            value: _currentSettings.orientation,
-            onChanged: (value) => _updateSetting(value, 'orientation'),
-          ),
-          _SettingsItem(
-            title: 'Grid Overlay',
-            subtitle: 'Show grid lines for better alignment',
-            value: _currentSettings.grid,
-            onChanged: (value) => _updateSetting(value, 'grid'),
-          ),
-          _SettingsItem(
-            title: 'Sound',
-            subtitle: 'Play shutter sound when capturing',
-            value: _currentSettings.sound,
-            onChanged: (value) => _updateSetting(value, 'sound'),
-          ),
-          _SettingsItem(
-            title: 'Auto Crop',
-            subtitle: 'Automatically crop scanned documents',
-            value: _currentSettings.autoCrop,
-            onChanged: (value) => _updateSetting(value, 'autoCrop'),
-          ),
-          const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-              child: Text(
-                'Done',
+              const SizedBox(height: 24),
+              Text(
+                'Camera Settings',
                 style: GoogleFonts.inter(
-                  fontSize: 16,
+                  color: Colors.white,
+                  fontSize: 20,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                'Configure your camera preferences',
+                style: GoogleFonts.inter(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 24),
+              _SettingsItem(
+                title: 'Auto Capture',
+                subtitle: 'Automatically capture when document is detected',
+                value: _currentSettings.autoCapture,
+                onChanged: (value) => _updateSetting(value, 'autoCapture'),
+              ),
+              _SettingsItem(
+                title: 'Orientation',
+                subtitle: 'Adjust orientation automatically',
+                value: _currentSettings.orientation,
+                onChanged: (value) => _updateSetting(value, 'orientation'),
+              ),
+              _SettingsItem(
+                title: 'Grid Overlay',
+                subtitle: 'Show grid lines for better alignment',
+                value: _currentSettings.grid,
+                onChanged: (value) => _updateSetting(value, 'grid'),
+              ),
+              _SettingsItem(
+                title: 'Sound',
+                subtitle: 'Play shutter sound when capturing',
+                value: _currentSettings.sound,
+                onChanged: (value) => _updateSetting(value, 'sound'),
+              ),
+              _SettingsItem(
+                title: 'Auto Crop',
+                subtitle: 'Automatically crop scanned documents',
+                value: _currentSettings.autoCrop,
+                onChanged: (value) => _updateSetting(value, 'autoCrop'),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Done',
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
           ),
-          const SizedBox(height: 16),
-        ],
+        ),
       ),
     );
   }
@@ -975,44 +981,43 @@ class _ModeSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     if (modes.isEmpty) return const SizedBox.shrink();
     return Container(
-      height: 50,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListView.separated(
+      height: 60,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        physics: modes.length <= 1
-            ? const NeverScrollableScrollPhysics()
-            : const BouncingScrollPhysics(),
+        physics: const BouncingScrollPhysics(),
         itemCount: modes.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         itemBuilder: (context, index) {
           final mode = modes[index];
           final isSelected = currentMode == mode;
 
           return GestureDetector(
             onTap: () => onModeChanged(mode),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  mode.name,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withOpacity(0.2)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+                border: isSelected
+                    ? Border.all(color: Colors.white.withOpacity(0.5))
+                    : null,
+              ),
+              child: Center(
+                child: Text(
+                  mode.name.toUpperCase(),
                   style: GoogleFonts.inter(
-                    fontSize: 16,
+                    fontSize: 13,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? colorScheme.primary : Colors.white,
+                    color: isSelected ? Colors.white : Colors.white.withOpacity(0.6),
+                    letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(height: 4),
-                if (isSelected)
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-              ],
+              ),
             ),
           );
         },

@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/theme/constants/app_design.dart';
+import 'package:thyscan/features/home/presentation/widgets/premium_modal.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
@@ -284,9 +286,9 @@ class HomeScreen extends ConsumerWidget {
       );
     } else {
       return AppBar(
-        backgroundColor: colorScheme.background,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        scrolledUnderElevation: 0.5,
+        scrolledUnderElevation: 0,
         toolbarHeight: 90.0,
         title: Padding(
           padding: const EdgeInsets.only(top: 20.0),
@@ -294,28 +296,24 @@ class HomeScreen extends ConsumerWidget {
             children: [
               Expanded(
                 child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                  decoration: AppDesign.glass(
+                    opacity: 0.8,
+                    borderRadius: 16,
+                    color: colorScheme.surface,
                   ),
                   child: TextField(
                     decoration: InputDecoration(
                       hintText: 'Search documents...',
                       hintStyle: TextStyle(
                         color: colorScheme.onSurface.withOpacity(0.5),
+                        fontFamily: 'Inter',
                       ),
                       prefixIcon: Icon(
                         Icons.search_rounded,
                         color: colorScheme.onSurface.withOpacity(0.7),
                       ),
                       filled: true,
-                      fillColor: colorScheme.surface,
+                      fillColor: Colors.transparent,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -329,30 +327,26 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(width: 12),
               Container(
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      colorScheme.primary,
-                      colorScheme.primary.withOpacity(0.8),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
+                  gradient: AppDesign.primaryGradient,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                      color: colorScheme.primary.withOpacity(0.3),
-                      blurRadius: 10,
+                      color: const Color(0xFF7C3AED).withOpacity(0.4),
+                      blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
                   ],
                 ),
                 child: IconButton(
                   onPressed: () {
-                    /* TODO: Handle Pro button press */
+                    showDialog(
+                      context: context,
+                      builder: (context) => const PremiumModal(),
+                    );
                   },
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.workspace_premium_rounded,
-                    color: colorScheme.onPrimary,
+                    color: Colors.white,
                   ),
                   iconSize: 24,
                 ),
