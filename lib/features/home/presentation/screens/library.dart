@@ -1,39 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
 import 'package:thyscan/features/home/controllers/library_state_provider.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_filter_bar.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_scan_list_item.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
-
-final List<Scan> _dummyLibraryScans = [
-  Scan(
-    id: '4',
-    title: 'Meeting Notes Q3',
-    imagePath: 'assets/images/doc_thumbnail1.png',
-    date: 'Oct 26, 2023',
-    size: '',
-    pageCount: '3 pages',
-    tags: [],
-  ),
-  Scan(
-    id: '5',
-    title: 'Invoice #1042',
-    imagePath: 'assets/images/doc_thumbnail2.png',
-    date: 'Oct 24, 2023',
-    size: '',
-    pageCount: '1 page',
-    tags: [],
-  ),
-  Scan(
-    id: '6',
-    title: 'Project Blueprint Sketch',
-    imagePath: 'assets/images/doc_thumbnail3.png',
-    date: 'Oct 22, 2023',
-    size: '',
-    pageCount: '1 page',
-    tags: [],
-  ),
-];
+import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/document_service.dart';
 
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
@@ -45,47 +20,129 @@ class LibraryScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
+    // Get Hive box for real-time updates
+    final box = Hive.box<DocumentModel>(DocumentService.boxName);
+
     return Scaffold(
       backgroundColor: colorScheme.background,
-      appBar: _buildAppBar(context, libraryState, libraryNotifier),
+      appBar: _buildAppBar(context, libraryState, libraryNotifier, box),
       bottomNavigationBar: libraryState.isSelectionMode
           ? _SelectionActionBottomBar()
           : null,
-      body: CustomScrollView(
-        slivers: [
-          // FILTER BAR
-          if (!libraryState.isSelectionMode)
-            const SliverToBoxAdapter(child: LibraryFilterBar()),
+      body: ValueListenableBuilder<Box<DocumentModel>>(
+        valueListenable: box.listenable(),
+        builder: (context, box, _) {
+          // Get ALL documents sorted by newest first
+          final allDocs = DocumentService.instance.getAllDocuments();
 
-          // LIST OF SCANS
-          SliverPadding(
-            padding: const EdgeInsets.only(
-              top: 16,
-              bottom: 120, // Extra space for bottom bar
+          return CustomScrollView(
+            slivers: [
+              // FILTER BAR
+              if (!libraryState.isSelectionMode)
+                const SliverToBoxAdapter(child: LibraryFilterBar()),
+
+              // Show empty state or document list
+              if (allDocs.isEmpty)
+                SliverToBoxAdapter(
+                  child: _buildEmptyState(context),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.only(
+                    top: 16,
+                    bottom: 120, // Extra space for bottom bar
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final doc = allDocs[index];
+                      // Convert DocumentModel to Scan for compatibility
+                      final scan = _documentToScan(doc);
+                      final isSelected = libraryState.selectedScanIds.contains(
+                        scan.id,
+                      );
+                      
+                      return LibraryScanListItem(
+                        scan: scan,
+                        isSelectionMode: libraryState.isSelectionMode,
+                        isSelected: isSelected,
+                        onLongPress: () {
+                          libraryNotifier.enterSelectionMode(scan.id);
+                        },
+                        onTap: () {
+                          if (libraryState.isSelectionMode) {
+                            libraryNotifier.toggleScanSelection(scan.id);
+                          } else {
+                            // Open document in SavePdfScreen
+                            _openDocument(context, doc);
+                          }
+                        },
+                      );
+                    }, childCount: allDocs.length),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Convert DocumentModel to Scan for UI compatibility
+  Scan _documentToScan(DocumentModel doc) {
+    final dateFormat = DateFormat('MMM dd, yyyy');
+    return Scan(
+      id: doc.id,
+      title: doc.title,
+      imagePath: doc.thumbnailPath,
+      date: dateFormat.format(doc.createdAt),
+      size: '', // Not tracked in DocumentModel
+      pageCount: '${doc.pageCount} page${doc.pageCount == 1 ? '' : 's'}',
+      tags: [], // Not tracked in DocumentModel
+    );
+  }
+
+  /// Open document in SavePdfScreen
+  void _openDocument(BuildContext context, DocumentModel doc) {
+    context.push(
+      '/savepdfscreen',
+      extra: {
+        'imagePaths': [doc.thumbnailPath], // Use thumbnail as placeholder
+        'pdfFileName': doc.title,
+        'documentId': doc.id,
+      },
+    );
+  }
+
+  /// Empty state widget when no documents exist
+  Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 100, horizontal: 40),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.folder_open_rounded,
+            size: 80,
+            color: colorScheme.primary.withOpacity(0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No documents yet',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
             ),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate((context, index) {
-                final scan = _dummyLibraryScans[index];
-                final isSelected = libraryState.selectedScanIds.contains(
-                  scan.id,
-                );
-                return LibraryScanListItem(
-                  scan: scan,
-                  isSelectionMode: libraryState.isSelectionMode,
-                  isSelected: isSelected,
-                  onLongPress: () {
-                    libraryNotifier.enterSelectionMode(scan.id);
-                  },
-                  onTap: () {
-                    if (libraryState.isSelectionMode) {
-                      libraryNotifier.toggleScanSelection(scan.id);
-                    } else {
-                      // TODO: Open viewer
-                    }
-                  },
-                );
-              }, childCount: _dummyLibraryScans.length),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Start scanning to build your library of documents',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -96,11 +153,12 @@ class LibraryScreen extends ConsumerWidget {
     BuildContext context,
     LibraryState state,
     LibraryNotifier notifier,
+    Box<DocumentModel> box,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final areAllSelected =
-        state.selectedScanIds.length == _dummyLibraryScans.length;
+    final allDocs = DocumentService.instance.getAllDocuments();
+    final areAllSelected = state.selectedScanIds.length == allDocs.length;
 
     if (state.isSelectionMode) {
       return AppBar(
@@ -133,7 +191,8 @@ class LibraryScreen extends ConsumerWidget {
                 if (areAllSelected) {
                   notifier.selectNone();
                 } else {
-                  final allIds = _dummyLibraryScans.map((s) => s.id).toList();
+                  final allDocs = DocumentService.instance.getAllDocuments();
+                  final allIds = allDocs.map((doc) => doc.id).toList();
                   notifier.selectAll(allIds);
                 }
               },
@@ -183,8 +242,9 @@ class LibraryScreen extends ConsumerWidget {
             margin: const EdgeInsets.only(right: 16),
             child: TextButton(
               onPressed: () {
-                if (_dummyLibraryScans.isNotEmpty) {
-                  notifier.enterSelectionMode(_dummyLibraryScans.first.id);
+                final allDocs = DocumentService.instance.getAllDocuments();
+                if (allDocs.isNotEmpty) {
+                  notifier.enterSelectionMode(allDocs.first.id);
                 }
               },
               style: TextButton.styleFrom(

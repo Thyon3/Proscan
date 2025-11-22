@@ -1,41 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:intl/intl.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
-
-// Dummy data needs unique IDs now
-final List<Scan> _dummyScans = [
-  Scan(
-    id: '1',
-    title: 'Meeting Notes',
-    imagePath: 'assets/images/dummythumbnails/thumbnailone.png',
-    date: 'Oct 26',
-    size: '1.2 MB',
-    pageCount: '3 pages',
-    tags: ['Cloud', 'OCR'],
-  ),
-  Scan(
-    id: '2',
-    title: 'Receipt-2023-10-27',
-    imagePath: 'assets/images/dummythumbnails/thumbnailtwo.png',
-    date: 'Oct 26',
-    size: '128 KB',
-    pageCount: '1 page',
-    tags: [],
-  ),
-  Scan(
-    id: '3',
-    title: 'Invoice #12345',
-    imagePath: 'assets/images/dummythumbnails/thumbnailthree.png',
-    date: 'Oct 25',
-    size: '1.2 MB',
-    pageCount: '12 pages',
-    tags: ['Cloud'],
-  ),
-];
+import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/document_service.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -48,57 +22,143 @@ class HomeScreen extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final isDark = Theme.of(context).colorScheme.brightness == Brightness.dark;
 
+    // Get Hive box for real-time updates
+    final box = Hive.box<DocumentModel>(DocumentService.boxName);
+
     return Scaffold(
       backgroundColor: isDark
           ? const Color.fromARGB(98, 0, 0, 0)
           : Colors.white,
-      appBar: _buildAppBar(context, homeState, homeNotifier),
-      body: CustomScrollView(
-        slivers: [
-          if (!homeState.isSelectionMode)
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-          const SliverToBoxAdapter(child: ToolsSection()),
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
-          const SliverToBoxAdapter(child: RecentScansSection()),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          SliverList(
-            delegate: SliverChildBuilderDelegate((context, index) {
-              final scan = _dummyScans[index];
-              final isSelected = homeState.selectedScanIds.contains(scan.id);
-              return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 6,
+      appBar: _buildAppBar(context, homeState, homeNotifier, box),
+      body: ValueListenableBuilder<Box<DocumentModel>>(
+        valueListenable: box.listenable(),
+        builder: (context, box, _) {
+          // Get recent documents (latest 6-8) sorted by newest first
+          final allDocs = DocumentService.instance.getAllDocuments();
+          final recentDocs = allDocs.take(8).toList();
+
+          return CustomScrollView(
+            slivers: [
+              if (!homeState.isSelectionMode)
+                const SliverToBoxAdapter(child: SizedBox(height: 20)),
+              const SliverToBoxAdapter(child: ToolsSection()),
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+              const SliverToBoxAdapter(child: RecentScansSection()),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+              // Show empty state or document list
+              if (recentDocs.isEmpty)
+                SliverToBoxAdapter(child: _buildEmptyState(context))
+              else
+                SliverList(
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final doc = recentDocs[index];
+                    // Convert DocumentModel to Scan for compatibility
+                    final scan = _documentToScan(doc);
+                    final isSelected = homeState.selectedScanIds.contains(
+                      scan.id,
+                    );
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 6,
+                      ),
+                      child: ScanListItem(
+                        scan: scan,
+                        isSelectionMode: homeState.isSelectionMode,
+                        isSelected: isSelected,
+                        onLongPress: () {
+                          homeNotifier.enterSelectionMode(scan.id);
+                        },
+                        onTap: () {
+                          if (homeState.isSelectionMode) {
+                            homeNotifier.toggleScanSelection(scan.id);
+                          } else {
+                            // Open document in SavePdfScreen
+                            _openDocument(context, doc);
+                          }
+                        },
+                      ),
+                    );
+                  }, childCount: recentDocs.length),
                 ),
-                child: ScanListItem(
-                  scan: scan,
-                  isSelectionMode: homeState.isSelectionMode,
-                  isSelected: isSelected,
-                  onLongPress: () {
-                    homeNotifier.enterSelectionMode(scan.id);
-                  },
-                  onTap: () {
-                    if (homeState.isSelectionMode) {
-                      homeNotifier.toggleScanSelection(scan.id);
-                    } else {
-                      // TODO: Handle regular tap to open document
-                    }
-                  },
+
+              // FIXED: Add proper bottom padding based on selection mode
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: homeState.isSelectionMode
+                      ? 120
+                      : 40, // Increased padding for selection mode
                 ),
-              );
-            }, childCount: _dummyScans.length),
+              ),
+            ],
+          );
+        },
+      ),
+      bottomNavigationBar: _buildBottomBar(context, homeState, homeNotifier),
+    );
+  }
+
+  /// Convert DocumentModel to Scan for UI compatibility
+  Scan _documentToScan(DocumentModel doc) {
+    final dateFormat = DateFormat('MMM dd');
+    return Scan(
+      id: doc.id,
+      title: doc.title,
+      imagePath: doc.thumbnailPath,
+      date: dateFormat.format(doc.createdAt),
+      size: '', // Not tracked in DocumentModel
+      pageCount: '${doc.pageCount} page${doc.pageCount == 1 ? '' : 's'}',
+      tags: [], // Not tracked in DocumentModel
+    );
+  }
+
+  /// Open document in SavePdfScreen
+  void _openDocument(BuildContext context, DocumentModel doc) {
+    context.push(
+      '/savepdfscreen',
+      extra: {
+        'imagePaths': [doc.thumbnailPath], // Use thumbnail as placeholder
+        'pdfFileName': doc.title,
+        'documentId': doc.id,
+      },
+    );
+  }
+
+  /// Empty state widget when no documents exist
+  Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.all(40),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.document_scanner_rounded,
+            size: 80,
+            color: colorScheme.primary.withOpacity(0.5),
           ),
-          // FIXED: Add proper bottom padding based on selection mode
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: homeState.isSelectionMode
-                  ? 120
-                  : 40, // Increased padding for selection mode
+          const SizedBox(height: 16),
+          Text(
+            'No scans yet',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
             ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Start scanning documents to see them here',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomBar(context, homeState, homeNotifier),
     );
   }
 
@@ -106,12 +166,15 @@ class HomeScreen extends ConsumerWidget {
     BuildContext context,
     HomeState state,
     HomeNotifier notifier,
+    Box<DocumentModel> box,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     if (state.isSelectionMode) {
-      final areAllSelected = state.selectedScanIds.length == _dummyScans.length;
+      final allDocs = DocumentService.instance.getAllDocuments();
+      final recentDocs = allDocs.take(8).toList();
+      final areAllSelected = state.selectedScanIds.length == recentDocs.length;
 
       return AppBar(
         backgroundColor: colorScheme.surface,
@@ -143,7 +206,9 @@ class HomeScreen extends ConsumerWidget {
                 if (areAllSelected) {
                   notifier.exitSelectionMode();
                 } else {
-                  final allIds = _dummyScans.map((scan) => scan.id).toList();
+                  final allDocs = DocumentService.instance.getAllDocuments();
+                  final recentDocs = allDocs.take(8).toList();
+                  final allIds = recentDocs.map((doc) => doc.id).toList();
                   notifier.selectAll(allIds);
                 }
               },

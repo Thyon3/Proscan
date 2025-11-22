@@ -206,8 +206,8 @@ return $default(_that.isSelectionMode,_that.selectedScanIds);case _:
 /// @nodoc
 
 
-class _HomeState implements HomeState {
-  const _HomeState({this.isSelectionMode = false, final  Set<String> selectedScanIds = const {}}): _selectedScanIds = selectedScanIds;
+class _HomeState extends HomeState {
+  const _HomeState({this.isSelectionMode = false, final  Set<String> selectedScanIds = const {}}): _selectedScanIds = selectedScanIds,super._();
   
 
 @override@JsonKey() final  bool isSelectionMode;

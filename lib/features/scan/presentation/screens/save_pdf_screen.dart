@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -10,16 +11,19 @@ import 'package:share_plus/share_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
+import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
 class SavePdfScreen extends StatefulWidget {
   final List<String> imagePaths;
   final String pdfFileName;
+  final String? documentId; // Optional: for opening existing documents
 
   const SavePdfScreen({
     super.key,
     required this.imagePaths,
     required this.pdfFileName,
+    this.documentId,
   });
 
   @override
@@ -32,18 +36,69 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   String? _savedPdfPath;
   List<String> _pages = [];
   int _selectedBottomNavIndex = 0;
+  String? _documentId; // Store the document ID after auto-save
 
   @override
   void initState() {
     super.initState();
     _pages = List.from(widget.imagePaths);
+    _documentId = widget.documentId;
+
+    // Only auto-save if this is a new document (no documentId provided)
+    if (widget.documentId == null) {
+      _autoSaveDocument();
+    } else {
+      // Load existing document data
+      _loadExistingDocument();
+    }
+  }
+
+  /// Load existing document data from Hive
+  Future<void> _loadExistingDocument() async {
+    if (widget.documentId == null) return;
+
+    try {
+      final box = Hive.box<DocumentModel>(DocumentService.boxName);
+      final doc = box.get(widget.documentId);
+
+      if (doc != null && mounted) {
+        setState(() {
+          _savedPdfPath = doc.filePath;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load existing document: $e');
+    }
+  }
+
+  /// Automatically save document to internal storage and Hive on screen load
+  Future<void> _autoSaveDocument() async {
+    if (_pages.isEmpty) return;
+
+    try {
+      // Save document with UUID key to Hive and internal storage
+      final doc = await DocumentService.instance.saveDocument(
+        pageImagePaths: _pages,
+        title: widget.pdfFileName.replaceAll('.pdf', ''),
+      );
+
+      if (mounted) {
+        setState(() {
+          _savedPdfPath = doc.filePath;
+          _documentId = doc.id;
+        });
+      }
+    } catch (e) {
+      // Silent fail - user can still manually export if needed
+      debugPrint('Auto-save failed: $e');
+    }
   }
 
   Future<String?> _saveAsPdf() async {
     if (_pages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pages to export')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pages to export')));
       return null;
     }
 
@@ -60,10 +115,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             pageFormat: PdfPageFormat.a4,
             margin: pw.EdgeInsets.zero,
             build: (_) => pw.Center(
-              child: pw.FittedBox(
-                fit: pw.BoxFit.contain,
-                child: pw.Image(img),
-              ),
+              child: pw.FittedBox(fit: pw.BoxFit.contain, child: pw.Image(img)),
             ),
           ),
         );
@@ -106,9 +158,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
 
   Future<void> _sharePdf() async {
     if (_pages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pages to share')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pages to share')));
       return;
     }
 
@@ -167,9 +219,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not add page: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not add page: $e')));
     }
   }
 
@@ -287,9 +339,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   /// Exports document as Word (.docx) file
   Future<void> _convertToWord() async {
     if (_pages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pages to export')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pages to export')));
       return;
     }
 
@@ -333,10 +385,8 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     try {
       // Generate DOCX file
       final fileName = widget.pdfFileName.replaceAll('.pdf', '');
-      final docxPath = await DocxGeneratorService.instance.generateDocxFromImages(
-        imagePaths: _pages,
-        fileName: fileName,
-      );
+      final docxPath = await DocxGeneratorService.instance
+          .generateDocxFromImages(imagePaths: _pages, fileName: fileName);
 
       if (!mounted) return;
 
@@ -349,7 +399,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
@@ -361,7 +415,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           ),
           backgroundColor: Theme.of(context).colorScheme.primary,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           action: SnackBarAction(
             label: 'Open',
             textColor: Colors.white,
@@ -392,7 +448,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             ),
             backgroundColor: Theme.of(context).colorScheme.secondary,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             action: SnackBarAction(
               label: 'Share',
               textColor: Colors.white,
@@ -423,9 +481,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   /// Saves PDF to Hive database and shows success
   Future<void> _savePdfToLibrary() async {
     if (_pages.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No pages to export')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pages to export')));
       return;
     }
 
@@ -450,7 +508,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
@@ -462,7 +524,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           ),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           action: SnackBarAction(
             label: 'Open',
             textColor: Colors.white,
@@ -570,7 +634,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
 
   Widget _buildPageGridItem(int index) {
     final cs = Theme.of(context).colorScheme;
-    
+
     if (index < _pages.length) {
       return GestureDetector(
         onTap: () {
@@ -580,17 +644,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           decoration: BoxDecoration(
             color: Colors.black,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.outline.withOpacity(0.2),
-              width: 1,
-            ),
+            border: Border.all(color: cs.outline.withOpacity(0.2), width: 1),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.file(
-              File(_pages[index]),
-              fit: BoxFit.cover,
-            ),
+            child: Image.file(File(_pages[index]), fit: BoxFit.cover),
           ),
         ),
       );
@@ -647,10 +705,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         ),
         title: Text(
           widget.pdfFileName.replaceAll('.pdf', ''),
-          style: GoogleFonts.inter(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-          ),
+          style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

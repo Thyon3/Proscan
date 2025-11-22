@@ -143,6 +143,7 @@ final GoRouter router = GoRouter(
           return SavePdfScreen(
             imagePaths: extra['imagePaths'] as List<String>,
             pdfFileName: extra['pdfFileName'] as String,
+            documentId: extra['documentId'] as String?, // Optional for existing documents
           );
         }
         throw ArgumentError(
