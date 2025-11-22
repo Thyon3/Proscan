@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:uuid/uuid.dart';
+import 'package:thyscan/core/errors/failures.dart';
 import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/models/document_model.dart';
 
@@ -110,6 +111,51 @@ class DocumentService {
     return doc;
   }
 
+  /// Retrieves all documents safely, filtering out corrupted entries or missing files.
+  /// Returns a list of valid [DocumentModel]s.
+  Future<List<DocumentModel>> getAllDocumentsSafe() async {
+    try {
+      final box = Hive.box<DocumentModel>(boxName);
+      final validDocs = <DocumentModel>[];
+      final keysToDelete = <dynamic>[];
+
+      for (final key in box.keys) {
+        try {
+          final doc = box.get(key);
+          if (doc == null) {
+            keysToDelete.add(key);
+            continue;
+          }
+
+          // Integrity Check: Verify file existence
+          final file = File(doc.filePath);
+          if (!await file.exists()) {
+            // Mark for deletion if the physical file is gone
+            // (Optional: You could also just hide it or show an error state)
+            keysToDelete.add(key);
+            continue;
+          }
+
+          validDocs.add(doc);
+        } catch (e) {
+          // If a specific record is corrupted, mark it for deletion
+          keysToDelete.add(key);
+        }
+      }
+
+      // Clean up ghost records
+      if (keysToDelete.isNotEmpty) {
+        await box.deleteAll(keysToDelete);
+      }
+
+      validDocs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return validDocs;
+    } catch (e) {
+      throw StorageFailure('Failed to retrieve documents: $e');
+    }
+  }
+
+  // Deprecated: Use getAllDocumentsSafe() instead
   List<DocumentModel> getAllDocuments() {
     final box = Hive.box<DocumentModel>(boxName);
     final docs = box.values.toList();

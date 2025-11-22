@@ -3,24 +3,36 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:xml/xml.dart' as xml;
+import 'package:thyscan/core/errors/failures.dart';
 
 /// Service for exporting text to various file formats
 class FileExportService {
+  /// Helper to get a unique file path
+  Future<String> _getUniqueFilePath(String directory, String fileName, String extension) async {
+    String filePath = '$directory/$fileName$extension';
+    int counter = 1;
+    while (await File(filePath).exists()) {
+      filePath = '$directory/$fileName ($counter)$extension';
+      counter++;
+    }
+    return filePath;
+  }
+
   /// Export text to a .docx (Word) file
   /// 
-  /// Returns the path to the created file, or null if creation failed
-  Future<String?> exportToWord({
+  /// Returns the path to the created file
+  Future<String> exportToWord({
     required String text,
     String? fileName,
   }) async {
     try {
       // Generate file name if not provided
       final name = fileName ?? 'extracted_text_${DateTime.now().millisecondsSinceEpoch}';
-      final docxFileName = name.endsWith('.docx') ? name : '$name.docx';
+      final baseName = name.endsWith('.docx') ? name.substring(0, name.length - 5) : name;
 
       // Get application documents directory
       final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/$docxFileName';
+      final filePath = await _getUniqueFilePath(directory.path, baseName, '.docx');
 
       // Create a basic .docx file structure
       // A .docx file is a ZIP archive containing XML files
@@ -135,32 +147,32 @@ class FileExportService {
         return filePath;
       }
 
-      return null;
+      throw const ExportFailure('Failed to encode DOCX file');
     } catch (e) {
-      throw Exception('Failed to create Word document: $e');
+      throw ExportFailure('Failed to create Word document: $e');
     }
   }
 
   /// Export text to a .txt file
   /// 
-  /// Returns the path to the created file, or null if creation failed
-  Future<String?> exportToText({
+  /// Returns the path to the created file
+  Future<String> exportToText({
     required String text,
     String? fileName,
   }) async {
     try {
       final name = fileName ?? 'extracted_text_${DateTime.now().millisecondsSinceEpoch}';
-      final txtFileName = name.endsWith('.txt') ? name : '$name.txt';
+      final baseName = name.endsWith('.txt') ? name.substring(0, name.length - 4) : name;
 
       final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/$txtFileName';
+      final filePath = await _getUniqueFilePath(directory.path, baseName, '.txt');
 
       final file = File(filePath);
       await file.writeAsBytes(text.codeUnits);
 
       return filePath;
     } catch (e) {
-      throw Exception('Failed to create text file: $e');
+      throw ExportFailure('Failed to create text file: $e');
     }
   }
 }

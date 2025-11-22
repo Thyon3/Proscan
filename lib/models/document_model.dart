@@ -27,7 +27,10 @@ class DocumentModel extends HiveObject {
   final String thumbnailPath;
 
   @HiveField(7, defaultValue: <String>[])
-  List<String> pageImagePaths; // ← This was missing/default null
+  final List<String>? _pageImagePaths; // Internal nullable field
+
+  // Public getter that guarantees non-null list
+  List<String> get pageImagePaths => _pageImagePaths ?? [];
 
   DocumentModel({
     required this.id,
@@ -38,5 +41,5 @@ class DocumentModel extends HiveObject {
     required this.pageCount,
     required this.thumbnailPath,
     List<String>? pageImagePaths,
-  }) : pageImagePaths = pageImagePaths ?? [thumbnailPath];
+  }) : _pageImagePaths = pageImagePaths;
 }
