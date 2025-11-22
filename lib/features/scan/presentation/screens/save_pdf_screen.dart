@@ -18,12 +18,14 @@ class SavePdfScreen extends StatefulWidget {
   final List<String> imagePaths;
   final String pdfFileName;
   final String? documentId; // Optional: for opening existing documents
+  final ScanMode? scanMode; // Track the original scan mode
 
   const SavePdfScreen({
     super.key,
     required this.imagePaths,
     required this.pdfFileName,
     this.documentId,
+    this.scanMode,
   });
 
   @override
@@ -76,7 +78,6 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     if (_pages.isEmpty) return;
 
     try {
-      // Save document with UUID key to Hive and internal storage
       final doc = await DocumentService.instance.saveDocument(
         pageImagePaths: _pages,
         title: widget.pdfFileName.replaceAll('.pdf', ''),
@@ -89,8 +90,43 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         });
       }
     } catch (e) {
-      // Silent fail - user can still manually export if needed
       debugPrint('Auto-save failed: $e');
+    }
+  }
+
+  /// Update existing document when pages are modified
+  Future<void> _updateExistingDocument() async {
+    if (_pages.isEmpty || _documentId == null) return;
+
+    try {
+      final doc = await DocumentService.instance.updateDocument(
+        documentId: _documentId!,
+        pageImagePaths: _pages,
+        title: widget.pdfFileName.replaceAll('.pdf', ''),
+      );
+
+      if (mounted) {
+        setState(() {
+          _savedPdfPath = doc.filePath;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document updated successfully'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

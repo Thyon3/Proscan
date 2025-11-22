@@ -24,13 +24,14 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       format: fields[4] as String,
       pageCount: fields[5] as int,
       createdAt: fields[6] as DateTime,
+      pageImagePaths: (fields[7] as List).cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, DocumentModel obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -44,7 +45,9 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       ..writeByte(5)
       ..write(obj.pageCount)
       ..writeByte(6)
-      ..write(obj.createdAt);
+      ..write(obj.createdAt)
+      ..writeByte(7)
+      ..write(obj.pageImagePaths);
   }
 
   @override

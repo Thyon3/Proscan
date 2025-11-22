@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
@@ -79,6 +80,9 @@ class HomeScreen extends ConsumerWidget {
                             _openDocument(context, doc);
                           }
                         },
+                        onEdit: () => _openDocument(context, doc),
+                        onDelete: () => _deleteDocument(context, doc),
+                        onShare: () => _shareDocument(context, doc),
                       ),
                     );
                   }, childCount: recentDocs.length),
@@ -108,9 +112,9 @@ class HomeScreen extends ConsumerWidget {
       title: doc.title,
       imagePath: doc.thumbnailPath,
       date: dateFormat.format(doc.createdAt),
-      size: '', // Not tracked in DocumentModel
+      size: doc.format.toUpperCase(), // Show format (PDF/DOCX)
       pageCount: '${doc.pageCount} page${doc.pageCount == 1 ? '' : 's'}',
-      tags: [], // Not tracked in DocumentModel
+      tags: doc.format == 'docx' ? ['Text'] : [], // Tag for text documents
     );
   }
 
@@ -119,11 +123,58 @@ class HomeScreen extends ConsumerWidget {
     context.push(
       '/savepdfscreen',
       extra: {
-        'imagePaths': [doc.thumbnailPath], // Use thumbnail as placeholder
+        'imagePaths': doc.pageImagePaths.isNotEmpty
+            ? doc.pageImagePaths
+            : [doc.thumbnailPath],
         'pdfFileName': doc.title,
         'documentId': doc.id,
       },
     );
+  }
+
+  /// Delete document from Hive and internal storage
+  Future<void> _deleteDocument(BuildContext context, DocumentModel doc) async {
+    try {
+      await DocumentService.instance.deleteDocument(doc.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${doc.title} deleted'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Share document PDF
+  Future<void> _shareDocument(BuildContext context, DocumentModel doc) async {
+    try {
+      await Share.shareXFiles(
+        [XFile(doc.filePath)],
+        subject: doc.title,
+        text: 'Check out this scanned document!',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to share: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   /// Empty state widget when no documents exist

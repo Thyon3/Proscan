@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 
@@ -7,6 +8,9 @@ class ScanListItem extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback? onShare;
 
   const ScanListItem({
     super.key,
@@ -15,6 +19,9 @@ class ScanListItem extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     required this.onLongPress,
+    this.onEdit,
+    this.onDelete,
+    this.onShare,
   });
 
   @override
@@ -99,12 +106,44 @@ class ScanListItem extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 child: Stack(
                   children: [
-                    Image.asset(
-                      scan.imagePath,
-                      width: 64,
-                      height: 84,
-                      fit: BoxFit.cover,
-                    ),
+                    scan.tags.contains('Text')
+                        ? Container(
+                            width: 64,
+                            height: 84,
+                            color: colorScheme.primaryContainer,
+                            child: Icon(
+                              Icons.description_rounded,
+                              size: 32,
+                              color: colorScheme.primary,
+                            ),
+                          )
+                        : File(scan.imagePath).existsSync()
+                            ? Image.file(
+                                File(scan.imagePath),
+                                width: 64,
+                                height: 84,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: colorScheme.surfaceVariant,
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              )
+                            : Image.asset(
+                                scan.imagePath,
+                                width: 64,
+                                height: 84,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: colorScheme.surfaceVariant,
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
                     Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -194,9 +233,7 @@ class ScanListItem extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  onPressed: () {
-                    /* TODO: Show options menu */
-                  },
+                  onPressed: () => _showOptionsMenu(context),
                   icon: Icon(
                     Icons.more_vert_rounded,
                     size: 18,
@@ -207,6 +244,149 @@ class ScanListItem extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showOptionsMenu(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildMenuOption(
+                context,
+                icon: Icons.edit_rounded,
+                label: 'Edit',
+                onTap: () {
+                  Navigator.pop(context);
+                  onEdit?.call();
+                },
+              ),
+              _buildMenuOption(
+                context,
+                icon: Icons.share_rounded,
+                label: 'Share',
+                onTap: () {
+                  Navigator.pop(context);
+                  onShare?.call();
+                },
+              ),
+              _buildMenuOption(
+                context,
+                icon: Icons.delete_rounded,
+                label: 'Delete',
+                isDestructive: true,
+                onTap: () {
+                  Navigator.pop(context);
+                  _showDeleteConfirmation(context);
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenuOption(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isDestructive = false,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final color = isDestructive ? colorScheme.error : colorScheme.onSurface;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isDestructive
+                    ? colorScheme.error.withOpacity(0.1)
+                    : colorScheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: colorScheme.error),
+            const SizedBox(width: 12),
+            const Text('Delete Document?'),
+          ],
+        ),
+        content: Text(
+          'This will permanently delete "${scan.title}" and all its pages. This action cannot be undone.',
+          style: theme.textTheme.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onDelete?.call();
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:uuid/uuid.dart';
+import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/models/document_model.dart';
 
 class DocumentService {
@@ -26,12 +27,16 @@ class DocumentService {
     final appDocsDir = await getApplicationDocumentsDirectory();
     final documentsDir = Directory(p.join(appDocsDir.path, 'scanned_documents'));
     final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
+    final pagesDir = Directory(p.join(appDocsDir.path, 'page_images'));
 
     if (!documentsDir.existsSync()) {
       documentsDir.createSync(recursive: true);
     }
     if (!thumbsDir.existsSync()) {
       thumbsDir.createSync(recursive: true);
+    }
+    if (!pagesDir.existsSync()) {
+      pagesDir.createSync(recursive: true);
     }
 
     final id = _uuid.v4();
@@ -45,9 +50,21 @@ class DocumentService {
     final filePath = p.join(documentsDir.path, 'doc_$id.pdf');
     final thumbnailPath = p.join(thumbsDir.path, 'thumb_$id.jpg');
 
+    // Copy all page images to permanent storage
+    final savedPagePaths = <String>[];
+    for (int i = 0; i < pageImagePaths.length; i++) {
+      final sourcePath = pageImagePaths[i];
+      final destPath = p.join(pagesDir.path, '${id}_page_$i.jpg');
+      final sourceFile = File(sourcePath);
+      if (await sourceFile.exists()) {
+        await sourceFile.copy(destPath);
+        savedPagePaths.add(destPath);
+      }
+    }
+
     // Generate PDF
     final pdf = pw.Document();
-    for (final path in pageImagePaths) {
+    for (final path in savedPagePaths) {
       final bytes = await File(path).readAsBytes();
       final image = pw.MemoryImage(bytes);
       pdf.addPage(
@@ -68,12 +85,14 @@ class DocumentService {
     await file.writeAsBytes(await pdf.save(), flush: true);
 
     // Save thumbnail
-    final firstPageFile = File(pageImagePaths.first);
-    if (await firstPageFile.exists()) {
-      await firstPageFile.copy(thumbnailPath);
+    if (savedPagePaths.isNotEmpty) {
+      final firstPageFile = File(savedPagePaths.first);
+      if (await firstPageFile.exists()) {
+        await firstPageFile.copy(thumbnailPath);
+      }
     }
 
-    // Save to Hive
+    // Save to Hive with ALL page image paths
     final doc = DocumentModel(
       id: id,
       title: docTitle,
@@ -82,6 +101,7 @@ class DocumentService {
       format: 'pdf',
       pageCount: pageCount,
       createdAt: createdAt,
+      pageImagePaths: savedPagePaths,
     );
 
     final box = Hive.box<DocumentModel>(boxName);
@@ -95,6 +115,172 @@ class DocumentService {
     final docs = box.values.toList();
     docs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return docs;
+  }
+
+  Future<DocumentModel> updateDocument({
+    required String documentId,
+    required List<String> pageImagePaths,
+    String? title,
+  }) async {
+    if (pageImagePaths.isEmpty) {
+      throw ArgumentError('pageImagePaths cannot be empty');
+    }
+
+    final box = Hive.box<DocumentModel>(boxName);
+    final existingDoc = box.get(documentId);
+    
+    if (existingDoc == null) {
+      throw Exception('Document not found');
+    }
+
+    // Delete old page images
+    for (final pagePath in existingDoc.pageImagePaths) {
+      try {
+        final pageFile = File(pagePath);
+        if (await pageFile.exists()) await pageFile.delete();
+      } catch (_) {}
+    }
+
+    // Delete old PDF
+    try {
+      final file = File(existingDoc.filePath);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+
+    final appDocsDir = await getApplicationDocumentsDirectory();
+    final documentsDir = Directory(p.join(appDocsDir.path, 'scanned_documents'));
+    final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
+    final pagesDir = Directory(p.join(appDocsDir.path, 'page_images'));
+
+    final pageCount = pageImagePaths.length;
+    final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
+    final filePath = p.join(documentsDir.path, 'doc_$documentId.pdf');
+    final thumbnailPath = p.join(thumbsDir.path, 'thumb_$documentId.jpg');
+
+    // Copy all page images to permanent storage
+    final savedPagePaths = <String>[];
+    for (int i = 0; i < pageImagePaths.length; i++) {
+      final sourcePath = pageImagePaths[i];
+      final destPath = p.join(pagesDir.path, '${documentId}_page_$i.jpg');
+      final sourceFile = File(sourcePath);
+      if (await sourceFile.exists()) {
+        await sourceFile.copy(destPath);
+        savedPagePaths.add(destPath);
+      }
+    }
+
+    // Generate new PDF
+    final pdf = pw.Document();
+    for (final path in savedPagePaths) {
+      final bytes = await File(path).readAsBytes();
+      final image = pw.MemoryImage(bytes);
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: pw.EdgeInsets.zero,
+          build: (context) => pw.Center(
+            child: pw.FittedBox(
+              fit: pw.BoxFit.contain,
+              child: pw.Image(image),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final file = File(filePath);
+    await file.writeAsBytes(await pdf.save(), flush: true);
+
+    // Update thumbnail
+    if (savedPagePaths.isNotEmpty) {
+      final firstPageFile = File(savedPagePaths.first);
+      if (await firstPageFile.exists()) {
+        await firstPageFile.copy(thumbnailPath);
+      }
+    }
+
+    // Update in Hive
+    final updatedDoc = DocumentModel(
+      id: documentId,
+      title: docTitle,
+      filePath: filePath,
+      thumbnailPath: thumbnailPath,
+      format: 'pdf',
+      pageCount: pageCount,
+      createdAt: existingDoc.createdAt,
+      pageImagePaths: savedPagePaths,
+    );
+
+    await box.put(documentId, updatedDoc);
+    return updatedDoc;
+  }
+
+  Future<DocumentModel> saveTextDocument({
+    required String text,
+    String? title,
+  }) async {
+    if (text.isEmpty) {
+      throw ArgumentError('text cannot be empty');
+    }
+
+    final appDocsDir = await getApplicationDocumentsDirectory();
+    final documentsDir = Directory(p.join(appDocsDir.path, 'scanned_documents'));
+    final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
+
+    if (!documentsDir.existsSync()) {
+      documentsDir.createSync(recursive: true);
+    }
+    if (!thumbsDir.existsSync()) {
+      thumbsDir.createSync(recursive: true);
+    }
+
+    final id = _uuid.v4();
+    final createdAt = DateTime.now();
+
+    final docTitle = title?.isNotEmpty == true
+        ? title!
+        : 'Text ${DateFormat('MMM dd, yyyy').format(createdAt)}';
+
+    final filePath = p.join(documentsDir.path, 'doc_$id.docx');
+    final thumbnailPath = p.join(thumbsDir.path, 'thumb_$id.png');
+
+    // Generate DOCX file using FileExportService
+    final fileExportService = FileExportService();
+    final tempPath = await fileExportService.exportToWord(
+      text: text,
+      fileName: 'doc_$id',
+    );
+
+    if (tempPath != null) {
+      // Move to permanent location
+      await File(tempPath).copy(filePath);
+      try {
+        await File(tempPath).delete();
+      } catch (_) {}
+    }
+
+    // Create a text thumbnail (icon-based)
+    // For now, we'll use a placeholder path
+    // You can generate an actual thumbnail image if needed
+    final thumbFile = File(thumbnailPath);
+    await thumbFile.writeAsBytes([]); // Empty file as placeholder
+
+    // Save to Hive
+    final doc = DocumentModel(
+      id: id,
+      title: docTitle,
+      filePath: filePath,
+      thumbnailPath: thumbnailPath,
+      format: 'docx',
+      pageCount: 1,
+      createdAt: createdAt,
+      pageImagePaths: [], // No page images for text documents
+    );
+
+    final box = Hive.box<DocumentModel>(boxName);
+    await box.put(id, doc);
+
+    return doc;
   }
 
   Future<void> deleteDocument(String id) async {
@@ -111,6 +297,14 @@ class DocumentService {
         final thumb = File(doc.thumbnailPath);
         if (await thumb.exists()) await thumb.delete();
       } catch (_) {}
+      
+      // Delete all page images
+      for (final pagePath in doc.pageImagePaths) {
+        try {
+          final pageFile = File(pagePath);
+          if (await pageFile.exists()) await pageFile.delete();
+        } catch (_) {}
+      }
       
       await box.delete(id);
     }

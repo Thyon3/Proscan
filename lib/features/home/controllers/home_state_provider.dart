@@ -1,22 +1,23 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
-part 'home_state_provider.freezed.dart';
 
-@freezed
-class HomeState with _$HomeState {
-  const HomeState._();
-  const factory HomeState({
-    @Default(false) bool isSelectionMode,
-    @Default({}) Set<String> selectedScanIds,
-  }) = _HomeState;
+class HomeState {
+  final bool isSelectionMode;
+  final Set<String> selectedScanIds;
 
-  @override
-  // TODO: implement isSelectionMode
-  bool get isSelectionMode => throw UnimplementedError();
+  const HomeState({
+    this.isSelectionMode = false,
+    this.selectedScanIds = const {},
+  });
 
-  @override
-  // TODO: implement selectedScanIds
-  Set<String> get selectedScanIds => throw UnimplementedError();
+  HomeState copyWith({
+    bool? isSelectionMode,
+    Set<String>? selectedScanIds,
+  }) {
+    return HomeState(
+      isSelectionMode: isSelectionMode ?? this.isSelectionMode,
+      selectedScanIds: selectedScanIds ?? this.selectedScanIds,
+    );
+  }
 }
 
 // 2. CREATE THE NOTIFIER

@@ -1,3 +1,4 @@
+// models/document_model.dart
 import 'package:hive/hive.dart';
 
 part 'document_model.g.dart';
@@ -8,30 +9,34 @@ class DocumentModel extends HiveObject {
   final String id;
 
   @HiveField(1)
-  String title;
+  final String title;
 
   @HiveField(2)
   final String filePath;
 
   @HiveField(3)
-  final String thumbnailPath;
+  final String format;
 
   @HiveField(4)
-  final String format;
+  final DateTime createdAt;
 
   @HiveField(5)
   final int pageCount;
 
   @HiveField(6)
-  final DateTime createdAt;
+  final String thumbnailPath;
+
+  @HiveField(7, defaultValue: <String>[])
+  List<String> pageImagePaths; // ← This was missing/default null
 
   DocumentModel({
     required this.id,
     required this.title,
     required this.filePath,
-    required this.thumbnailPath,
     required this.format,
-    required this.pageCount,
     required this.createdAt,
-  });
+    required this.pageCount,
+    required this.thumbnailPath,
+    List<String>? pageImagePaths,
+  }) : pageImagePaths = pageImagePaths ?? [thumbnailPath];
 }

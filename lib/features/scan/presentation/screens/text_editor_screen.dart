@@ -4,9 +4,11 @@ import 'package:clipboard/clipboard.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/features/scan/core/services/ocr_service.dart';
+import 'package:thyscan/services/document_service.dart';
 
 class TextEditorScreen extends StatefulWidget {
   final String extractedText;
@@ -112,19 +114,20 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     setState(() => _isExporting = true);
 
     try {
-      final filePath = await _fileExportService.exportToWord(
+      // Save Word document to Hive and internal storage
+      final doc = await DocumentService.instance.saveTextDocument(
         text: text,
-        fileName: 'extracted_text_${DateTime.now().millisecondsSinceEpoch}',
+        title: 'Extracted Text ${DateFormat('MMM dd, yyyy').format(DateTime.now())}',
       );
 
-      if (filePath != null && mounted) {
-        // Share the file
-        await Share.shareXFiles(
-          [XFile(filePath)],
-          subject: 'Extracted Text',
-          text: 'Text extracted from document',
-        );
-        _showSnackBar('Word document exported and shared successfully');
+      if (mounted) {
+        _showSnackBar('Word document saved successfully');
+        
+        // Redirect to home screen
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          context.go('/'); // Navigate to home screen
+        }
       }
     } catch (e) {
       if (mounted) {

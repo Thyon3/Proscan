@@ -1,23 +1,24 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
-
-part 'library_state_provider.freezed.dart'; // Run build_runner to generate this
 
 // Define the state for the Library screen
-@freezed
-class LibraryState with _$LibraryState {
-  const factory LibraryState({
-    @Default(false) bool isSelectionMode,
-    @Default({}) Set<String> selectedScanIds,
-  }) = _LibraryState;
+class LibraryState {
+  final bool isSelectionMode;
+  final Set<String> selectedScanIds;
 
-  @override
-  // TODO: implement isSelectionMode
-  bool get isSelectionMode => throw UnimplementedError();
+  const LibraryState({
+    this.isSelectionMode = false,
+    this.selectedScanIds = const {},
+  });
 
-  @override
-  // TODO: implement selectedScanIds
-  Set<String> get selectedScanIds => throw UnimplementedError();
+  LibraryState copyWith({
+    bool? isSelectionMode,
+    Set<String>? selectedScanIds,
+  }) {
+    return LibraryState(
+      isSelectionMode: isSelectionMode ?? this.isSelectionMode,
+      selectedScanIds: selectedScanIds ?? this.selectedScanIds,
+    );
+  }
 }
 
 // Create the Notifier

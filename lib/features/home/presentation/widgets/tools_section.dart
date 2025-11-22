@@ -9,7 +9,6 @@ class ToolsSection extends StatelessWidget {
 
   // Main 7 modes shown on home screen + "More Tools"
   static final List<_ToolData> _mainTools = [
-    _ToolData(ScanMode.document, 'Smart Scan', color: const Color(0xFF3B82F6)),
     _ToolData(ScanMode.idCard, 'ID Card', color: Color(0xFF8B5CF6)),
     _ToolData(
       ScanMode.book,
@@ -44,16 +43,6 @@ class ToolsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Quick Tools',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: cs.onBackground,
-            ),
-          ),
-          const SizedBox(height: 20),
-
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
