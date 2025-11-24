@@ -21,6 +21,7 @@ class DocumentService {
     required List<String> pageImagePaths,
     String? title,
     String scanMode = 'document',
+    String? textContent,
   }) async {
     if (pageImagePaths.isEmpty) {
       throw ArgumentError('pageImagePaths cannot be empty');
@@ -105,6 +106,7 @@ class DocumentService {
       createdAt: createdAt,
       pageImagePaths: savedPagePaths,
       scanMode: scanMode,
+      textContent: textContent,
     );
 
     final box = Hive.box<DocumentModel>(boxName);
@@ -334,6 +336,8 @@ class DocumentService {
       pageCount: 1,
       createdAt: createdAt,
       pageImagePaths: [], // No page images for text documents
+      scanMode: 'text',
+      textContent: text, // Store the text content
     );
 
     final box = Hive.box<DocumentModel>(boxName);

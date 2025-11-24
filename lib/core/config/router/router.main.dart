@@ -211,5 +211,20 @@ final GoRouter router = GoRouter(
         return TranslationEditorScreen();
       },
     ),
+    GoRoute(
+      path: '/textdocumentscreen',
+      name: 'textdocumentscreen',
+      builder: (_, state) {
+        final extra = state.extra;
+        if (extra is Map<String, dynamic>) {
+          return TextDocumentScreen(
+            documentId: extra['documentId'] as String,
+          );
+        } else if (extra is String) {
+          return TextDocumentScreen(documentId: extra);
+        }
+        throw ArgumentError('TextDocumentScreen requires documentId.');
+      },
+    ),
   ],
 );

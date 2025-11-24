@@ -25,6 +25,7 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       pageCount: fields[5] as int,
       thumbnailPath: fields[6] as String,
       scanMode: fields[8] as String? ?? 'document',
+      textContent: fields[9] as String?,
       pageImagePaths: (fields[7] as List?)?.cast<String>(),
     );
   }
@@ -32,7 +33,7 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
   @override
   void write(BinaryWriter writer, DocumentModel obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +51,9 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       ..writeByte(7)
       ..write(obj.pageImagePaths)
       ..writeByte(8)
-      ..write(obj.scanMode);
+      ..write(obj.scanMode)
+      ..writeByte(9)
+      ..write(obj.textContent);
   }
 
   @override

@@ -32,6 +32,9 @@ class DocumentModel extends HiveObject {
   @HiveField(8, defaultValue: 'document')
   final String scanMode;
 
+  @HiveField(9, defaultValue: '')
+  final String? textContent; // For text/docx documents
+
   // Public getter that guarantees non-null list
   List<String> get pageImagePaths => _pageImagePaths ?? [];
 
@@ -44,6 +47,7 @@ class DocumentModel extends HiveObject {
     required this.pageCount,
     required this.thumbnailPath,
     this.scanMode = 'document',
+    this.textContent,
     List<String>? pageImagePaths,
   }) : _pageImagePaths = pageImagePaths;
 }

@@ -105,19 +105,28 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  /// Open document in SavePdfScreen
+  /// Open document in appropriate screen based on format
   void _openDocument(BuildContext context, DocumentModel doc) {
-    context.push(
-      '/savepdfscreen',
-      extra: {
-        'imagePaths': doc.pageImagePaths.isNotEmpty 
-            ? doc.pageImagePaths 
-            : [doc.thumbnailPath],
-        'pdfFileName': doc.title,
-        'documentId': doc.id,
-        'scanMode': doc.scanMode,
-      },
-    );
+    // Route text documents to TextDocumentScreen
+    if (doc.format == 'txt' || doc.format == 'docx') {
+      context.push(
+        '/textdocumentscreen',
+        extra: {'documentId': doc.id},
+      );
+    } else {
+      // Route PDF documents to SavePdfScreen
+      context.push(
+        '/savepdfscreen',
+        extra: {
+          'imagePaths': doc.pageImagePaths.isNotEmpty 
+              ? doc.pageImagePaths 
+              : [doc.thumbnailPath],
+          'pdfFileName': doc.title,
+          'documentId': doc.id,
+          'scanMode': doc.scanMode,
+        },
+      );
+    }
   }
 
   /// Delete document from Hive and internal storage

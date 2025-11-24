@@ -126,7 +126,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
         // Redirect to home screen
         await Future.delayed(const Duration(milliseconds: 500));
         if (mounted) {
-          context.go('/'); // Navigate to home screen
+          context.go('/appmainscreen'); // Navigate to main app screen (home)
         }
       }
     } catch (e) {
