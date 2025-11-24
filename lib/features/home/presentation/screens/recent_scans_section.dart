@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 
-class RecentScansSection extends StatefulWidget {
+class RecentScansSection extends ConsumerStatefulWidget {
   const RecentScansSection({super.key});
 
   @override
-  State<RecentScansSection> createState() => _RecentScansSectionState();
+  ConsumerState<RecentScansSection> createState() => _RecentScansSectionState();
 }
 
-class _RecentScansSectionState extends State<RecentScansSection> {
+class _RecentScansSectionState extends ConsumerState<RecentScansSection> {
   String _selectedChip = 'All';
   final List<String> _chipLabels = [
     'All',
@@ -17,10 +19,23 @@ class _RecentScansSectionState extends State<RecentScansSection> {
     'Notes',
   ];
 
+  String _getSortLabel(SortCriteria criteria) {
+    switch (criteria) {
+      case SortCriteria.date:
+        return 'Date scanned';
+      case SortCriteria.size:
+        return 'File size';
+      case SortCriteria.pages:
+        return 'Page count';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final homeState = ref.watch(homeProvider);
+    final homeNotifier = ref.read(homeProvider.notifier);
 
     return Column(
       children: [
@@ -32,7 +47,7 @@ class _RecentScansSectionState extends State<RecentScansSection> {
               Text(
                 'Recent Scans',
                 style: theme.textTheme.titleLarge?.copyWith(
-                  color: colorScheme.onBackground,
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.w700,
                   fontSize: 22,
                 ),
@@ -45,27 +60,47 @@ class _RecentScansSectionState extends State<RecentScansSection> {
                     color: colorScheme.outline.withOpacity(0.2),
                   ),
                 ),
-                child: TextButton.icon(
-                  onPressed: () {
-                    // TODO: Implement sorting logic
+                child: PopupMenuButton<SortCriteria>(
+                  onSelected: (criteria) {
+                    homeNotifier.setSortCriteria(criteria);
                   },
-                  icon: Icon(
-                    Icons.swap_vert_rounded,
-                    size: 18,
-                    color: colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                  label: Text(
-                    'Date scanned',
-                    style: TextStyle(
-                      color: colorScheme.onSurface.withOpacity(0.7),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: SortCriteria.date,
+                      child: Text('Date scanned'),
                     ),
-                  ),
-                  style: TextButton.styleFrom(
+                    const PopupMenuItem(
+                      value: SortCriteria.size,
+                      child: Text('File size'),
+                    ),
+                    const PopupMenuItem(
+                      value: SortCriteria.pages,
+                      child: Text('Page count'),
+                    ),
+                  ],
+                  child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.swap_vert_rounded,
+                          size: 18,
+                          color: colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _getSortLabel(homeState.sortCriteria),
+                          style: TextStyle(
+                            color: colorScheme.onSurface.withOpacity(0.7),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

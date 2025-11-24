@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +14,19 @@ import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
+
+/// Helper function to get file size in bytes
+int _getFileSize(String filePath) {
+  try {
+    final file = File(filePath);
+    if (file.existsSync()) {
+      return file.lengthSync();
+    }
+  } catch (e) {
+    // If file doesn't exist or error, return 0
+  }
+  return 0;
+}
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -38,6 +52,27 @@ class HomeScreen extends ConsumerWidget {
         builder: (context, box, _) {
           // Get recent documents (latest 6-8) sorted by newest first
           final allDocs = DocumentService.instance.getAllDocuments();
+          
+          // Sort based on criteria
+          switch (homeState.sortCriteria) {
+            case SortCriteria.date:
+              // Sort by date: newest first
+              allDocs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+              break;
+            case SortCriteria.size:
+              // Sort by actual file size: largest first
+              allDocs.sort((a, b) {
+                final sizeA = _getFileSize(a.filePath);
+                final sizeB = _getFileSize(b.filePath);
+                return sizeB.compareTo(sizeA);
+              });
+              break;
+            case SortCriteria.pages:
+              // Sort by page count: most pages first
+              allDocs.sort((a, b) => b.pageCount.compareTo(a.pageCount));
+              break;
+          }
+
           final recentDocs = allDocs.take(8).toList();
 
           return CustomScrollView(

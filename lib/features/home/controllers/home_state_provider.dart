@@ -1,21 +1,31 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+enum SortCriteria {
+  date,
+  size,
+  pages,
+}
+
 class HomeState {
   final bool isSelectionMode;
   final Set<String> selectedScanIds;
+  final SortCriteria sortCriteria;
 
   const HomeState({
     this.isSelectionMode = false,
     this.selectedScanIds = const {},
+    this.sortCriteria = SortCriteria.date,
   });
 
   HomeState copyWith({
     bool? isSelectionMode,
     Set<String>? selectedScanIds,
+    SortCriteria? sortCriteria,
   }) {
     return HomeState(
       isSelectionMode: isSelectionMode ?? this.isSelectionMode,
       selectedScanIds: selectedScanIds ?? this.selectedScanIds,
+      sortCriteria: sortCriteria ?? this.sortCriteria,
     );
   }
 }
@@ -62,6 +72,10 @@ class HomeNotifier extends Notifier<HomeState> {
   // TODO: Implement select all logic if needed
   void selectAll(List<String> allScanIds) {
     state = state.copyWith(selectedScanIds: allScanIds.toSet());
+  }
+
+  void setSortCriteria(SortCriteria criteria) {
+    state = state.copyWith(sortCriteria: criteria);
   }
 }
 
