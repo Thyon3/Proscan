@@ -279,6 +279,7 @@ class DocumentService {
   Future<DocumentModel> saveTextDocument({
     required String text,
     String? title,
+    String scanMode = 'text',
   }) async {
     if (text.isEmpty) {
       throw ArgumentError('text cannot be empty');
@@ -336,7 +337,7 @@ class DocumentService {
       pageCount: 1,
       createdAt: createdAt,
       pageImagePaths: [], // No page images for text documents
-      scanMode: 'text',
+      scanMode: scanMode,
       textContent: text, // Store the text content
     );
 

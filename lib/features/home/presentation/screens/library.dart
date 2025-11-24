@@ -109,10 +109,17 @@ class LibraryScreen extends ConsumerWidget {
   void _openDocument(BuildContext context, DocumentModel doc) {
     // Route text documents to TextDocumentScreen
     if (doc.format == 'txt' || doc.format == 'docx') {
-      context.push(
-        '/textdocumentscreen',
-        extra: {'documentId': doc.id},
-      );
+      if (doc.scanMode == 'translate') {
+        context.push(
+          '/translationeditorscreen',
+          extra: {'documentId': doc.id},
+        );
+      } else {
+        context.push(
+          '/textdocumentscreen',
+          extra: {'documentId': doc.id},
+        );
+      }
     } else {
       // Route PDF documents to SavePdfScreen
       context.push(

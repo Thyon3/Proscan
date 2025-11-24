@@ -208,7 +208,14 @@ final GoRouter router = GoRouter(
       path: '/translationeditorscreen',
       name: 'translationeditorscreen',
       builder: (context, state) {
-        return TranslationEditorScreen();
+        final extra = state.extra;
+        String? documentId;
+        if (extra is Map<String, dynamic>) {
+          documentId = extra['documentId'] as String?;
+        } else if (extra is String) {
+          documentId = extra;
+        }
+        return TranslationEditorScreen(documentId: documentId);
       },
     ),
     GoRoute(
