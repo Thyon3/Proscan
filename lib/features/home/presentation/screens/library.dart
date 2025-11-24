@@ -115,6 +115,7 @@ class LibraryScreen extends ConsumerWidget {
             : [doc.thumbnailPath],
         'pdfFileName': doc.title,
         'documentId': doc.id,
+        'scanMode': doc.scanMode,
       },
     );
   }

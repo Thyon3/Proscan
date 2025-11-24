@@ -104,6 +104,7 @@ class DocumentService {
       pageCount: pageCount,
       createdAt: createdAt,
       pageImagePaths: savedPagePaths,
+      scanMode: scanMode,
     );
 
     final box = Hive.box<DocumentModel>(boxName);

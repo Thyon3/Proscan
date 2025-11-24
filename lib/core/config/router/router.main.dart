@@ -142,10 +142,24 @@ final GoRouter router = GoRouter(
       builder: (_, state) {
         final extra = state.extra;
         if (extra is Map<String, dynamic>) {
+          // Parse scanMode string to enum
+          ScanMode? scanMode;
+          if (extra['scanMode'] is String) {
+            try {
+              scanMode = ScanMode.values.firstWhere(
+                (e) => e.toString().split('.').last == extra['scanMode'],
+                orElse: () => ScanMode.document,
+              );
+            } catch (_) {}
+          } else if (extra['scanMode'] is ScanMode) {
+            scanMode = extra['scanMode'] as ScanMode;
+          }
+
           return SavePdfScreen(
             imagePaths: extra['imagePaths'] as List<String>,
             pdfFileName: extra['pdfFileName'] as String,
             documentId: extra['documentId'] as String?, // Optional for existing documents
+            scanMode: scanMode,
           );
         }
         throw ArgumentError(
