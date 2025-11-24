@@ -415,7 +415,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       setState(() => _isSaving = false);
 
       // Navigate to Home Screen
-      context.go('/homescreen');
+      context.go('/appmainscreen');
       
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

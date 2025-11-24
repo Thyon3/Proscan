@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -107,7 +108,9 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
         // Navigate to home screen after a short delay
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+            // Use GoRouter to navigate to the main app screen (with bottom nav)
+            // This ensures we don't get stuck in a sub-route or the standalone home screen
+            context.go('/appmainscreen');
           }
         });
       }
@@ -155,7 +158,9 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
         // Navigate to home screen after a short delay
         Future.delayed(const Duration(milliseconds: 500), () {
           if (mounted) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
+            // Use GoRouter to navigate to the main app screen (with bottom nav)
+            // This ensures we don't get stuck in a sub-route or the standalone home screen
+            context.go('/appmainscreen');
           }
         });
       }

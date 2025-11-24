@@ -185,7 +185,7 @@ class _TranslationEditorScreenState
         );
         
         // Navigate to home screen
-        context.go('/homescreen');
+        context.go('/appmainscreen');
       }
     } catch (e) {
       if (mounted) {
