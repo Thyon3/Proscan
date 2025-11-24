@@ -22,6 +22,7 @@ import 'package:thyscan/features/scan/presentation/screens/save_pdf_screen.dart'
 import 'package:thyscan/features/scan/presentation/screens/text_editor_screen.dart';
 import 'package:thyscan/features/scan/presentation/screens/text_document_screen.dart';
 import 'package:thyscan/features/scan/presentation/screens/translation_editor_screen.dart';
+import 'package:thyscan/features/home/presentation/screens/search_screen.dart';
 import 'package:thyscan/features/splash/screens/splash.dart';
 
 part 'router.main.dart';

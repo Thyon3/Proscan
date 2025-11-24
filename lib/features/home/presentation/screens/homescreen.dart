@@ -341,32 +341,36 @@ class HomeScreen extends ConsumerWidget {
           child: Row(
             children: [
               Expanded(
-                child: Container(
-                  decoration: AppDesign.glass(
-                    opacity: 0.8,
-                    borderRadius: 16,
-                    color: colorScheme.surface,
-                  ),
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Search documents...',
-                      hintStyle: TextStyle(
-                        color: colorScheme.onSurface.withOpacity(0.5),
-                        fontFamily: 'Inter',
-                      ),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        color: colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                      filled: true,
-                      fillColor: Colors.transparent,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                child: GestureDetector(
+                  onTap: () => context.push('/searchscreen'),
+                  child: Container(
+                    decoration: AppDesign.glass(
+                      opacity: 0.8,
+                      borderRadius: 16,
+                      color: colorScheme.surface,
                     ),
-                    style: TextStyle(color: colorScheme.onSurface),
+                    child: TextField(
+                      enabled: false,
+                      decoration: InputDecoration(
+                        hintText: 'Search documents...',
+                        hintStyle: TextStyle(
+                          color: colorScheme.onSurface.withOpacity(0.5),
+                          fontFamily: 'Inter',
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          color: colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                        filled: true,
+                        fillColor: Colors.transparent,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      ),
+                      style: TextStyle(color: colorScheme.onSurface),
+                    ),
                   ),
                 ),
               ),

@@ -233,5 +233,10 @@ final GoRouter router = GoRouter(
         throw ArgumentError('TextDocumentScreen requires documentId.');
       },
     ),
+    GoRoute(
+      path: '/searchscreen',
+      name: 'searchscreen',
+      builder: (context, state) => const SearchScreen(),
+    ),
   ],
 );
