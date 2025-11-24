@@ -50,4 +50,29 @@ class DocumentModel extends HiveObject {
     this.textContent,
     List<String>? pageImagePaths,
   }) : _pageImagePaths = pageImagePaths;
+  DocumentModel copyWith({
+    String? id,
+    String? title,
+    String? filePath,
+    String? format,
+    DateTime? createdAt,
+    int? pageCount,
+    String? thumbnailPath,
+    String? scanMode,
+    String? textContent,
+    List<String>? pageImagePaths,
+  }) {
+    return DocumentModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      filePath: filePath ?? this.filePath,
+      format: format ?? this.format,
+      createdAt: createdAt ?? this.createdAt,
+      pageCount: pageCount ?? this.pageCount,
+      thumbnailPath: thumbnailPath ?? this.thumbnailPath,
+      scanMode: scanMode ?? this.scanMode,
+      textContent: textContent ?? this.textContent,
+      pageImagePaths: pageImagePaths ?? this.pageImagePaths,
+    );
+  }
 }

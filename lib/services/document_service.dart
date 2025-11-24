@@ -373,4 +373,24 @@ class DocumentService {
       await box.delete(id);
     }
   }
+  Future<void> renameDocument(String id, String newTitle) async {
+    final box = Hive.box<DocumentModel>(boxName);
+    final doc = box.get(id);
+
+    if (doc != null) {
+      final updatedDoc = DocumentModel(
+        id: doc.id,
+        title: newTitle,
+        filePath: doc.filePath,
+        thumbnailPath: doc.thumbnailPath,
+        format: doc.format,
+        pageCount: doc.pageCount,
+        createdAt: doc.createdAt,
+        pageImagePaths: doc.pageImagePaths,
+        scanMode: doc.scanMode,
+        textContent: doc.textContent,
+      );
+      await box.put(id, updatedDoc);
+    }
+  }
 }

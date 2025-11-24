@@ -236,6 +236,71 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
     }
   }
 
+  Future<void> _showRenameDialog() async {
+    if (_document == null) return;
+
+    final controller = TextEditingController(text: _document!.title);
+    final formKey = GlobalKey<FormState>();
+
+    final newTitle = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename Document'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Document Name',
+              border: OutlineInputBorder(),
+            ),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) {
+                return 'Please enter a name';
+              }
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, controller.text.trim());
+              }
+            },
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+
+    if (newTitle != null && newTitle != _document!.title && mounted) {
+      try {
+        await DocumentService.instance.renameDocument(widget.documentId, newTitle);
+        setState(() {
+          _document = _document!.copyWith(title: newTitle);
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Document renamed successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Rename failed: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -269,9 +334,22 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            _document?.title ?? 'Text Document',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  _document?.title ?? 'Text Document',
+                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit, size: 18),
+                onPressed: _showRenameDialog,
+                tooltip: 'Rename',
+              ),
+            ],
           ),
           actions: [
             if (_isModified)
