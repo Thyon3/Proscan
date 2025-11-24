@@ -29,6 +29,9 @@ class DocumentModel extends HiveObject {
   @HiveField(7, defaultValue: <String>[])
   final List<String>? _pageImagePaths; // Internal nullable field
 
+  @HiveField(8, defaultValue: 'document')
+  final String scanMode;
+
   // Public getter that guarantees non-null list
   List<String> get pageImagePaths => _pageImagePaths ?? [];
 
@@ -40,6 +43,7 @@ class DocumentModel extends HiveObject {
     required this.createdAt,
     required this.pageCount,
     required this.thumbnailPath,
+    this.scanMode = 'document',
     List<String>? pageImagePaths,
   }) : _pageImagePaths = pageImagePaths;
 }

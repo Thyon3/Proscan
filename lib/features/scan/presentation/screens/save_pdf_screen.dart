@@ -235,7 +235,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       final path = await context.push<String>(
         '/camerascreen',
         extra: CameraScreenConfig(
-          initialMode: ScanMode.document,
+          initialMode: widget.scanMode ?? ScanMode.document,
           restrictToInitialMode: true,
           returnCapturePath: true,
         ),
@@ -279,13 +279,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       case 1: // Edit
         _showEditOptions();
         break;
-      case 2: // To Word
-        _convertToWord();
-        setState(() {
-          _selectedBottomNavIndex = -1; // Reset selection
-        });
-        break;
-      case 3: // Share
+      case 2: // Share
         _sharePdf().then((_) {
           if (mounted) {
             setState(() {
@@ -293,6 +287,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             });
           }
         });
+        break;
+      case 3: // Save
+        _handleSaveAndHome();
         break;
     }
   }
@@ -328,7 +325,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                   '/editscanscreen',
                   extra: EditScanArgs(
                     imagePath: _pages.isNotEmpty ? _pages[0] : '',
-                    initialMode: ScanMode.document,
+                    initialMode: widget.scanMode ?? ScanMode.document,
+                    documentId: _documentId,
+                    imagePaths: _pages,
                   ),
                 );
               },
@@ -370,6 +369,60 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         ],
       ),
     );
+  }
+
+  /// Saves document and redirects to Home Screen
+  Future<void> _handleSaveAndHome() async {
+    if (_pages.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No pages to save')));
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      if (_documentId != null) {
+        // Update existing document
+        await DocumentService.instance.updateDocument(
+          documentId: _documentId!,
+          pageImagePaths: _pages,
+          title: widget.pdfFileName.replaceAll('.pdf', ''),
+        );
+      } else {
+        // Save new document
+        await DocumentService.instance.saveDocument(
+          pageImagePaths: _pages,
+          title: widget.pdfFileName.replaceAll('.pdf', ''),
+          scanMode: widget.scanMode?.toString().split('.').last ?? 'document',
+        );
+      }
+
+      if (!mounted) return;
+
+      setState(() => _isSaving = false);
+
+      // Navigate to Home Screen
+      context.go('/homescreen');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Document saved successfully'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   /// Exports document as Word (.docx) file
@@ -610,7 +663,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
               subtitle: const Text('Save to library'),
               onTap: () {
                 Navigator.pop(context);
-                _savePdfToLibrary();
+                _handleSaveAndHome();
               },
             ),
             ListTile(
@@ -799,13 +852,13 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                   index: 1,
                 ),
                 _buildBottomNavItem(
-                  icon: Icons.text_fields_rounded,
-                  label: 'To Word',
+                  icon: Icons.share_rounded,
+                  label: 'Share',
                   index: 2,
                 ),
                 _buildBottomNavItem(
-                  icon: Icons.share_rounded,
-                  label: 'Share',
+                  icon: Icons.save_rounded,
+                  label: 'Save',
                   index: 3,
                 ),
               ],

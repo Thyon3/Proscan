@@ -20,6 +20,7 @@ class DocumentService {
   Future<DocumentModel> saveDocument({
     required List<String> pageImagePaths,
     String? title,
+    String scanMode = 'document',
   }) async {
     if (pageImagePaths.isEmpty) {
       throw ArgumentError('pageImagePaths cannot be empty');
@@ -179,19 +180,8 @@ class DocumentService {
       throw Exception('Document not found');
     }
 
-    // Delete old page images
-    for (final pagePath in existingDoc.pageImagePaths) {
-      try {
-        final pageFile = File(pagePath);
-        if (await pageFile.exists()) await pageFile.delete();
-      } catch (_) {}
-    }
-
-    // Delete old PDF
-    try {
-      final file = File(existingDoc.filePath);
-      if (await file.exists()) await file.delete();
-    } catch (_) {}
+    // We will delete old files ONLY after successfully saving the new ones
+    // to prevent data loss if the source files are the same as the old files.
 
     final appDocsDir = await getApplicationDocumentsDirectory();
     final documentsDir = Directory(p.join(appDocsDir.path, 'scanned_documents'));
@@ -202,13 +192,19 @@ class DocumentService {
     final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
     final filePath = p.join(documentsDir.path, 'doc_$documentId.pdf');
     final thumbnailPath = p.join(thumbsDir.path, 'thumb_$documentId.jpg');
+    
+    // Use a timestamp to ensure unique filenames for the new pages
+    // This prevents conflicts if we are overwriting files that are currently in use
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-    // Copy all page images to permanent storage
+    // Copy all page images to permanent storage with NEW unique names
     final savedPagePaths = <String>[];
     for (int i = 0; i < pageImagePaths.length; i++) {
       final sourcePath = pageImagePaths[i];
-      final destPath = p.join(pagesDir.path, '${documentId}_page_$i.jpg');
+      // Add timestamp to filename to avoid collisions
+      final destPath = p.join(pagesDir.path, '${documentId}_${timestamp}_page_$i.jpg');
       final sourceFile = File(sourcePath);
+      
       if (await sourceFile.exists()) {
         await sourceFile.copy(destPath);
         savedPagePaths.add(destPath);
@@ -235,6 +231,7 @@ class DocumentService {
     }
 
     final file = File(filePath);
+    // Overwrite the PDF file
     await file.writeAsBytes(await pdf.save(), flush: true);
 
     // Update thumbnail
@@ -242,6 +239,21 @@ class DocumentService {
       final firstPageFile = File(savedPagePaths.first);
       if (await firstPageFile.exists()) {
         await firstPageFile.copy(thumbnailPath);
+      }
+    }
+
+    // NOW it is safe to delete the OLD page images
+    // We compare with the NEW paths to ensure we don't delete what we just saved
+    // (though the timestamp should prevent this anyway)
+    for (final oldPagePath in existingDoc.pageImagePaths) {
+      try {
+        // Don't delete if it's in the new list (unlikely due to timestamp, but good safety)
+        if (!savedPagePaths.contains(oldPagePath)) {
+          final pageFile = File(oldPagePath);
+          if (await pageFile.exists()) await pageFile.delete();
+        }
+      } catch (_) {
+        // Ignore deletion errors for old files
       }
     }
 

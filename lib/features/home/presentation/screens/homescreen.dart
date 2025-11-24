@@ -117,6 +117,7 @@ class HomeScreen extends ConsumerWidget {
       size: doc.format.toUpperCase(), // Show format (PDF/DOCX)
       pageCount: '${doc.pageCount} page${doc.pageCount == 1 ? '' : 's'}',
       tags: doc.format == 'docx' ? ['Text'] : [], // Tag for text documents
+      scanMode: doc.scanMode,
     );
   }
 
@@ -130,6 +131,7 @@ class HomeScreen extends ConsumerWidget {
             : [doc.thumbnailPath],
         'pdfFileName': doc.title,
         'documentId': doc.id,
+        'scanMode': doc.scanMode,
       },
     );
   }

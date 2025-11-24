@@ -16,10 +16,15 @@ import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 class EditScanScreen extends StatefulWidget {
   final String imagePath;
   final ScanMode initialMode;
+  final String? documentId;
+  final List<String>? imagePaths;
+
   const EditScanScreen({
     super.key,
     required this.imagePath,
     required this.initialMode,
+    this.documentId,
+    this.imagePaths,
   });
 
   @override
@@ -55,8 +60,13 @@ class _EditScanScreenState extends State<EditScanScreen> {
   @override
   void initState() {
     super.initState();
-    _currentPath = widget.imagePath;
-    _pages = [widget.imagePath];
+    if (widget.imagePaths != null && widget.imagePaths!.isNotEmpty) {
+      _pages = List.from(widget.imagePaths!);
+      _currentPath = _pages[0];
+    } else {
+      _currentPath = widget.imagePath;
+      _pages = [widget.imagePath];
+    }
     _pageController = PageController(initialPage: 0);
     // Initialize PDF file name with timestamp-based default
     _pdfFileName = 'DocScan_${DateTime.now().millisecondsSinceEpoch}';
@@ -461,7 +471,12 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
     context.push(
       '/savepdfscreen',
-      extra: {'imagePaths': _pages, 'pdfFileName': _pdfFileName},
+      extra: {
+        'imagePaths': _pages,
+        'pdfFileName': _pdfFileName,
+        'documentId': widget.documentId,
+        'scanMode': widget.initialMode,
+      },
     );
   }
 

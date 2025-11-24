@@ -124,6 +124,8 @@ final GoRouter router = GoRouter(
           return EditScanScreen(
             imagePath: extra.imagePath,
             initialMode: extra.initialMode,
+            documentId: extra.documentId,
+            imagePaths: extra.imagePaths,
           );
         } else if (extra is String && extra.isNotEmpty) {
           // Backwards compatibility: allow passing just the image path.

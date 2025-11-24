@@ -6,6 +6,7 @@ class Scan {
   final String size;
   final String pageCount;
   final List<String> tags;
+  final String scanMode;
 
   const Scan({
     required this.id,
@@ -15,5 +16,6 @@ class Scan {
     required this.size,
     required this.pageCount,
     required this.tags,
+    this.scanMode = 'document',
   });
 }

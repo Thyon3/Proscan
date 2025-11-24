@@ -9,7 +9,6 @@ import 'package:thyscan/services/document_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Hive.initFlutter();
   Hive.registerAdapter(DocumentModelAdapter());
   await Hive.openBox<DocumentModel>(DocumentService.boxName);

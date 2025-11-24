@@ -96,8 +96,15 @@ extension ScanModeX on ScanMode {
 class EditScanArgs {
   final String imagePath;
   final ScanMode initialMode;
+  final String? documentId;
+  final List<String>? imagePaths;
 
-  const EditScanArgs({required this.imagePath, required this.initialMode});
+  const EditScanArgs({
+    required this.imagePath,
+    required this.initialMode,
+    this.documentId,
+    this.imagePaths,
+  });
 }
 
 class CameraScreenConfig {
