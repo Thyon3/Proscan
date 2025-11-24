@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/features/scan/presentation/screens/delete_pages_screen.dart';
 import 'package:thyscan/services/document_service.dart';
 
 class SavePdfScreen extends StatefulWidget {
@@ -338,7 +339,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
               onTap: () {
                 Navigator.pop(context);
                 // Show delete options
-                _showDeleteOptions();
+                _handleDeletePages();
               },
             ),
             const SizedBox(height: 16),
@@ -348,27 +349,37 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     );
   }
 
-  void _showDeleteOptions() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Pages'),
-        content: const Text('Select pages to delete'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Implement delete functionality
-            },
-            child: const Text('Delete'),
-          ),
-        ],
+  Future<void> _handleDeletePages() async {
+    final deletedIndices = await Navigator.push<List<int>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DeletePagesScreen(pages: _pages),
       ),
     );
+
+    if (deletedIndices != null && deletedIndices.isNotEmpty && mounted) {
+      setState(() {
+        // Remove pages in reverse order to avoid index shifting issues
+        for (final index in deletedIndices.reversed) {
+          _pages.removeAt(index);
+        }
+      });
+
+      // Update the document
+      await _updateExistingDocument();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Deleted ${deletedIndices.length} page${deletedIndices.length == 1 ? '' : 's'}',
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   /// Saves document and redirects to Home Screen
