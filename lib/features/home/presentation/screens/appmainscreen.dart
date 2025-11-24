@@ -22,18 +22,16 @@ import 'package:thyscan/features/profile/presentation/screens/premium_user.dart'
 class AppMainScreen extends ConsumerWidget {
   const AppMainScreen({super.key});
 
-  // ... (Your _NavItem class and list are perfect, no changes needed)
   static final List<_NavItem> _navItems = [
-    _NavItem(Icons.home_outlined, Icons.home, 'Home'),
-    _NavItem(Icons.grid_view_rounded, Icons.grid_view, 'Tools'),
+    _NavItem(Icons.home_outlined, Icons.home_rounded, 'Home'),
+    _NavItem(Icons.widgets_outlined, Icons.widgets_rounded, 'Tools'),
     _NavItem(null, null, ''), // FAB placeholder
-    _NavItem(Icons.folder_outlined, Icons.folder, 'Library'),
-    _NavItem(Icons.person_outline_rounded, Icons.person, 'Profile'),
+    _NavItem(Icons.folder_outlined, Icons.folder_rounded, 'Library'),
+    _NavItem(Icons.person_outlined, Icons.person_rounded, 'Profile'),
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final screenHeight = MediaQuery.sizeOf(context).height;
     final int currentIndex = ref.watch(screenIndexProvider);
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -55,76 +53,156 @@ class AppMainScreen extends ConsumerWidget {
     ];
 
     return Scaffold(
+      backgroundColor: isDark
+          ? const Color(0xFF0A0A0A)
+          : const Color(0xFFFAFBFF),
       body: IndexedStack(index: currentIndex, children: screens),
 
       floatingActionButton:
           hideMainNavigation // Use the new combined boolean
           ? null
-          : FloatingActionButton(
-              onPressed: () => context.push('/camerascreen'),
-              backgroundColor: AppColors.primary,
-              elevation: 12,
-              child: const Icon(
-                Icons.camera_alt,
-                color: Colors.white,
-                size: 32,
-              ),
-            ),
+          : _buildModernFAB(context, isDark),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
 
       bottomNavigationBar:
           hideMainNavigation // Use the new combined boolean
           ? null
-          : BottomAppBar(
-              shape: const CircularNotchedRectangle(),
-              notchMargin: 10,
-              color: isDark ? const Color(0xFF0A0E0A) : Colors.white,
-              elevation: 20,
-              child: SizedBox(
-                height: screenHeight * 0.06,
-                child: BottomNavigationBar(
-                  currentIndex: currentIndex,
-                  onTap: (int idx) {
-                    if (idx != 2) {
-                      ref.read(screenIndexProvider.notifier).state = idx;
-                    }
-                  },
-                  // ... a lot of BottomNavigationBar properties (no changes needed here) ...
-                  type: BottomNavigationBarType.fixed,
-                  showSelectedLabels: true,
-                  showUnselectedLabels: true,
-                  selectedFontSize: 10,
-                  unselectedFontSize: 10,
-                  selectedItemColor: AppColors.primary,
-                  unselectedItemColor: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withOpacity(0.6),
-                  items: _navItems.asMap().entries.map((e) {
-                    final int idx = e.key;
-                    final _NavItem item = e.value;
+          : _buildModernBottomNavBar(context, currentIndex, ref, isDark),
+    );
+  }
 
-                    if (idx == 2) {
-                      return const BottomNavigationBarItem(
-                        icon: SizedBox(width: 48),
-                        label: '',
-                      );
-                    }
+  Widget _buildModernFAB(BuildContext context, bool isDark) {
+    return Container(
+      width: 68,
+      height: 68,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [Color(0xFF7C3AED), Color(0xFF6366F1)]
+              : [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+        ),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7C3AED).withOpacity(isDark ? 0.4 : 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: FloatingActionButton(
+        onPressed: () => context.push('/camerascreen'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: const Icon(
+          Icons.camera_alt_rounded,
+          color: Colors.white,
+          size: 28,
+        ),
+      ),
+    );
+  }
 
-                    return BottomNavigationBarItem(
-                      icon: Icon(
-                        currentIndex == idx ? item.selected : item.unselected,
-                      ),
-                      label: item.label,
-                    );
-                  }).toList(),
-                ),
+  Widget _buildModernBottomNavBar(
+    BuildContext context,
+    int currentIndex,
+    WidgetRef ref,
+    bool isDark,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: BottomAppBar(
+          shape: const CircularNotchedRectangle(),
+          notchMargin: 8,
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+          elevation: 0,
+          padding: EdgeInsets.zero,
+          height: 70,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: _navItems.asMap().entries.map((e) {
+              final int idx = e.key;
+              final _NavItem item = e.value;
+
+              if (idx == 2) {
+                return const SizedBox(width: 48); // Space for FAB
+              }
+
+              return _buildNavItem(
+                context: context,
+                index: idx,
+                currentIndex: currentIndex,
+                item: item,
+                ref: ref,
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required BuildContext context,
+    required int index,
+    required int currentIndex,
+    required _NavItem item,
+    required WidgetRef ref,
+  }) {
+    final bool isSelected = currentIndex == index;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Expanded(
+      child: InkWell(
+        onTap: () => ref.read(screenIndexProvider.notifier).state = index,
+        customBorder: const CircleBorder(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isSelected ? item.selected : item.unselected,
+              size: 24,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurface.withOpacity(0.5),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              item.label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurface.withOpacity(0.5),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                fontSize: 10,
               ),
             ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// ... (_NavItem class and screenIndexProvider remain the same)
 class _NavItem {
   final IconData? unselected;
   final IconData? selected;

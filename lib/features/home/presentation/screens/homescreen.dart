@@ -52,7 +52,7 @@ class HomeScreen extends ConsumerWidget {
         builder: (context, box, _) {
           // Get recent documents (latest 6-8) sorted by newest first
           final allDocs = DocumentService.instance.getAllDocuments();
-          
+
           // Sort based on criteria
           switch (homeState.sortCriteria) {
             case SortCriteria.date:
@@ -160,10 +160,7 @@ class HomeScreen extends ConsumerWidget {
   void _openDocument(BuildContext context, DocumentModel doc) {
     // Route text documents to TextDocumentScreen
     if (doc.format == 'txt' || doc.format == 'docx') {
-      context.push(
-        '/textdocumentscreen',
-        extra: {'documentId': doc.id},
-      );
+      context.push('/textdocumentscreen', extra: {'documentId': doc.id});
     } else {
       // Route PDF documents to SavePdfScreen
       context.push(
