@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,19 +17,6 @@ import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
-/// Helper function to get file size in bytes
-int _getFileSize(String filePath) {
-  try {
-    final file = File(filePath);
-    if (file.existsSync()) {
-      return file.lengthSync();
-    }
-  } catch (e) {
-    // If file doesn't exist or error, return 0
-  }
-  return 0;
-}
-
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -38,16 +26,13 @@ class HomeScreen extends ConsumerWidget {
     final homeNotifier = ref.read(homeProvider.notifier);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = Theme.of(context).colorScheme.brightness == Brightness.dark;
 
     // Get Hive box for real-time updates
     final box = Hive.box<DocumentModel>(DocumentService.boxName);
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color.fromARGB(98, 0, 0, 0)
-          : Colors.white,
-      appBar: _buildAppBar(context, homeState, homeNotifier, box),
+      backgroundColor: colorScheme.background,
+      appBar: _buildPremiumAppBar(context, homeState, homeNotifier, box),
       body: ValueListenableBuilder<Box<DocumentModel>>(
         valueListenable: box.listenable(),
         builder: (context, box, _) {
@@ -56,68 +41,122 @@ class HomeScreen extends ConsumerWidget {
           final recentDocs = filteredDocs.take(8).toList();
 
           return CustomScrollView(
+            physics: const BouncingScrollPhysics(),
             slivers: [
+              // Header Spacing
               if (!homeState.isSelectionMode)
-                const SliverToBoxAdapter(child: SizedBox(height: 20)),
-              const SliverToBoxAdapter(child: ToolsSection()),
-              const SliverToBoxAdapter(child: SizedBox(height: 32)),
-              const SliverToBoxAdapter(child: RecentScansSection()),
-              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+
+              // Welcome Section
+              if (!homeState.isSelectionMode)
+                SliverToBoxAdapter(
+                  child: _buildWelcomeSection(context, colorScheme),
+                ),
+
+              // Tools Section
+              if (!homeState.isSelectionMode)
+                const SliverToBoxAdapter(child: ToolsSection()),
+
+              // Recent Scans Section
+              if (!homeState.isSelectionMode)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 40, bottom: 16),
+                    child: RecentScansSection(),
+                  ),
+                ),
 
               // Show empty state or document list
-              if (recentDocs.isEmpty)
-                SliverToBoxAdapter(child: _buildEmptyState(context))
-              else
-                SliverList(
-                  delegate: SliverChildBuilderDelegate((context, index) {
-                    final doc = recentDocs[index];
-                    // Convert DocumentModel to Scan for compatibility
-                    final scan = _documentToScan(doc);
-                    final isSelected = homeState.selectedScanIds.contains(
-                      scan.id,
-                    );
+              if (recentDocs.isEmpty && !homeState.isSelectionMode)
+                SliverToBoxAdapter(child: _buildPremiumEmptyState(context))
+              else if (recentDocs.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final doc = recentDocs[index];
+                      final scan = _documentToScan(doc);
+                      final isSelected = homeState.selectedScanIds.contains(
+                        scan.id,
+                      );
 
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 6,
-                      ),
-                      child: ScanListItem(
-                        scan: scan,
-                        isSelectionMode: homeState.isSelectionMode,
-                        isSelected: isSelected,
-                        onLongPress: () {
-                          homeNotifier.enterSelectionMode(scan.id);
-                        },
-                        onTap: () {
-                          if (homeState.isSelectionMode) {
-                            homeNotifier.toggleScanSelection(scan.id);
-                          } else {
-                            // Open document in SavePdfScreen
-                            _openDocument(context, doc);
-                          }
-                        },
-                        onEdit: () => _openDocument(context, doc),
-                        onDelete: () => _deleteDocument(context, doc),
-                        onShare: () => _shareDocument(context, doc),
-                      ),
-                    );
-                  }, childCount: recentDocs.length),
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: ScanListItem(
+                          scan: scan,
+                          isSelectionMode: homeState.isSelectionMode,
+                          isSelected: isSelected,
+                          onLongPress: () {
+                            homeNotifier.enterSelectionMode(scan.id);
+                          },
+                          onTap: () {
+                            if (homeState.isSelectionMode) {
+                              homeNotifier.toggleScanSelection(scan.id);
+                            } else {
+                              _openDocument(context, doc);
+                            }
+                          },
+                          onEdit: () => _openDocument(context, doc),
+                          onDelete: () => _deleteDocument(context, doc),
+                          onShare: () => _shareDocument(context, doc),
+                        ),
+                      );
+                    }, childCount: recentDocs.length),
+                  ),
                 ),
 
-              // FIXED: Add proper bottom padding based on selection mode
+              // Bottom padding
               SliverToBoxAdapter(
-                child: SizedBox(
-                  height: homeState.isSelectionMode
-                      ? 120
-                      : 40, // Increased padding for selection mode
-                ),
+                child: SizedBox(height: homeState.isSelectionMode ? 120 : 60),
               ),
             ],
           );
         },
       ),
       bottomNavigationBar: _buildBottomBar(context, homeState, homeNotifier),
+    );
+  }
+
+  /// Premium Welcome Section
+  Widget _buildWelcomeSection(BuildContext context, ColorScheme colorScheme) {
+    final now = DateTime.now();
+    final hour = now.hour;
+    String greeting;
+
+    if (hour < 12) {
+      greeting = 'Good Morning';
+    } else if (hour < 17) {
+      greeting = 'Good Afternoon';
+    } else {
+      greeting = 'Good Evening';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            greeting,
+            style: GoogleFonts.inter(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onBackground,
+              letterSpacing: -0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Ready to scan some documents?',
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onBackground.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 
@@ -129,20 +168,18 @@ class HomeScreen extends ConsumerWidget {
       title: doc.title,
       imagePath: doc.thumbnailPath,
       date: dateFormat.format(doc.createdAt),
-      size: doc.format.toUpperCase(), // Show format (PDF/DOCX)
+      size: doc.format.toUpperCase(),
       pageCount: '${doc.pageCount} page${doc.pageCount == 1 ? '' : 's'}',
-      tags: doc.format == 'docx' ? ['Text'] : [], // Tag for text documents
+      tags: doc.format == 'docx' ? ['Text'] : [],
       scanMode: doc.scanMode,
     );
   }
 
   /// Open document in appropriate screen based on format
   void _openDocument(BuildContext context, DocumentModel doc) {
-    // Route text documents to TextDocumentScreen
     if (doc.format == 'txt' || doc.format == 'docx') {
       context.push('/textdocumentscreen', extra: {'documentId': doc.id});
     } else {
-      // Route PDF documents to SavePdfScreen
       context.push(
         '/savepdfscreen',
         extra: {
@@ -167,6 +204,9 @@ class HomeScreen extends ConsumerWidget {
             content: Text('${doc.title} deleted'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -176,6 +216,9 @@ class HomeScreen extends ConsumerWidget {
           SnackBar(
             content: Text('Failed to delete: $e'),
             backgroundColor: Colors.red,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -196,49 +239,101 @@ class HomeScreen extends ConsumerWidget {
           SnackBar(
             content: Text('Failed to share: $e'),
             backgroundColor: Colors.red,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
     }
   }
 
-  /// Empty state widget when no documents exist
-  Widget _buildEmptyState(BuildContext context) {
+  /// Premium Empty State
+  Widget _buildPremiumEmptyState(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Padding(
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       padding: const EdgeInsets.all(40),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colorScheme.primary.withOpacity(0.05),
+            colorScheme.primary.withOpacity(0.02),
+          ],
+        ),
+        border: Border.all(
+          color: colorScheme.outline.withOpacity(0.1),
+          width: 1.5,
+        ),
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.document_scanner_rounded,
-            size: 80,
-            color: colorScheme.primary.withOpacity(0.5),
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.document_scanner_rounded,
+              size: 48,
+              color: colorScheme.primary.withOpacity(0.5),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
             'No scans yet',
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
+            style: GoogleFonts.inter(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
               color: colorScheme.onSurface,
+              letterSpacing: -0.5,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            'Start scanning documents to see them here',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
+            'Start scanning documents to see them here.\nYour recent scans will appear in this section.',
             textAlign: TextAlign.center,
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              color: colorScheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: () => context.push('/camerascreen'),
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 0,
+            ),
+            child: Text(
+              'Start Scanning',
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(
+  /// Premium App Bar
+  PreferredSizeWidget _buildPremiumAppBar(
     BuildContext context,
     HomeState state,
     HomeNotifier notifier,
@@ -258,22 +353,29 @@ class HomeScreen extends ConsumerWidget {
         shadowColor: Colors.black.withOpacity(0.1),
         leading: IconButton(
           icon: Container(
-            padding: const EdgeInsets.all(6),
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
+              color: colorScheme.surfaceVariant,
               shape: BoxShape.circle,
-              border: Border.all(color: colorScheme.onSurface.withOpacity(0.3)),
             ),
-            child: Icon(Icons.close, size: 20, color: colorScheme.onSurface),
+            child: Icon(
+              Icons.close_rounded,
+              size: 20,
+              color: colorScheme.onSurface,
+            ),
           ),
           onPressed: notifier.exitSelectionMode,
         ),
         title: Text(
           '${state.selectedScanIds.length} selected',
-          style: theme.textTheme.titleLarge?.copyWith(
+          style: GoogleFonts.inter(
+            fontSize: 18,
             fontWeight: FontWeight.w700,
             color: colorScheme.onSurface,
           ),
         ),
+        centerTitle: false,
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 16),
@@ -291,15 +393,18 @@ class HomeScreen extends ConsumerWidget {
               style: TextButton.styleFrom(
                 foregroundColor: colorScheme.primary,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
               child: Text(
                 areAllSelected ? 'Deselect All' : 'Select All',
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                  fontSize: 15,
                   color: colorScheme.primary,
                 ),
               ),
@@ -312,7 +417,7 @@ class HomeScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
-        toolbarHeight: 90.0,
+        toolbarHeight: 100,
         title: Padding(
           padding: const EdgeInsets.only(top: 20.0),
           child: Row(
@@ -321,46 +426,54 @@ class HomeScreen extends ConsumerWidget {
                 child: GestureDetector(
                   onTap: () => context.push('/searchscreen'),
                   child: Container(
-                    decoration: AppDesign.glass(
-                      opacity: 0.8,
-                      borderRadius: 16,
+                    height: 56,
+                    decoration: BoxDecoration(
                       color: colorScheme.surface,
-                    ),
-                    child: TextField(
-                      enabled: false,
-                      decoration: InputDecoration(
-                        hintText: 'Search documents...',
-                        hintStyle: TextStyle(
-                          color: colorScheme.onSurface.withOpacity(0.5),
-                          fontFamily: 'Inter',
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search_rounded,
-                          color: colorScheme.onSurface.withOpacity(0.7),
-                        ),
-                        filled: true,
-                        fillColor: Colors.transparent,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: colorScheme.outline.withOpacity(0.15),
+                        width: 1.5,
                       ),
-                      style: TextStyle(color: colorScheme.onSurface),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.03),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 20),
+                        Icon(
+                          Icons.search_rounded,
+                          color: colorScheme.primary,
+                          size: 24,
+                        ),
+                        const SizedBox(width: 16),
+                        Text(
+                          'Search documents...',
+                          style: GoogleFonts.inter(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                            color: colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Container(
                 decoration: BoxDecoration(
                   gradient: AppDesign.primaryGradient,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
                       color: const Color(0xFF7C3AED).withOpacity(0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+                      blurRadius: 15,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
@@ -375,7 +488,7 @@ class HomeScreen extends ConsumerWidget {
                     Icons.workspace_premium_rounded,
                     color: Colors.white,
                   ),
-                  iconSize: 24,
+                  iconSize: 26,
                 ),
               ),
             ],
@@ -391,57 +504,56 @@ class HomeScreen extends ConsumerWidget {
     HomeNotifier notifier,
   ) {
     if (state.isSelectionMode) {
-      return const _SelectionActionBottomBar();
+      return _PremiumSelectionActionBar();
     }
     return null;
   }
 }
 
-class _SelectionActionBottomBar extends StatelessWidget {
-  const _SelectionActionBottomBar();
-
+/// Premium Selection Action Bar
+class _PremiumSelectionActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Container(
-      height: 90,
+      height: 100,
       decoration: BoxDecoration(
         color: colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -5),
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 25,
+            offset: const Offset(0, -8),
           ),
         ],
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(28),
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _ActionButton(
+            _PremiumActionButton(
               icon: Icons.share_rounded,
               label: 'Share',
               onTap: () {},
             ),
-            _ActionButton(
+            _PremiumActionButton(
               icon: Icons.upload_rounded,
               label: 'Export',
               onTap: () {},
             ),
-            _ActionButton(
+            _PremiumActionButton(
               icon: Icons.drive_file_move_rounded,
               label: 'Move',
               onTap: () {},
             ),
-            _ActionButton(
+            _PremiumActionButton(
               icon: Icons.delete_rounded,
               label: 'Delete',
               color: colorScheme.error,
@@ -454,13 +566,14 @@ class _SelectionActionBottomBar extends StatelessWidget {
   }
 }
 
-class _ActionButton extends StatelessWidget {
+/// Premium Action Button
+class _PremiumActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color? color;
   final VoidCallback onTap;
 
-  const _ActionButton({
+  const _PremiumActionButton({
     required this.icon,
     required this.label,
     this.color,
@@ -473,28 +586,33 @@ class _ActionButton extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final buttonColor = color ?? colorScheme.onSurface;
 
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              width: 48,
+              height: 48,
               decoration: BoxDecoration(
-                color: buttonColor.withOpacity(0.1),
+                color: buttonColor.withOpacity(0.08),
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: buttonColor.withOpacity(0.2),
+                  width: 1.5,
+                ),
               ),
-              child: Icon(icon, color: buttonColor, size: 20),
+              child: Icon(icon, color: buttonColor, size: 22),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               label,
-              style: theme.textTheme.bodySmall?.copyWith(
+              style: GoogleFonts.inter(
+                fontSize: 13,
                 color: buttonColor,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
