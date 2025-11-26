@@ -10,22 +10,26 @@ class HomeState {
   final bool isSelectionMode;
   final Set<String> selectedScanIds;
   final SortCriteria sortCriteria;
+  final String activeFilterId;
 
   const HomeState({
     this.isSelectionMode = false,
     this.selectedScanIds = const {},
     this.sortCriteria = SortCriteria.date,
+    this.activeFilterId = 'all',
   });
 
   HomeState copyWith({
     bool? isSelectionMode,
     Set<String>? selectedScanIds,
     SortCriteria? sortCriteria,
+    String? activeFilterId,
   }) {
     return HomeState(
       isSelectionMode: isSelectionMode ?? this.isSelectionMode,
       selectedScanIds: selectedScanIds ?? this.selectedScanIds,
       sortCriteria: sortCriteria ?? this.sortCriteria,
+      activeFilterId: activeFilterId ?? this.activeFilterId,
     );
   }
 }
@@ -76,6 +80,10 @@ class HomeNotifier extends Notifier<HomeState> {
 
   void setSortCriteria(SortCriteria criteria) {
     state = state.copyWith(sortCriteria: criteria);
+  }
+
+  void setActiveFilter(String filterId) {
+    state = state.copyWith(activeFilterId: filterId);
   }
 }
 

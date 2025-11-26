@@ -1,95 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:thyscan/features/home/controllers/home_state_provider.dart';
+import 'package:thyscan/features/home/controllers/filtered_documents_provider.dart';
+import 'package:thyscan/features/home/models/document_filter.dart';
+import 'package:thyscan/features/home/presentation/widgets/document_filter_chip.dart';
 
-class LibraryFilterBar extends StatelessWidget {
+class LibraryFilterBar extends ConsumerWidget {
   const LibraryFilterBar({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final homeState = ref.watch(homeProvider);
+    final homeNotifier = ref.read(homeProvider.notifier);
 
     return Container(
-      color: colorScheme.background,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // SEARCH BAR
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: TextField(
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: colorScheme.onSurface,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search documents...',
-                hintStyle: theme.textTheme.bodyLarge?.copyWith(
-                  color: colorScheme.onSurface.withOpacity(0.5),
-                ),
-                prefixIcon: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Icon(
-                    Icons.search_rounded,
-                    size: 24,
-                    color: colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-                filled: true,
-                fillColor: colorScheme.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                  vertical: 16,
-                  horizontal: 16,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                ),
-              ),
-            ),
-          ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      child: SizedBox(
+        height: 42,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: DocumentFilters.allFilters.length,
+          separatorBuilder: (context, index) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final filter = DocumentFilters.allFilters[index];
+            final isSelected = homeState.activeFilterId == filter.id;
+            final count = ref.watch(documentCountByFilterProvider(filter.id));
 
-          const SizedBox(height: 20),
-
-          // FILTER ROW
-          Row(
-            children: [
-              Expanded(
-                child: _FilterChipButton(
-                  icon: Icons.calendar_today_rounded,
-                  label: 'Date',
-                  onTap: () {},
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _FilterChipButton(
-                  icon: Icons.label_rounded,
-                  label: 'Tags',
-                  onTap: () {},
-                ),
-              ),
-              const SizedBox(width: 12),
-              _FilterIconButton(icon: Icons.filter_list_rounded, onTap: () {}),
-            ],
-          ),
-        ],
+            return DocumentFilterChip(
+              filter: filter,
+              isSelected: isSelected,
+              count: count,
+              onTap: () => homeNotifier.setActiveFilter(filter.id),
+            );
+          },
+        ),
       ),
     );
   }

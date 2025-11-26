@@ -202,7 +202,7 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '/toolscreen',
       name: 'toolscreen',
-      builder: (context, state) => ToolsScreen(),
+      builder: (context, state) => const ToolsScreen(),
     ),
     GoRoute(
       path: '/translationeditorscreen',
