@@ -34,125 +34,167 @@ class ScanListItem extends StatelessWidget {
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isSelected
               ? colorScheme.primary.withOpacity(0.08)
               : colorScheme.surface,
-          borderRadius: BorderRadius.circular(20), // More rounded
+          borderRadius: BorderRadius.circular(24),
           border: isSelected
-              ? Border.all(color: colorScheme.primary, width: 2)
-              : Border.all(color: colorScheme.outline.withOpacity(0.05)),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: colorScheme.primary.withOpacity(0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+              ? Border.all(
+                  color: colorScheme.primary.withOpacity(0.3),
+                  width: 2.5,
+                )
+              : Border.all(
+                  color: colorScheme.outline.withOpacity(0.08),
+                  width: 1.5,
+                ),
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: colorScheme.primary.withOpacity(0.15),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 6),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 15,
+                offset: const Offset(0, 4),
+              ),
+          ],
+          gradient: isSelected
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    colorScheme.primary.withOpacity(0.03),
+                    colorScheme.primary.withOpacity(0.01),
+                  ],
+                )
+              : null,
         ),
         child: Row(
           children: [
-            // Selection Indicator
+            // Premium Selection Indicator
             AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (child, animation) =>
-                  ScaleTransition(scale: animation, child: child),
+              duration: const Duration(milliseconds: 400),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.elasticOut,
+                ),
+                child: child,
+              ),
               child: isSelectionMode
                   ? Container(
-                      width: 24,
-                      height: 24,
-                      margin: const EdgeInsets.only(right: 16),
+                      width: 28,
+                      height: 28,
+                      margin: const EdgeInsets.only(right: 20),
                       decoration: BoxDecoration(
-                        color: isSelected
-                            ? colorScheme.primary
-                            : Colors.transparent,
+                        gradient: isSelected
+                            ? LinearGradient(
+                                colors: [
+                                  colorScheme.primary,
+                                  colorScheme.primary.withOpacity(0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: isSelected ? null : Colors.transparent,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: isSelected
                               ? colorScheme.primary
-                              : colorScheme.onSurface.withOpacity(0.3),
-                          width: 2,
+                              : colorScheme.onSurface.withOpacity(0.2),
+                          width: 2.5,
                         ),
+                        boxShadow: isSelected
+                            ? [
+                                BoxShadow(
+                                  color: colorScheme.primary.withOpacity(0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
                       ),
                       child: isSelected
                           ? Icon(
-                              Icons.check,
+                              Icons.check_rounded,
                               size: 16,
                               color: colorScheme.onPrimary,
                             )
                           : null,
                       key: ValueKey('selected-$isSelected'),
                     )
-                  : const SizedBox.shrink(key: ValueKey('empty')),
+                  : const SizedBox(width: 8, key: ValueKey('empty')),
             ),
 
-            // Thumbnail with professional styling
+            // Premium Thumbnail with Enhanced Styling
             Hero(
               tag: 'scan_thumb_${scan.id}',
               child: Container(
-                width: 70,
-                height: 90,
+                width: 80,
+                height: 100,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(20),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
+                      // Image or Icon Background
                       scan.tags.contains('Text')
                           ? Container(
-                              color: colorScheme.primaryContainer,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    colorScheme.primaryContainer,
+                                    colorScheme.primaryContainer.withOpacity(
+                                      0.7,
+                                    ),
+                                  ],
+                                ),
+                              ),
                               child: Center(
                                 child: Icon(
                                   Icons.description_rounded,
-                                  size: 32,
+                                  size: 36,
                                   color: colorScheme.primary,
                                 ),
                               ),
                             )
                           : File(scan.imagePath).existsSync()
-                              ? Image.file(
-                                  File(scan.imagePath),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    color: colorScheme.surfaceVariant,
-                                    child: Icon(
-                                      Icons.image_not_supported,
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                )
-                              : Image.asset(
-                                  scan.imagePath,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    color: colorScheme.surfaceVariant,
-                                    child: Icon(
-                                      Icons.image_not_supported,
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                      // Gradient Overlay
+                          ? Image.file(
+                              File(scan.imagePath),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  _buildErrorPlaceholder(colorScheme),
+                            )
+                          : Image.asset(
+                              scan.imagePath,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  _buildErrorPlaceholder(colorScheme),
+                            ),
+
+                      // Premium Gradient Overlay
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -160,8 +202,33 @@ class ScanListItem extends StatelessWidget {
                             end: Alignment.bottomCenter,
                             colors: [
                               Colors.transparent,
-                              Colors.black.withOpacity(0.2),
+                              Colors.black.withOpacity(0.3),
                             ],
+                            stops: const [0.6, 1.0],
+                          ),
+                        ),
+                      ),
+
+                      // Page Count Badge
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            scan.pageCount,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
@@ -170,81 +237,115 @@ class ScanListItem extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 20),
 
-            // Document Details
+            // Enhanced Document Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Title with professional typography
                   Text(
                     scan.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
+                    style: theme.textTheme.titleLarge?.copyWith(
                       color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      letterSpacing: -0.5,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      letterSpacing: -0.3,
+                      height: 1.2,
                     ),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
+
+                  // Metadata with enhanced styling
                   Row(
                     children: [
-                      Icon(
-                        Icons.calendar_today_rounded,
-                        size: 12,
-                        color: colorScheme.onSurface.withOpacity(0.5),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        scan.date,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.6),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
                       Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
-                        width: 3,
-                        height: 3,
+                        width: 32,
+                        height: 32,
                         decoration: BoxDecoration(
-                          color: colorScheme.onSurface.withOpacity(0.3),
-                          shape: BoxShape.circle,
+                          color: colorScheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.calendar_today_rounded,
+                          size: 16,
+                          color: colorScheme.primary,
                         ),
                       ),
-                      Text(
-                        scan.pageCount,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.6),
-                          fontWeight: FontWeight.w500,
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Scanned on',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurface.withOpacity(0.5),
+                                fontWeight: FontWeight.w500,
+                                fontSize: 11,
+                              ),
+                            ),
+                            Text(
+                              scan.date,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colorScheme.onSurface.withOpacity(0.8),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
 
-                  // Tags
+                  // Enhanced Tags
                   if (scan.tags.isNotEmpty)
                     Wrap(
                       spacing: 6,
+                      runSpacing: 6,
                       children: scan.tags.map((tag) {
                         return Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                            horizontal: 10,
+                            vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: colorScheme.primary.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            tag,
-                            style: TextStyle(
-                              color: colorScheme.primary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                            gradient: LinearGradient(
+                              colors: [
+                                colorScheme.primary.withOpacity(0.15),
+                                colorScheme.primary.withOpacity(0.08),
+                              ],
                             ),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: colorScheme.primary.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _getTagIcon(tag),
+                                size: 12,
+                                color: colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                tag,
+                                style: TextStyle(
+                                  color: colorScheme.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       }).toList(),
@@ -253,19 +354,27 @@ class ScanListItem extends StatelessWidget {
               ),
             ),
 
-            // More options button (only in normal mode)
+            // Premium More Options Button
             if (!isSelectionMode)
               Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: () => _showOptionsMenu(context),
-                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _showPremiumOptionsMenu(context),
+                  borderRadius: BorderRadius.circular(16),
                   child: Container(
-                    padding: const EdgeInsets.all(8),
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceVariant.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: colorScheme.outline.withOpacity(0.1),
+                      ),
+                    ),
                     child: Icon(
-                      Icons.more_vert_rounded,
+                      Icons.more_horiz_rounded,
                       size: 20,
-                      color: colorScheme.onSurface.withOpacity(0.4),
+                      color: colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
                 ),
@@ -276,61 +385,164 @@ class ScanListItem extends StatelessWidget {
     );
   }
 
-  void _showOptionsMenu(BuildContext context) {
+  Widget _buildErrorPlaceholder(ColorScheme colorScheme) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            colorScheme.surfaceVariant,
+            colorScheme.surfaceVariant.withOpacity(0.7),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.image_not_supported_rounded,
+          size: 32,
+          color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+        ),
+      ),
+    );
+  }
+
+  IconData _getTagIcon(String tag) {
+    switch (tag.toLowerCase()) {
+      case 'text':
+        return Icons.text_fields_rounded;
+      case 'document':
+        return Icons.description_rounded;
+      case 'important':
+        return Icons.label_important_rounded;
+      case 'work':
+        return Icons.work_rounded;
+      case 'personal':
+        return Icons.person_rounded;
+      default:
+        return Icons.label_rounded;
+    }
+  }
+
+  void _showPremiumOptionsMenu(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => Container(
+        margin: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 30,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
+              // Drag handle
               Container(
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                  color: colorScheme.onSurface.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(height: 20),
-              _buildMenuOption(
+              const SizedBox(height: 24),
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            colorScheme.primary,
+                            colorScheme.primary.withOpacity(0.8),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.article_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            scan.title,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.onSurface,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            'Document Options',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Menu Options
+              _buildPremiumMenuOption(
                 context,
-                icon: Icons.edit_rounded,
-                label: 'Edit',
+                icon: Icons.edit_document,
+                title: 'Edit Document',
+                subtitle: 'Rename or modify details',
                 onTap: () {
                   Navigator.pop(context);
                   onEdit?.call();
                 },
               ),
-              _buildMenuOption(
+              _buildPremiumMenuOption(
                 context,
                 icon: Icons.share_rounded,
-                label: 'Share',
+                title: 'Share',
+                subtitle: 'Export or send to others',
                 onTap: () {
                   Navigator.pop(context);
                   onShare?.call();
                 },
               ),
-              _buildMenuOption(
+              _buildPremiumMenuOption(
                 context,
                 icon: Icons.delete_rounded,
-                label: 'Delete',
+                title: 'Delete',
+                subtitle: 'Permanently remove',
                 isDestructive: true,
                 onTap: () {
                   Navigator.pop(context);
-                  _showDeleteConfirmation(context);
+                  _showPremiumDeleteConfirmation(context);
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -338,83 +550,161 @@ class ScanListItem extends StatelessWidget {
     );
   }
 
-  Widget _buildMenuOption(
+  Widget _buildPremiumMenuOption(
     BuildContext context, {
     required IconData icon,
-    required String label,
+    required String title,
+    required String subtitle,
     required VoidCallback onTap,
     bool isDestructive = false,
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final color = isDestructive ? colorScheme.error : colorScheme.onSurface;
+    final color = isDestructive ? colorScheme.error : colorScheme.primary;
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: isDestructive
-                    ? colorScheme.error.withOpacity(0.1)
-                    : colorScheme.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: isDestructive
+                      ? colorScheme.error.withOpacity(0.1)
+                      : colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: color, size: 22),
               ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 16),
-            Text(
-              label,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w600,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              Icon(
+                Icons.chevron_right_rounded,
+                color: colorScheme.onSurface.withOpacity(0.3),
+                size: 20,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context) {
+  void _showPremiumDeleteConfirmation(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(Icons.warning_rounded, color: colorScheme.error),
-            const SizedBox(width: 12),
-            const Text('Delete Document?'),
-          ],
-        ),
-        content: Text(
-          'This will permanently delete "${scan.title}" and all its pages. This action cannot be undone.',
-          style: theme.textTheme.bodyMedium,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(28),
           ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              onDelete?.call();
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: colorScheme.error,
-            ),
-            child: const Text('Delete'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Warning Icon
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: colorScheme.error.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_forever_rounded,
+                  size: 32,
+                  color: colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Title
+              Text(
+                'Delete Document?',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Description
+              Text(
+                'Are you sure you want to permanently delete "${scan.title}"? This action cannot be undone and all pages will be lost.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 28),
+              // Actions
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        onDelete?.call();
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colorScheme.error,
+                        foregroundColor: colorScheme.onError,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text('Delete'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

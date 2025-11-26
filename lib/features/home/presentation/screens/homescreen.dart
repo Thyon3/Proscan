@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/core/theme/constants/app_design.dart';
 import 'package:thyscan/features/home/presentation/widgets/premium_modal.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
+import 'package:thyscan/features/home/controllers/filtered_documents_provider.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
@@ -50,30 +51,9 @@ class HomeScreen extends ConsumerWidget {
       body: ValueListenableBuilder<Box<DocumentModel>>(
         valueListenable: box.listenable(),
         builder: (context, box, _) {
-          // Get recent documents (latest 6-8) sorted by newest first
-          final allDocs = DocumentService.instance.getAllDocuments();
-
-          // Sort based on criteria
-          switch (homeState.sortCriteria) {
-            case SortCriteria.date:
-              // Sort by date: newest first
-              allDocs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-              break;
-            case SortCriteria.size:
-              // Sort by actual file size: largest first
-              allDocs.sort((a, b) {
-                final sizeA = _getFileSize(a.filePath);
-                final sizeB = _getFileSize(b.filePath);
-                return sizeB.compareTo(sizeA);
-              });
-              break;
-            case SortCriteria.pages:
-              // Sort by page count: most pages first
-              allDocs.sort((a, b) => b.pageCount.compareTo(a.pageCount));
-              break;
-          }
-
-          final recentDocs = allDocs.take(8).toList();
+          // Get filtered and sorted documents from provider
+          final filteredDocs = ref.watch(filteredDocumentsProvider);
+          final recentDocs = filteredDocs.take(8).toList();
 
           return CustomScrollView(
             slivers: [
