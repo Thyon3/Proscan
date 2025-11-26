@@ -504,14 +504,110 @@ class HomeScreen extends ConsumerWidget {
     HomeNotifier notifier,
   ) {
     if (state.isSelectionMode) {
-      return _PremiumSelectionActionBar();
+      return _PremiumSelectionActionBar(
+        onDelete: () => _deleteSelectedDocuments(context, state, notifier),
+        onShare: () => _shareSelectedDocuments(context, state),
+      );
     }
     return null;
+  }
+
+  Future<void> _deleteSelectedDocuments(
+    BuildContext context,
+    HomeState state,
+    HomeNotifier notifier,
+  ) async {
+    final count = state.selectedScanIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Selected?'),
+        content: Text(
+          'Are you sure you want to delete $count document${count == 1 ? '' : 's'}? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        for (final id in state.selectedScanIds) {
+          await DocumentService.instance.deleteDocument(id);
+        }
+        notifier.exitSelectionMode();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$count documents deleted'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting documents: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _shareSelectedDocuments(
+    BuildContext context,
+    HomeState state,
+  ) async {
+    try {
+      final allDocs = DocumentService.instance.getAllDocuments();
+      final selectedDocs =
+          allDocs
+              .where((doc) => state.selectedScanIds.contains(doc.id))
+              .toList();
+
+      if (selectedDocs.isEmpty) return;
+
+      final files = selectedDocs.map((doc) => XFile(doc.filePath)).toList();
+
+      await Share.shareXFiles(
+        files,
+        text: 'Check out these scanned documents!',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sharing documents: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 
 /// Premium Selection Action Bar
 class _PremiumSelectionActionBar extends StatelessWidget {
+  final VoidCallback onDelete;
+  final VoidCallback onShare;
+
+  const _PremiumSelectionActionBar({
+    required this.onDelete,
+    required this.onShare,
+  });
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -534,30 +630,20 @@ class _PremiumSelectionActionBar extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _PremiumActionButton(
               icon: Icons.share_rounded,
               label: 'Share',
-              onTap: () {},
-            ),
-            _PremiumActionButton(
-              icon: Icons.upload_rounded,
-              label: 'Export',
-              onTap: () {},
-            ),
-            _PremiumActionButton(
-              icon: Icons.drive_file_move_rounded,
-              label: 'Move',
-              onTap: () {},
+              onTap: onShare,
             ),
             _PremiumActionButton(
               icon: Icons.delete_rounded,
               label: 'Delete',
               color: colorScheme.error,
-              onTap: () {},
+              onTap: onDelete,
             ),
           ],
         ),
