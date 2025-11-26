@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart'; // Assuming you're using go_router
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:iconsax/iconsax.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -10,6 +12,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
 
   String fullName = 'Jessica Miller';
   String email = 'j.miller@email.com';
@@ -37,38 +40,85 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     'Hawaii Standard Time (HST)',
   ];
 
+  Future<void> _saveProfile() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() => _isLoading = true);
+
+      // Simulate API call
+      await Future.delayed(const Duration(milliseconds: 1500));
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _showSuccessMessage();
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) context.pop();
+      }
+    }
+  }
+
+  void _showSuccessMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              Iconsax.tick_circle,
+              color: Theme.of(context).colorScheme.onPrimary,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Profile updated successfully!',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isSmallScreen = MediaQuery.of(context).size.width < 360;
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-    final TextTheme textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: scheme.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
+          icon: Icon(Iconsax.arrow_left, color: scheme.onBackground),
           onPressed: () => _showCancelConfirmation(context),
         ),
         title: Text(
           'Edit Profile',
-          style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onBackground,
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: scheme.onBackground,
           ),
         ),
         centerTitle: true,
         actions: [
-          TextButton(
-            onPressed: _saveProfile,
-            child: Text(
-              'Save',
-              style: TextStyle(
-                color: colorScheme.primary,
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: TextButton(
+              onPressed: _isLoading ? null : _saveProfile,
+              child: Text(
+                'Save',
+                style: GoogleFonts.inter(
+                  color: _isLoading
+                      ? scheme.onSurface.withOpacity(0.3)
+                      : scheme.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
               ),
             ),
           ),
@@ -76,17 +126,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildProfileHeader(colorScheme),
-                const SizedBox(height: 24),
-                _buildFormFields(isSmallScreen, colorScheme, textTheme),
+                // Premium Profile Header
+                _buildPremiumProfileHeader(scheme),
                 const SizedBox(height: 32),
-                _buildSaveButton(colorScheme),
+
+                // Enhanced Form Section
+                _buildPremiumFormSection(scheme, isDark),
+                const SizedBox(height: 32),
+
+                // Premium Save Button
+                _buildPremiumSaveButton(scheme),
               ],
             ),
           ),
@@ -95,137 +149,168 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildProfileHeader(ColorScheme colorScheme) {
-    return Center(
-      child: Column(
-        children: [
-          Stack(
-            children: [
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: colorScheme.surfaceVariant,
-                  image: const DecorationImage(
-                    image: NetworkImage(
-                      'https://images.unsplash.com/photo-1494790108755-2616b612b786?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=100&q=80',
-                    ),
-                    fit: BoxFit.cover,
-                  ),
+  Widget _buildPremiumProfileHeader(ColorScheme scheme) {
+    return Column(
+      children: [
+        Stack(
+          children: [
+            // Profile Image with Gradient Border
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [scheme.primary, scheme.primaryContainer],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: scheme.primary.withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-              Positioned(
-                bottom: 0,
-                right: 0,
+              child: Padding(
+                padding: const EdgeInsets.all(3),
                 child: Container(
-                  width: 32,
-                  height: 32,
                   decoration: BoxDecoration(
-                    color: colorScheme.primary,
                     shape: BoxShape.circle,
-                    border: Border.all(color: colorScheme.background, width: 2),
-                  ),
-                  child: Icon(
-                    Icons.edit,
-                    color: colorScheme.onPrimary,
-                    size: 16,
+                    color: scheme.surface,
+                    image: const DecorationImage(
+                      image: NetworkImage(
+                        'https://images.unsplash.com/photo-1494790108755-2616b612b786?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=200&q=80',
+                      ),
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Change Profile Photo',
-            style: TextStyle(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.w500,
             ),
+
+            // Edit Icon Overlay
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: scheme.background, width: 3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(Iconsax.camera, color: scheme.onPrimary, size: 16),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Change Profile Photo',
+          style: GoogleFonts.inter(
+            color: scheme.primary,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  Widget _buildFormFields(
-    bool isSmallScreen,
-    ColorScheme colorScheme,
-    TextTheme textTheme,
-  ) {
+  Widget _buildPremiumFormSection(ColorScheme scheme, bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: colorScheme.shadow.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
+        border: Border.all(color: scheme.outline.withOpacity(0.1), width: 1),
       ),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildFormField(
-            label: 'Full name',
+          _buildPremiumFormField(
+            icon: Iconsax.user,
+            label: 'Full Name',
             value: fullName,
             onChanged: (value) => setState(() => fullName = value),
             isRequired: true,
-            colorScheme: colorScheme,
-            textTheme: textTheme,
+            scheme: scheme,
           ),
           const SizedBox(height: 20),
-          _buildEmailField(colorScheme, textTheme),
+          _buildPremiumEmailField(scheme),
           const SizedBox(height: 20),
-          _buildFormField(
+          _buildPremiumFormField(
+            icon: Iconsax.call,
             label: 'Phone (Optional)',
             value: phone,
             onChanged: (value) => setState(() => phone = value),
             hintText: 'Enter your phone number',
             keyboardType: TextInputType.phone,
-            colorScheme: colorScheme,
-            textTheme: textTheme,
+            scheme: scheme,
           ),
           const SizedBox(height: 20),
-          _buildDropdownField(
+          _buildPremiumDropdownField(
+            icon: Iconsax.flag,
             label: 'Country/Region (Optional)',
             value: country,
             items: countries,
             onChanged: (value) => setState(() => country = value ?? country),
-            colorScheme: colorScheme,
-            textTheme: textTheme,
+            scheme: scheme,
           ),
           const SizedBox(height: 20),
-          _buildDropdownField(
-            label: 'Time zone (Optional)',
+          _buildPremiumDropdownField(
+            icon: Iconsax.clock,
+            label: 'Time Zone (Optional)',
             value: timeZone,
             items: timeZones,
             onChanged: (value) => setState(() => timeZone = value ?? timeZone),
-            colorScheme: colorScheme,
-            textTheme: textTheme,
+            scheme: scheme,
           ),
           const SizedBox(height: 8),
-          Text(
-            'Time zone is detected automatically.',
-            style: TextStyle(
-              color: colorScheme.onSurface.withOpacity(0.6),
-              fontSize: 12,
-            ),
+          Row(
+            children: [
+              Icon(
+                Iconsax.info_circle,
+                size: 16,
+                color: scheme.onSurface.withOpacity(0.5),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Time zone is detected automatically',
+                style: GoogleFonts.inter(
+                  color: scheme.onSurface.withOpacity(0.5),
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFormField({
+  Widget _buildPremiumFormField({
+    required IconData icon,
     required String label,
     required String value,
     required Function(String) onChanged,
-    required ColorScheme colorScheme,
-    required TextTheme textTheme,
+    required ColorScheme scheme,
     String? hintText,
     bool isRequired = false,
     TextInputType keyboardType = TextInputType.text,
@@ -233,234 +318,401 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurface.withOpacity(0.8),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          initialValue: value,
-          onChanged: onChanged,
-          style: TextStyle(color: colorScheme.onSurface),
-          decoration: InputDecoration(
-            hintText: hintText,
-            hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.5)),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 12,
+        Row(
+          children: [
+            Icon(icon, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface.withOpacity(0.8),
+              ),
             ),
-            filled: true,
-            fillColor: colorScheme.surfaceVariant.withOpacity(0.3),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.primary),
-            ),
-          ),
-          keyboardType: keyboardType,
-          validator: isRequired
-              ? (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'This field is required';
-                  }
-                  return null;
-                }
-              : null,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmailField(ColorScheme colorScheme, TextTheme textTheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Email',
-          style: textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurface.withOpacity(0.8),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextFormField(
-          initialValue: email,
-          readOnly: true,
-          style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6)),
-          decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 12,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: colorScheme.outline),
-            ),
-            filled: true,
-            fillColor: colorScheme.surfaceVariant.withOpacity(0.5),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: colorScheme.primary.withOpacity(0.2)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.verified, color: colorScheme.primary, size: 14),
-              const SizedBox(width: 4),
+            if (isRequired)
               Text(
-                'Verified',
-                style: TextStyle(
-                  color: colorScheme.onPrimaryContainer,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                '*',
+                style: GoogleFonts.inter(
+                  color: scheme.error,
+                  fontWeight: FontWeight.w600,
                 ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.primary.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
+          child: TextFormField(
+            initialValue: value,
+            onChanged: onChanged,
+            keyboardType: keyboardType,
+            style: GoogleFonts.inter(
+              color: scheme.onSurface,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: GoogleFonts.inter(
+                color: scheme.onSurface.withOpacity(0.4),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              filled: true,
+              fillColor: scheme.surfaceVariant.withOpacity(0.3),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: scheme.outline.withOpacity(0.3)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: scheme.primary, width: 2),
+              ),
+            ),
+            validator: isRequired
+                ? (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'This field is required';
+                    }
+                    return null;
+                  }
+                : null,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildDropdownField({
+  Widget _buildPremiumEmailField(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Iconsax.sms, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              'Email',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface.withOpacity(0.8),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
+          child: TextFormField(
+            initialValue: email,
+            readOnly: true,
+            style: GoogleFonts.inter(
+              color: scheme.onSurface.withOpacity(0.6),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              filled: true,
+              fillColor: scheme.surfaceVariant.withOpacity(0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: scheme.outline.withOpacity(0.3)),
+              ),
+              suffixIcon: Container(
+                margin: const EdgeInsets.all(8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Iconsax.tick_circle, size: 14, color: scheme.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Verified',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPremiumDropdownField({
+    required IconData icon,
     required String label,
     required String value,
     required List<String> items,
     required Function(String?) onChanged,
-    required ColorScheme colorScheme,
-    required TextTheme textTheme,
+    required ColorScheme scheme,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurface.withOpacity(0.8),
-            fontWeight: FontWeight.w500,
-          ),
+        Row(
+          children: [
+            Icon(icon, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface.withOpacity(0.8),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceVariant.withOpacity(0.3),
-            border: Border.all(color: colorScheme.outline),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(16),
+            color: scheme.surfaceVariant.withOpacity(0.3),
+            border: Border.all(color: scheme.outline.withOpacity(0.3)),
           ),
-          child: DropdownButton<String>(
-            value: value,
-            isExpanded: true,
-            underline: const SizedBox(),
-            dropdownColor: colorScheme.surface,
-            icon: Icon(Icons.arrow_drop_down, color: colorScheme.onSurface),
-            style: TextStyle(color: colorScheme.onSurface),
-            items: items.map((String item) {
-              return DropdownMenuItem<String>(value: item, child: Text(item));
-            }).toList(),
-            onChanged: onChanged,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: DropdownButton<String>(
+              value: value,
+              isExpanded: true,
+              underline: const SizedBox(),
+              dropdownColor: scheme.surface,
+              icon: Icon(
+                Iconsax.arrow_down_1,
+                color: scheme.onSurface.withOpacity(0.5),
+              ),
+              style: GoogleFonts.inter(
+                color: scheme.onSurface,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+              items: items.map((String item) {
+                return DropdownMenuItem<String>(value: item, child: Text(item));
+              }).toList(),
+              onChanged: onChanged,
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildSaveButton(ColorScheme colorScheme) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: _saveProfile,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+  Widget _buildPremiumSaveButton(ColorScheme scheme) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: scheme.primary.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-          elevation: 0,
-        ),
-        child: const Text(
-          'Save',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ],
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            onTap: _isLoading ? null : _saveProfile,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [scheme.primary, scheme.primaryContainer],
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: _isLoading ? 0 : 1,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Iconsax.tick_circle,
+                          color: scheme.onPrimary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Save Changes',
+                          style: GoogleFonts.inter(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_isLoading)
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          scheme.onPrimary,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
-  }
-
-  void _saveProfile() {
-    if (_formKey.currentState!.validate()) {
-      // In a real app, you would save the data to your backend here
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Profile updated successfully!'),
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      );
-
-      // Navigate back after saving using router
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        context.pop();
-      });
-    }
   }
 
   void _showCancelConfirmation(BuildContext context) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
-        return AlertDialog(
-          backgroundColor: colorScheme.surface,
-          title: Text(
-            'Discard Changes?',
-            style: TextStyle(color: colorScheme.onSurface),
-          ),
-          content: Text(
-            'Are you sure you want to discard your changes?',
-            style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Keep Editing',
-                style: TextStyle(color: colorScheme.primary),
-              ),
+        final scheme = Theme.of(context).colorScheme;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 40,
+                  offset: const Offset(0, 20),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                context.pop(); // Use router to go back
-              },
-              child: Text(
-                'Discard',
-                style: TextStyle(color: colorScheme.error),
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: scheme.errorContainer.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Iconsax.warning_2, size: 28, color: scheme.error),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Discard Changes?',
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Are you sure you want to discard your changes?',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: scheme.onSurface.withOpacity(0.7),
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          side: BorderSide(
+                            color: scheme.outline.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Text(
+                          'Keep Editing',
+                          style: GoogleFonts.inter(
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          context.pop();
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: scheme.error,
+                          foregroundColor: scheme.onError,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: Text(
+                          'Discard',
+                          style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
