@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:thyscan/features/help_and_support/presentation/screens/help_and_support.dart';
+import 'package:thyscan/features/help_and_support/presentation/screens/how_to_scan_and_crop.dart';
 
 class ProUserProfileScreen extends StatefulWidget {
   const ProUserProfileScreen({super.key});
@@ -267,14 +269,28 @@ class _ProUserProfileScreenState extends State<ProUserProfileScreen> {
                     children: [
                       _Tile(
                         icon: Icons.help_outline_rounded,
-                        title: 'FAQ',
-                        onTap: () {},
+                        title: 'Help & Guide',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const HelpSupportScreen(),
+                            ),
+                          );
+                        },
                       ),
 
                       _Tile(
                         icon: Icons.support_agent_outlined,
                         title: 'Contact Support',
-                        onTap: () {},
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const HelpSupportScreen(),
+                            ),
+                          );
+                        },
                       ),
 
                       _Tile(

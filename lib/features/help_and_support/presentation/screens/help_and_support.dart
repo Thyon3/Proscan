@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:thyscan/features/help_and_support/presentation/screens/how_to_scan_and_crop.dart';
 
 class HelpSupportScreen extends StatelessWidget {
   const HelpSupportScreen({super.key});
@@ -79,7 +80,7 @@ class HelpSupportScreen extends StatelessWidget {
                       ..._topics.map(
                         (t) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: _TopicTile(title: t),
+                          child: _TopicTile(topic: t),
                         ),
                       ),
 
@@ -285,20 +286,33 @@ class _QuickActionCard extends StatelessWidget {
 
 /* ------------------------------ Topic Tile ------------------------------ */
 
-class _TopicTile extends StatelessWidget {
-  final String title;
-  const _TopicTile({required this.title});
+/* ------------------------------ Topic Tile ------------------------------ */
+
+class _TopicTile extends StatefulWidget {
+  final _HelpTopic topic;
+  const _TopicTile({required this.topic});
+
+  @override
+  State<_TopicTile> createState() => _TopicTileState();
+}
+
+class _TopicTileState extends State<_TopicTile> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final cs = t.colorScheme;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outline.withOpacity(0.08), width: 1),
+        border: Border.all(
+            color: _expanded ? cs.primary.withOpacity(0.2) : cs.outline.withOpacity(0.08),
+            width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(
@@ -309,21 +323,58 @@ class _TopicTile extends StatelessWidget {
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: Text(
-              title,
-              style: t.textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w600,
+          InkWell(
+            onTap: () {
+              if (widget.topic.isNavigation) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HelpArticleScanCropScreen(),
+                  ),
+                );
+              } else {
+                setState(() => _expanded = !_expanded);
+              }
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.topic.title,
+                      style: t.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: _expanded ? cs.primary : null,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    widget.topic.isNavigation
+                        ? Icons.chevron_right_rounded
+                        : (_expanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded),
+                    color: _expanded ? cs.primary : t.textTheme.bodyMedium?.color?.withOpacity(0.7),
+                  ),
+                ],
               ),
             ),
           ),
-          Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: t.textTheme.bodyMedium?.color?.withOpacity(0.7),
-          ),
+          if (_expanded && !widget.topic.isNavigation)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: Text(
+                widget.topic.content,
+                style: t.textTheme.bodyMedium?.copyWith(
+                  color: t.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                  height: 1.5,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -392,16 +443,56 @@ const _quickActions = <_QAItem>[
   _QAItem(Icons.picture_as_pdf_outlined, 'Export as Searchable\nPDF'),
 ];
 
-const _topics = <String>[
-  'Getting Started',
-  'Scanning & Cropping',
-  'Enhancements & Filters',
-  'Managing Documents',
-  'OCR (Text Recognition)',
-  'Exporting & Sharing',
-  'Subscription & Billing',
-  'Account & Privacy',
-  'Troubleshooting',
+class _HelpTopic {
+  final String title;
+  final String content;
+  final bool isNavigation;
+
+  const _HelpTopic({
+    required this.title,
+    this.content = '',
+    this.isNavigation = false,
+  });
+}
+
+const _topics = <_HelpTopic>[
+  _HelpTopic(
+    title: 'Getting Started',
+    content: 'Learn the basics of scanning and cropping documents.',
+    isNavigation: true,
+  ),
+  _HelpTopic(
+    title: 'Scanning & Cropping',
+    content: 'Position your document within the frame. The app will automatically detect edges. You can manually adjust corners after capture for a perfect crop.',
+  ),
+  _HelpTopic(
+    title: 'Enhancements & Filters',
+    content: 'Apply filters like "Magic Color" or "B&W" to improve readability. Adjust brightness and contrast to make text pop.',
+  ),
+  _HelpTopic(
+    title: 'Managing Documents',
+    content: 'Organize your scans into folders, rename files for easy search, and delete unwanted documents to save space.',
+  ),
+  _HelpTopic(
+    title: 'OCR (Text Recognition)',
+    content: 'Extract text from your scans using OCR. This feature allows you to copy, edit, and search text within your scanned images.',
+  ),
+  _HelpTopic(
+    title: 'Exporting & Sharing',
+    content: 'Share your documents as PDF or JPG. You can email them, save to cloud storage, or share via other apps directly.',
+  ),
+  _HelpTopic(
+    title: 'Subscription & Billing',
+    content: 'Manage your Pro subscription, view billing history, and restore purchases from the Settings menu.',
+  ),
+  _HelpTopic(
+    title: 'Account & Privacy',
+    content: 'Your data is secure. We prioritize on-device processing. Manage your account settings and privacy preferences here.',
+  ),
+  _HelpTopic(
+    title: 'Troubleshooting',
+    content: 'Having issues? Try restarting the app or checking your internet connection. Contact support if problems persist.',
+  ),
 ];
 
 const _articles = <String>[

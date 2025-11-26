@@ -49,7 +49,7 @@ class AppMainScreen extends ConsumerWidget {
       const ToolsScreen(),
       const Placeholder(),
       const LibraryScreen(),
-      const HelpArticleScanCropScreen(),
+      const ProUserProfileScreen(),
     ];
 
     return Scaffold(
