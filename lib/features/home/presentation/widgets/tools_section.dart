@@ -4,7 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:thyscan/features/home/presentation/widgets/tool_card.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 
-class ToolsSection extends StatelessWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:thyscan/features/home/presentation/screens/appmainscreen.dart';
+
+class ToolsSection extends ConsumerWidget {
   const ToolsSection({super.key});
 
   // Main 7 modes shown on home screen + "More Tools"
@@ -70,7 +73,7 @@ class ToolsSection extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
 
@@ -105,7 +108,7 @@ class ToolsSection extends StatelessWidget {
                 badgeText: tool.badgeText,
                 accentColor: tool.color,
                 description: tool.description,
-                onTap: () => _handleTap(context, tool.mode),
+                onTap: () => _handleTap(context, ref, tool.mode),
               );
             },
           ),
@@ -237,9 +240,10 @@ class ToolsSection extends StatelessWidget {
     );
   }
 
-  void _handleTap(BuildContext context, ScanMode? mode) {
+  void _handleTap(BuildContext context, WidgetRef ref, ScanMode? mode) {
     if (mode == null) {
-      context.push('/toolscreen'); // Go to full tools screen
+      // Switch to Tools tab (index 1)
+      ref.read(screenIndexProvider.notifier).state = 1;
     } else {
       // Open camera locked to the selected mode
       context.push(
