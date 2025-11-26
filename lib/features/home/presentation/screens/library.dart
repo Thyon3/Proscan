@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/features/home/controllers/library_state_provider.dart';
@@ -37,7 +39,11 @@ class LibraryScreen extends ConsumerWidget {
       ),
       bottomNavigationBar: libraryState.isSelectionMode
           ? _PremiumSelectionActionBottomBar(
-              onDelete: () => _deleteSelectedDocuments(context, libraryState, libraryNotifier),
+              onDelete: () => _deleteSelectedDocuments(
+                context,
+                libraryState,
+                libraryNotifier,
+              ),
               onShare: () => _shareSelectedDocuments(context, libraryState),
             )
           : null,
@@ -562,24 +568,167 @@ class LibraryScreen extends ConsumerWidget {
     LibraryNotifier notifier,
   ) async {
     final count = state.selectedScanIds.length;
+    final theme = Theme.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Selected?'),
-        content: Text(
-          'Are you sure you want to delete $count document${count == 1 ? '' : 's'}? This action cannot be undone.',
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                theme.colorScheme.surface,
+                theme.colorScheme.surface.withOpacity(0.98),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.25),
+                blurRadius: 40,
+                spreadRadius: -5,
+                offset: const Offset(0, 20),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Warning Icon
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        theme.colorScheme.errorContainer.withOpacity(0.2),
+                        theme.colorScheme.error.withOpacity(0.1),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Iconsax.warning_2,
+                    size: 32,
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Title
+                Text(
+                  'Delete ${count == 1 ? 'Document' : 'Documents'}?',
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+
+                // Description
+                Text(
+                  'Are you sure you want to delete $count document${count == 1 ? '' : 's'}? This action cannot be undone.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: theme.colorScheme.outline.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            side: BorderSide(
+                              color: theme.colorScheme.outline.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: theme.colorScheme.error.withOpacity(0.3),
+                              blurRadius: 15,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: theme.colorScheme.error,
+                            foregroundColor: theme.colorScheme.onError,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Iconsax.trash, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Delete',
+                                style: GoogleFonts.inter(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
       ),
     );
 
@@ -616,10 +765,9 @@ class LibraryScreen extends ConsumerWidget {
   ) async {
     try {
       final allDocs = DocumentService.instance.getAllDocuments();
-      final selectedDocs =
-          allDocs
-              .where((doc) => state.selectedScanIds.contains(doc.id))
-              .toList();
+      final selectedDocs = allDocs
+          .where((doc) => state.selectedScanIds.contains(doc.id))
+          .toList();
 
       if (selectedDocs.isEmpty) return;
 
@@ -659,39 +807,76 @@ class _PremiumSelectionActionBottomBar extends StatelessWidget {
     final isTablet = screenWidth > 600;
 
     return Container(
-      height: isTablet ? 100 : 90,
+      height: isTablet ? 120 : 100,
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [colorScheme.surface.withOpacity(0.98), colorScheme.surface],
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 30,
-            offset: const Offset(0, -8),
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 40,
+            spreadRadius: -5,
+            offset: const Offset(0, -12),
           ),
         ],
         borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(28),
-          topRight: Radius.circular(28),
+          topLeft: Radius.circular(32),
+          topRight: Radius.circular(32),
+        ),
+        border: Border.all(
+          color: colorScheme.outline.withOpacity(0.1),
+          width: 1,
         ),
       ),
       child: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: isTablet ? 60 : 40,
-          vertical: 16,
+          horizontal: isTablet ? 80 : 48,
+          vertical: 20,
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _PremiumActionButton(
-              icon: Icons.share_rounded,
+              icon: Iconsax.send_2,
               label: 'Share',
               color: colorScheme.primary,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [colorScheme.primary, colorScheme.primaryContainer],
+              ),
               onTap: onShare,
             ),
+            Container(
+              width: 1,
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    colorScheme.outline.withOpacity(0.1),
+                    colorScheme.outline.withOpacity(0.3),
+                    colorScheme.outline.withOpacity(0.1),
+                  ],
+                ),
+              ),
+            ),
             _PremiumActionButton(
-              icon: Icons.delete_rounded,
+              icon: Iconsax.trash,
               label: 'Delete',
               color: colorScheme.error,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colorScheme.error,
+                  Color.lerp(colorScheme.error, Colors.orange, 0.3)!,
+                ],
+              ),
               onTap: onDelete,
             ),
           ],
@@ -705,58 +890,84 @@ class _PremiumActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
+  final Gradient? gradient;
   final VoidCallback onTap;
 
   const _PremiumActionButton({
     required this.icon,
     required this.label,
     required this.color,
+    this.gradient,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          constraints: const BoxConstraints(
-            minWidth: 70,
-          ), // Ensure minimum touch target
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [color.withOpacity(0.15), color.withOpacity(0.08)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+    return Expanded(
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: isTablet ? 16 : 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              height: isTablet ? 70 : 60,
+              decoration: BoxDecoration(
+                gradient:
+                    gradient ??
+                    LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        color,
+                        Color.lerp(color, colorScheme.surface, 0.2)!,
+                      ],
+                    ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: color.withOpacity(0.2), width: 1),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: isTablet ? 36 : 32,
+                    height: isTablet ? 36 : 32,
+                    decoration: BoxDecoration(
+                      color: colorScheme.onPrimary.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, size: isTablet ? 20 : 18, color: color),
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: color.withOpacity(0.2), width: 1.5),
-                ),
-                child: Icon(icon, color: color, size: 20),
+                  SizedBox(width: isTablet ? 12 : 10),
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      fontSize: isTablet ? 16 : 15,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.onPrimary,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 11,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+            ),
           ),
         ),
       ),
