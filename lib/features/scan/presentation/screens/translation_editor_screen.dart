@@ -94,11 +94,13 @@ class _TranslationEditorScreenState
           filePath: _document!.filePath,
           format: _document!.format,
           createdAt: _document!.createdAt,
+          updatedAt: DateTime.now(),
           pageCount: _document!.pageCount,
           thumbnailPath: _document!.thumbnailPath,
           scanMode: _document!.scanMode,
           textContent: text,
           pageImagePaths: _document!.pageImagePaths,
+          colorProfile: _document!.colorProfile,
         );
         
         final box = Hive.box<DocumentModel>(DocumentService.boxName);

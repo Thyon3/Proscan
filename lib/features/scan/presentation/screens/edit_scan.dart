@@ -6,25 +6,33 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
+import 'package:thyscan/models/document_color_profile.dart';
+import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
+import 'package:thyscan/services/document_service.dart';
 
 class EditScanScreen extends StatefulWidget {
   final String imagePath;
   final ScanMode initialMode;
   final String? documentId;
   final List<String>? imagePaths;
+  final DocumentColorProfile initialColorProfile;
+  final String? documentTitle;
 
   const EditScanScreen({
     super.key,
     required this.imagePath,
     required this.initialMode,
+    this.initialColorProfile = DocumentColorProfile.color,
     this.documentId,
     this.imagePaths,
+    this.documentTitle,
   });
 
   @override
@@ -47,7 +55,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
   List<String> _pages = [];
   late final PageController _pageController;
   int _currentIndex = 0;
-  String _pdfFileName = 'DocScan';
+  late String _pdfFileName;
+  late DocumentColorProfile _colorProfile;
+  int? _draggingIndex;
 
   // Store filter and rotation for each page
   Map<int, ImageFilter> _pageFilters = {};
@@ -56,6 +66,8 @@ class _EditScanScreenState extends State<EditScanScreen> {
   // Filter preview thumbnails for the current page
   Map<ImageFilter, String> _filterPreviews = {};
   bool _isGeneratingPreviews = false;
+  bool _isSaving = false;
+  PdfGenerationProgress? _pdfProgress;
 
   @override
   void initState() {
@@ -67,9 +79,13 @@ class _EditScanScreenState extends State<EditScanScreen> {
       _currentPath = widget.imagePath;
       _pages = [widget.imagePath];
     }
+    _colorProfile = widget.initialColorProfile;
     _pageController = PageController(initialPage: 0);
-    // Initialize PDF file name with timestamp-based default
-    _pdfFileName = 'DocScan_${DateTime.now().millisecondsSinceEpoch}';
+    // Initialize PDF file name with document title if provided
+    final resolvedTitle = widget.documentTitle?.isNotEmpty == true
+        ? widget.documentTitle!
+        : 'DocScan_${DateTime.now().millisecondsSinceEpoch}';
+    _pdfFileName = resolvedTitle.replaceAll('.pdf', '');
 
     // Generate initial filter previews for the first page
     _generateFilterPreviewsForCurrentPage();
@@ -247,21 +263,23 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   Future<void> _captureAdditionalPage() async {
     try {
-      final path = await context.push<String>(
+      final result = await context.push<CameraCaptureResult>(
         '/camerascreen',
         extra: CameraScreenConfig(
           initialMode: widget.initialMode,
           restrictToInitialMode: true,
           returnCapturePath: true,
+          colorProfile: _colorProfile,
         ),
       );
 
-      if (path == null || !mounted) return;
+      if (result == null || !mounted) return;
 
       setState(() {
-        _pages.add(path);
+        _pages.add(result.imagePath);
         _currentIndex = _pages.length - 1;
-        _currentPath = path;
+        _currentPath = result.imagePath;
+        _colorProfile = result.colorProfile;
       });
 
       // Ensure PageView is updated before animating
@@ -323,20 +341,22 @@ class _EditScanScreenState extends State<EditScanScreen> {
     if (_isOnAddSlot) return;
 
     try {
-      final path = await context.push<String>(
+      final result = await context.push<CameraCaptureResult>(
         '/camerascreen',
         extra: CameraScreenConfig(
           initialMode: widget.initialMode,
           restrictToInitialMode: true,
           returnCapturePath: true,
+          colorProfile: _colorProfile,
         ),
       );
 
-      if (path == null || !mounted) return;
+      if (result == null || !mounted) return;
 
       setState(() {
-        _pages[_currentIndex] = path;
-        _currentPath = path;
+        _pages[_currentIndex] = result.imagePath;
+        _currentPath = result.imagePath;
+        _colorProfile = result.colorProfile;
         // Reset filter and rotation for this page
         _pageFilters.remove(_currentIndex);
         _pageRotations.remove(_currentIndex);
@@ -443,6 +463,10 @@ class _EditScanScreenState extends State<EditScanScreen> {
           _pages[_currentIndex] = newPath;
           _currentPath = newPath;
           _pageFilters[_currentIndex] = filter;
+          final mappedProfile = _profileFromFilter(filter);
+          if (mappedProfile != null) {
+            _colorProfile = mappedProfile;
+          }
         });
       } else {
         // Reset to original - would need to store original paths
@@ -456,6 +480,32 @@ class _EditScanScreenState extends State<EditScanScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Filter application failed: $e')));
     }
+  }
+
+  DocumentColorProfile? _profileFromFilter(ImageFilter filter) {
+    return switch (filter) {
+      ImageFilter.none => DocumentColorProfile.color,
+      ImageFilter.grayscale => DocumentColorProfile.grayscale,
+      ImageFilter.blackAndWhite => DocumentColorProfile.blackWhite,
+      ImageFilter.vintage => DocumentColorProfile.magic,
+      _ => null,
+    };
+  }
+
+  ImageFilter _filterFromProfile(DocumentColorProfile profile) {
+    return switch (profile) {
+      DocumentColorProfile.color => ImageFilter.none,
+      DocumentColorProfile.grayscale => ImageFilter.grayscale,
+      DocumentColorProfile.blackWhite => ImageFilter.blackAndWhite,
+      DocumentColorProfile.magic => ImageFilter.vintage,
+    };
+  }
+
+  Future<void> _handleColorProfileChange(DocumentColorProfile profile) async {
+    if (_colorProfile == profile) return;
+    setState(() => _colorProfile = profile);
+    if (_isOnAddSlot) return;
+    await _applyFilter(_filterFromProfile(profile));
   }
 
 
@@ -476,9 +526,78 @@ class _EditScanScreenState extends State<EditScanScreen> {
         'pdfFileName': _pdfFileName,
         'documentId': widget.documentId,
         'scanMode': widget.initialMode,
+        'colorProfile': _colorProfile.key,
       },
     );
   }
+
+  Future<void> _handleConfirm() async {
+    if (widget.documentId == null) {
+      _navigateToSavePdf();
+    } else {
+      await _fastSaveExistingDocument();
+    }
+  }
+
+  Future<void> _fastSaveExistingDocument() async {
+    if (widget.documentId == null) {
+      _navigateToSavePdf();
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _pdfProgress = PdfGenerationProgress(
+        processedPages: 0,
+        totalPages: _pages.length,
+        stage: 'Preparing',
+      );
+    });
+
+    try {
+      await DocumentService.instance.updateDocument(
+        documentId: widget.documentId!,
+        pageImagePaths: _pages,
+        title: _pdfFileName,
+        scanMode: _scanModeKey(widget.initialMode),
+        colorProfile: _colorProfile,
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() => _pdfProgress = progress);
+        },
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Document updated'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      context.go('/appmainscreen');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _pdfProgress = null;
+        });
+      }
+    }
+  }
+
+  String _scanModeKey(ScanMode mode) => mode.toString().split('.').last;
 
   void _goToPreviousPage() {
     if (_currentIndex > 0) {
@@ -594,6 +713,35 @@ class _EditScanScreenState extends State<EditScanScreen> {
                   ),
                 ],
               ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildColorProfileSelector() {
+    final cs = Theme.of(context).colorScheme;
+    final profiles = DocumentColorProfile.values;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: profiles.map((profile) {
+          final isSelected = profile == _colorProfile;
+          return ChoiceChip(
+            label: Text(profile.label),
+            selected: isSelected,
+            onSelected: (_) => _handleColorProfileChange(profile),
+            selectedColor: cs.primary.withOpacity(0.2),
+            labelStyle: TextStyle(
+              color: isSelected ? cs.primary : cs.onSurface,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            ),
+            side: BorderSide(
+              color: isSelected ? cs.primary : cs.outlineVariant,
             ),
           );
         }).toList(),
@@ -744,7 +892,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
           _buildBottomIcon(
             icon: Icons.check_circle_rounded,
             label: 'Confirm',
-            onTap: _navigateToSavePdf,
+            onTap: _isSaving ? null : _handleConfirm,
             color: cs.onPrimary,
             backgroundColor: cs.primary,
           ),
@@ -905,6 +1053,215 @@ class _EditScanScreenState extends State<EditScanScreen> {
     );
   }
 
+  Widget _buildThumbnailGrid() {
+    final totalItems = _pages.length + 1;
+    return SizedBox(
+      height: 210,
+      child: GridView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.55,
+        ),
+        itemCount: totalItems,
+        itemBuilder: (context, index) {
+          if (index == _pages.length) {
+            return _buildAddThumbnailTile();
+          }
+          return _buildDraggableThumbnail(index);
+        },
+      ),
+    );
+  }
+
+  Widget _buildAddThumbnailTile() {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: _captureAdditionalPage,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outline.withOpacity(0.4)),
+          color: cs.surfaceVariant.withOpacity(0.3),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_photo_alternate_rounded,
+                  size: 32, color: cs.primary),
+              const SizedBox(height: 8),
+              Text(
+                'Add',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDraggableThumbnail(int index) {
+    final tile = _buildThumbnailContent(index);
+    return LongPressDraggable<int>(
+      data: index,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      onDragStarted: () => setState(() => _draggingIndex = index),
+      onDraggableCanceled: (_, __) => setState(() => _draggingIndex = null),
+      onDragEnd: (_) => setState(() => _draggingIndex = null),
+      feedback: Material(
+        color: Colors.transparent,
+        child: SizedBox(width: 90, child: tile),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.3,
+        child: tile,
+      ),
+      child: DragTarget<int>(
+        onWillAccept: (from) => from != index,
+        onAccept: (from) => _handleReorder(from!, index),
+        builder: (context, candidateData, rejectedData) {
+          final highlight = candidateData.isNotEmpty;
+          return Dismissible(
+            key: ValueKey(_pages[index]),
+            direction: _pages.length <= 1
+                ? DismissDirection.none
+                : DismissDirection.up,
+            background: Container(
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(Icons.delete, color: Colors.redAccent),
+            ),
+            onDismissed: (_) => _removePageAt(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: highlight
+                      ? Theme.of(context).colorScheme.primary
+                      : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: tile,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildThumbnailContent(int index) {
+    final cs = Theme.of(context).colorScheme;
+    final isActive = index == _currentIndex;
+    return GestureDetector(
+      onTap: () => _jumpToPage(index),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: cs.surface,
+          border: Border.all(
+            color: isActive ? cs.primary : cs.outlineVariant,
+            width: isActive ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(_pages[index]),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: cs.surfaceVariant,
+                    child: const Icon(Icons.broken_image),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Page ${index + 1}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isActive ? cs.primary : cs.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleReorder(int from, int to) {
+    if (from == to) return;
+    setState(() {
+      final page = _pages.removeAt(from);
+      _pages.insert(to, page);
+
+      if (_currentIndex == from) {
+        _currentIndex = to;
+      } else if (from < _currentIndex && to >= _currentIndex) {
+        _currentIndex -= 1;
+      } else if (from > _currentIndex && to <= _currentIndex) {
+        _currentIndex += 1;
+      }
+
+      _currentIndex = _currentIndex.clamp(0, _pages.length - 1);
+      _currentPath = _pages[_currentIndex];
+    });
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(_currentIndex);
+    }
+  }
+
+  void _removePageAt(int index) {
+    if (_pages.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Keep at least one page in the document')),
+      );
+      return;
+    }
+    setState(() {
+      _pages.removeAt(index);
+      if (_currentIndex >= _pages.length) {
+        _currentIndex = _pages.length - 1;
+      }
+      _currentPath = _pages[_currentIndex];
+    });
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(_currentIndex);
+    }
+  }
+
+  Future<void> _jumpToPage(int index) async {
+    if (_pageController.hasClients) {
+      await _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+    setState(() {
+      _currentIndex = index;
+      _currentPath = _pages[index];
+    });
+  }
+
   Widget _buildPageNavigation() {
     final cs = Theme.of(context).colorScheme;
     final isFirstPage = _currentIndex == 0;
@@ -965,6 +1322,66 @@ class _EditScanScreenState extends State<EditScanScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSavingOverlay(ColorScheme colorScheme) {
+    final progress = _pdfProgress;
+    final subtitle = progress == null
+        ? 'Finalizing changes…'
+        : '${progress.stage} • ${progress.processedPages}/${progress.totalPages} pages';
+    final double? percent = progress == null
+        ? null
+        : (progress.processedPages / progress.totalPages).clamp(0.0, 1.0);
+
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black54,
+        alignment: Alignment.center,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          width: 280,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Saving to library…',
+                style: GoogleFonts.inter(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const SizedBox(height: 16),
+              LinearProgressIndicator(
+                value: percent,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(20),
+                backgroundColor: colorScheme.outline.withOpacity(0.2),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1199,23 +1616,28 @@ class _EditScanScreenState extends State<EditScanScreen> {
         ),
         centerTitle: true,
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              physics: const BouncingScrollPhysics(),
-              onPageChanged: _handlePageChanged,
-              itemCount: _pages.length + 1,
-              allowImplicitScrolling: false,
-              itemBuilder: (context, index) {
-                if (index < _pages.length) {
-                  return _buildImagePage(_pages[index]);
-                }
-                return _buildAddPageCard();
-              },
-            ),
+          Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  physics: const BouncingScrollPhysics(),
+                  onPageChanged: _handlePageChanged,
+                  itemCount: _pages.length + 1,
+                  allowImplicitScrolling: false,
+                  itemBuilder: (context, index) {
+                    if (index < _pages.length) {
+                      return _buildImagePage(_pages[index]);
+                    }
+                    return _buildAddPageCard();
+                  },
+                ),
+              ),
+            ],
           ),
+          if (_isSaving) _buildSavingOverlay(cs),
         ],
       ),
       bottomNavigationBar: _isOnAddSlot

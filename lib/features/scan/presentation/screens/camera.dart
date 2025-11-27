@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/features/scan/core/edge_detector.dart';
@@ -17,6 +18,7 @@ import 'package:thyscan/features/scan/presentation/widgets/barcode_result_sheet.
 import 'package:thyscan/features/scan/presentation/widgets/loading_overlay.dart';
 import 'package:thyscan/features/scan/providers/translation_provider.dart';
 import 'package:flutter/services.dart';
+import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/providers/timestamp_provider.dart';
 
 import '../../model/scan_flow_models.dart';
@@ -63,12 +65,14 @@ class SmartCameraScreen extends ConsumerStatefulWidget {
   final ScanMode initialMode;
   final bool restrictToInitialMode;
   final bool returnCapturePath;
+  final DocumentColorProfile initialColorProfile;
 
   const SmartCameraScreen({
     super.key,
     this.initialMode = ScanMode.document,
     this.restrictToInitialMode = false,
     this.returnCapturePath = false,
+    this.initialColorProfile = DocumentColorProfile.color,
   });
 
   @override
@@ -84,6 +88,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   late ScanMode _currentMode;
   late final List<ScanMode> _availableModes;
   CameraSettings _settings = CameraSettings();
+  late DocumentColorProfile _colorProfile;
 
   // Camera switching
   List<CameraDescription> _cameras = [];
@@ -99,6 +104,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   void initState() {
     super.initState();
     _currentMode = widget.initialMode;
+    _colorProfile = widget.initialColorProfile;
     _availableModes = widget.restrictToInitialMode
         ? [widget.initialMode]
         : ScanMode.values;
@@ -334,7 +340,13 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
 
       // Apply timestamp overlay only in Timestamp mode
       await _applyTimestampIfNeeded(path);
+      await _applyColorProfileIfNeeded(path);
       if (!mounted) return;
+
+      final captureResult = CameraCaptureResult(
+        imagePath: path,
+        colorProfile: _colorProfile,
+      );
 
       // NEW: Translate mode flow – OCR -> Translate -> Navigate
       if (_currentMode == ScanMode.translate) {
@@ -363,11 +375,15 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
           extra: {'imagePath': path},
         );
       } else if (widget.returnCapturePath) {
-        context.pop(path);
+        context.pop(captureResult);
       } else {
         context.push(
           '/editscanscreen',
-          extra: EditScanArgs(imagePath: path, initialMode: _currentMode),
+          extra: EditScanArgs(
+            imagePath: path,
+            initialMode: _currentMode,
+            colorProfile: _colorProfile,
+          ),
         );
       }
     } catch (e) {
@@ -396,7 +412,13 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
 
       // Apply timestamp overlay only in Timestamp mode
       await _applyTimestampIfNeeded(path);
+      await _applyColorProfileIfNeeded(path);
       if (!mounted) return;
+
+      final captureResult = CameraCaptureResult(
+        imagePath: path,
+        colorProfile: _colorProfile,
+      );
 
       // NEW: Translate mode flow for gallery images – OCR -> Translate -> Navigate
       if (_currentMode == ScanMode.translate) {
@@ -424,11 +446,15 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
           extra: {'imagePath': path},
         );
       } else if (widget.returnCapturePath) {
-        context.pop(path);
+        context.pop(captureResult);
       } else {
         context.push(
           '/editscanscreen',
-          extra: EditScanArgs(imagePath: path, initialMode: _currentMode),
+          extra: EditScanArgs(
+            imagePath: path,
+            initialMode: _currentMode,
+            colorProfile: _colorProfile,
+          ),
         );
       }
     } catch (e) {
@@ -547,6 +573,30 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     }
   }
 
+  Future<void> _applyColorProfileIfNeeded(String path) async {
+    if (_colorProfile == DocumentColorProfile.color) return;
+    try {
+      final bytes = await File(path).readAsBytes();
+      final decoded = img.decodeImage(bytes);
+      if (decoded == null) return;
+      final filtered = _applyProfileFilter(decoded, _colorProfile);
+      final encoded = img.encodeJpg(filtered, quality: 95);
+      await File(path).writeAsBytes(encoded, flush: true);
+    } catch (_) {
+      // Silently ignore filter failures to avoid interrupting the flow.
+    }
+  }
+
+  Widget _buildFilteredPreview() {
+    if (_controller == null) {
+      return const SizedBox.shrink();
+    }
+    final preview = CameraPreview(_controller!);
+    final filter = _previewFilterForProfile(_colorProfile);
+    if (filter == null) return preview;
+    return ColorFiltered(colorFilter: filter, child: preview);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -645,7 +695,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
                   child: SizedBox(
                     width: _controller!.value.previewSize!.height,
                     height: _controller!.value.previewSize!.width,
-                    child: CameraPreview(_controller!),
+                    child: _buildFilteredPreview(),
                   ),
                 ),
               );
@@ -715,11 +765,23 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
             alignment: Alignment.bottomCenter,
             child: Container(
               margin: const EdgeInsets.only(bottom: 140),
-              child: _ModeSelector(
-                currentMode: _currentMode,
-                onModeChanged: _changeMode,
-                colorScheme: colorScheme,
-                modes: _availableModes,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ColorProfileSelector(
+                    selected: _colorProfile,
+                    onChanged: (profile) {
+                      setState(() => _colorProfile = profile);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  _ModeSelector(
+                    currentMode: _currentMode,
+                    onModeChanged: _changeMode,
+                    colorScheme: colorScheme,
+                    modes: _availableModes,
+                  ),
+                ],
               ),
             ),
           ),
@@ -753,6 +815,54 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ColorProfileSelector extends StatelessWidget {
+  const _ColorProfileSelector({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final DocumentColorProfile selected;
+  final ValueChanged<DocumentColorProfile> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final profiles = DocumentColorProfile.values;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.35),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
+        children: profiles.map((profile) {
+          final isSelected = profile == selected;
+          return ChoiceChip(
+            label: Text(profile.label),
+            selected: isSelected,
+            selectedColor: colorScheme.primary.withOpacity(0.2),
+            backgroundColor: Colors.white.withOpacity(0.08),
+            labelStyle: TextStyle(
+              color: isSelected ? Colors.white : Colors.white70,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            ),
+            side: BorderSide(
+              color: isSelected
+                  ? colorScheme.primary.withOpacity(0.6)
+                  : Colors.white24,
+            ),
+            onSelected: (_) => onChanged(profile),
+          );
+        }).toList(),
       ),
     );
   }
@@ -1271,3 +1381,59 @@ class _TimestampLoadingDialog extends StatelessWidget {
     );
   }
 }
+
+ColorFilter? _previewFilterForProfile(DocumentColorProfile profile) {
+  switch (profile) {
+    case DocumentColorProfile.color:
+      return null;
+    case DocumentColorProfile.grayscale:
+      return const ColorFilter.matrix(_grayscaleMatrix);
+    case DocumentColorProfile.blackWhite:
+      return const ColorFilter.matrix(_blackWhiteMatrix);
+    case DocumentColorProfile.magic:
+      return const ColorFilter.matrix(_magicMatrix);
+  }
+}
+
+img.Image _applyProfileFilter(
+  img.Image image,
+  DocumentColorProfile profile,
+) {
+  switch (profile) {
+    case DocumentColorProfile.color:
+      return image;
+    case DocumentColorProfile.grayscale:
+      return img.grayscale(image);
+    case DocumentColorProfile.blackWhite:
+      final gray = img.grayscale(image);
+      return img.adjustColor(gray, contrast: 1.35, brightness: 1.05);
+    case DocumentColorProfile.magic:
+      return img.adjustColor(
+        image,
+        contrast: 1.15,
+        saturation: 1.1,
+        brightness: 1.02,
+      );
+  }
+}
+
+const List<double> _grayscaleMatrix = <double>[
+  0.33, 0.33, 0.33, 0, 0,
+  0.33, 0.33, 0.33, 0, 0,
+  0.33, 0.33, 0.33, 0, 0,
+  0, 0, 0, 1, 0,
+];
+
+const List<double> _blackWhiteMatrix = <double>[
+  0.6, 0.6, 0.6, 0, -128,
+  0.6, 0.6, 0.6, 0, -128,
+  0.6, 0.6, 0.6, 0, -128,
+  0, 0, 0, 1, 0,
+];
+
+const List<double> _magicMatrix = <double>[
+  1.2, 0.05, 0.05, 0, 0,
+  0.05, 1.15, 0.05, 0, 0,
+  0.05, 0.05, 1.1, 0, 0,
+  0, 0, 0, 1, 0,
+];

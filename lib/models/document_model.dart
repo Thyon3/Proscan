@@ -1,5 +1,6 @@
 // models/document_model.dart
 import 'package:hive/hive.dart';
+import 'package:thyscan/models/document_color_profile.dart';
 
 part 'document_model.g.dart';
 
@@ -35,8 +36,16 @@ class DocumentModel extends HiveObject {
   @HiveField(9, defaultValue: '')
   final String? textContent; // For text/docx documents
 
+  @HiveField(10)
+  final DateTime updatedAt;
+
+  @HiveField(11, defaultValue: 'color')
+  final String colorProfile;
+
   // Public getter that guarantees non-null list
   List<String> get pageImagePaths => _pageImagePaths ?? [];
+  DocumentColorProfile get colorProfileEnum =>
+      DocumentColorProfile.fromKey(colorProfile);
 
   DocumentModel({
     required this.id,
@@ -48,6 +57,8 @@ class DocumentModel extends HiveObject {
     required this.thumbnailPath,
     this.scanMode = 'document',
     this.textContent,
+    required this.updatedAt,
+    this.colorProfile = 'color',
     List<String>? pageImagePaths,
   }) : _pageImagePaths = pageImagePaths;
   DocumentModel copyWith({
@@ -61,6 +72,8 @@ class DocumentModel extends HiveObject {
     String? scanMode,
     String? textContent,
     List<String>? pageImagePaths,
+    DateTime? updatedAt,
+    String? colorProfile,
   }) {
     return DocumentModel(
       id: id ?? this.id,
@@ -72,6 +85,8 @@ class DocumentModel extends HiveObject {
       thumbnailPath: thumbnailPath ?? this.thumbnailPath,
       scanMode: scanMode ?? this.scanMode,
       textContent: textContent ?? this.textContent,
+      updatedAt: updatedAt ?? this.updatedAt,
+      colorProfile: colorProfile ?? this.colorProfile,
       pageImagePaths: pageImagePaths ?? this.pageImagePaths,
     );
   }

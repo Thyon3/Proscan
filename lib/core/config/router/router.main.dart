@@ -113,6 +113,7 @@ final GoRouter router = GoRouter(
           initialMode: config?.initialMode ?? ScanMode.document,
           restrictToInitialMode: config?.restrictToInitialMode ?? false,
           returnCapturePath: config?.returnCapturePath ?? false,
+          initialColorProfile: config?.colorProfile ?? DocumentColorProfile.color,
         );
       },
     ),
@@ -126,12 +127,15 @@ final GoRouter router = GoRouter(
             initialMode: extra.initialMode,
             documentId: extra.documentId,
             imagePaths: extra.imagePaths,
+            initialColorProfile: extra.colorProfile,
+            documentTitle: extra.documentTitle,
           );
         } else if (extra is String && extra.isNotEmpty) {
           // Backwards compatibility: allow passing just the image path.
           return EditScanScreen(
             imagePath: extra,
             initialMode: ScanMode.document,
+            initialColorProfile: DocumentColorProfile.color,
           );
         }
         throw ArgumentError('EditScanScreen requires image path.');
@@ -155,11 +159,20 @@ final GoRouter router = GoRouter(
             scanMode = extra['scanMode'] as ScanMode;
           }
 
+          DocumentColorProfile? colorProfile;
+          final rawProfile = extra['colorProfile'];
+          if (rawProfile is String) {
+            colorProfile = DocumentColorProfile.fromKey(rawProfile);
+          } else if (rawProfile is DocumentColorProfile) {
+            colorProfile = rawProfile;
+          }
+
           return SavePdfScreen(
             imagePaths: extra['imagePaths'] as List<String>,
             pdfFileName: extra['pdfFileName'] as String,
             documentId: extra['documentId'] as String?, // Optional for existing documents
             scanMode: scanMode,
+            initialColorProfile: colorProfile,
           );
         }
         throw ArgumentError(

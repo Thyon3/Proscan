@@ -190,6 +190,7 @@ class HomeScreen extends ConsumerWidget {
           'pdfFileName': doc.title,
           'documentId': doc.id,
           'scanMode': doc.scanMode,
+          'colorProfile': doc.colorProfile,
         },
       );
     }

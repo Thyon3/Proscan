@@ -142,6 +142,7 @@ class _SearchScreenState extends State<SearchScreen>
           'pdfFileName': doc.title,
           'documentId': doc.id,
           'scanMode': doc.scanMode,
+          'colorProfile': doc.colorProfile,
         },
       );
     }

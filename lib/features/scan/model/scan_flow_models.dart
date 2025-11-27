@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:thyscan/models/document_color_profile.dart';
 
 enum ScanMode {
   slides,
@@ -98,12 +99,16 @@ class EditScanArgs {
   final ScanMode initialMode;
   final String? documentId;
   final List<String>? imagePaths;
+  final DocumentColorProfile colorProfile;
+  final String? documentTitle;
 
   const EditScanArgs({
     required this.imagePath,
     required this.initialMode,
+    this.colorProfile = DocumentColorProfile.color,
     this.documentId,
     this.imagePaths,
+    this.documentTitle,
   });
 }
 
@@ -111,10 +116,19 @@ class CameraScreenConfig {
   final ScanMode initialMode;
   final bool restrictToInitialMode;
   final bool returnCapturePath;
+  final DocumentColorProfile colorProfile;
 
   const CameraScreenConfig({
     this.initialMode = ScanMode.document,
     this.restrictToInitialMode = false,
     this.returnCapturePath = false,
+    this.colorProfile = DocumentColorProfile.color,
   });
+}
+
+class CameraCaptureResult {
+  CameraCaptureResult({required this.imagePath, required this.colorProfile});
+
+  final String imagePath;
+  final DocumentColorProfile colorProfile;
 }

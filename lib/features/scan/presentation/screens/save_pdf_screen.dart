@@ -4,13 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
+import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
+import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/features/scan/presentation/screens/delete_pages_screen.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -20,6 +19,7 @@ class SavePdfScreen extends StatefulWidget {
   final String pdfFileName;
   final String? documentId; // Optional: for opening existing documents
   final ScanMode? scanMode; // Track the original scan mode
+  final DocumentColorProfile? initialColorProfile;
 
   const SavePdfScreen({
     super.key,
@@ -27,6 +27,7 @@ class SavePdfScreen extends StatefulWidget {
     required this.pdfFileName,
     this.documentId,
     this.scanMode,
+    this.initialColorProfile,
   });
 
   @override
@@ -35,17 +36,22 @@ class SavePdfScreen extends StatefulWidget {
 
 class _SavePdfScreenState extends State<SavePdfScreen> {
   bool _isSaving = false;
-  bool _isSharing = false;
   String? _savedPdfPath;
   List<String> _pages = [];
   int _selectedBottomNavIndex = 0;
   String? _documentId; // Store the document ID after auto-save
+  bool _hasUnsavedChanges = false;
+  DocumentColorProfile _colorProfile = DocumentColorProfile.color;
+  late final ScanMode _activeScanMode;
+  PdfGenerationProgress? _pdfProgress;
 
   @override
   void initState() {
     super.initState();
     _pages = List.from(widget.imagePaths);
     _documentId = widget.documentId;
+    _activeScanMode = widget.scanMode ?? ScanMode.document;
+    _colorProfile = widget.initialColorProfile ?? DocumentColorProfile.color;
 
     // Only auto-save if this is a new document (no documentId provided)
     if (widget.documentId == null) {
@@ -67,6 +73,8 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       if (doc != null && mounted) {
         setState(() {
           _savedPdfPath = doc.filePath;
+          _colorProfile = DocumentColorProfile.fromKey(doc.colorProfile);
+          _documentId = doc.id;
         });
       }
     } catch (e) {
@@ -76,120 +84,97 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
 
   /// Automatically save document to internal storage and Hive on screen load
   Future<void> _autoSaveDocument() async {
-    if (_pages.isEmpty) return;
-
-    try {
-      final doc = await DocumentService.instance.saveDocument(
-        pageImagePaths: _pages,
-        title: widget.pdfFileName.replaceAll('.pdf', ''),
-      );
-
-      if (mounted) {
-        setState(() {
-          _savedPdfPath = doc.filePath;
-          _documentId = doc.id;
-        });
-      }
-    } catch (e) {
-      debugPrint('Auto-save failed: $e');
-    }
+    await _persistDocument(force: true);
   }
 
   /// Update existing document when pages are modified
   Future<void> _updateExistingDocument() async {
-    if (_pages.isEmpty || _documentId == null) return;
+    await _persistDocument(force: true);
+  }
 
-    try {
-      final doc = await DocumentService.instance.updateDocument(
-        documentId: _documentId!,
-        pageImagePaths: _pages,
-        title: widget.pdfFileName.replaceAll('.pdf', ''),
-      );
-
+  Future<DocumentModel?> _persistDocument({bool force = false}) async {
+    if (_pages.isEmpty) {
       if (mounted) {
-        setState(() {
-          _savedPdfPath = doc.filePath;
-        });
-        
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Document updated successfully'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
+          const SnackBar(content: Text('No pages to save')),
         );
       }
+      return null;
+    }
+
+    if (_isSaving) return null;
+
+    if (!force && !_hasUnsavedChanges && _documentId != null) {
+      final box = Hive.box<DocumentModel>(DocumentService.boxName);
+      return box.get(_documentId!);
+    }
+
+    setState(() {
+      _isSaving = true;
+      _pdfProgress = PdfGenerationProgress(
+        processedPages: 0,
+        totalPages: _pages.length,
+        stage: 'Preparing',
+      );
+    });
+
+    try {
+      final title = widget.pdfFileName.replaceAll('.pdf', '');
+      final scanModeKey = _scanModeKey(_activeScanMode);
+      final progressHandler = (PdfGenerationProgress progress) {
+        if (!mounted) return;
+        setState(() => _pdfProgress = progress);
+      };
+
+      late DocumentModel doc;
+      if (_documentId == null) {
+        doc = await DocumentService.instance.saveDocument(
+          pageImagePaths: _pages,
+          title: title,
+          scanMode: scanModeKey,
+          colorProfile: _colorProfile,
+          onProgress: progressHandler,
+        );
+      } else {
+        doc = await DocumentService.instance.updateDocument(
+          documentId: _documentId!,
+          pageImagePaths: _pages,
+          title: title,
+          scanMode: scanModeKey,
+          colorProfile: _colorProfile,
+          onProgress: progressHandler,
+        );
+      }
+
+      if (!mounted) return doc;
+
+      setState(() {
+        _documentId = doc.id;
+        _savedPdfPath = doc.filePath;
+        if (doc.pageImagePaths.isNotEmpty) {
+          _pages = List.from(doc.pageImagePaths);
+        }
+        _hasUnsavedChanges = false;
+      });
+
+      return doc;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to update: $e'),
+            content: Text('Failed to save: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
-    }
-  }
-
-  Future<String?> _saveAsPdf() async {
-    if (_pages.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No pages to export')));
       return null;
-    }
-
-    setState(() => _isSaving = true);
-
-    try {
-      final pdf = pw.Document();
-      for (final path in _pages) {
-        final bytes = await File(path).readAsBytes();
-        final img = pw.MemoryImage(bytes);
-
-        pdf.addPage(
-          pw.Page(
-            pageFormat: PdfPageFormat.a4,
-            margin: pw.EdgeInsets.zero,
-            build: (_) => pw.Center(
-              child: pw.FittedBox(fit: pw.BoxFit.contain, child: pw.Image(img)),
-            ),
-          ),
-        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _pdfProgress = null;
+        });
       }
-
-      final dir = await getApplicationDocumentsDirectory();
-      final fileName = widget.pdfFileName.endsWith('.pdf')
-          ? widget.pdfFileName
-          : '${widget.pdfFileName}.pdf';
-      final out = File('${dir.path}/$fileName');
-      await out.writeAsBytes(await pdf.save());
-
-      if (!mounted) return null;
-
-      setState(() {
-        _isSaving = false;
-        _savedPdfPath = out.path;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PDF saved successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      return out.path;
-    } catch (e) {
-      if (!mounted) return null;
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return null;
     }
   }
 
@@ -201,15 +186,13 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       return;
     }
 
-    setState(() => _isSharing = true);
-
     try {
-      String? pdfPath = _savedPdfPath;
-      if (pdfPath == null || !File(pdfPath).existsSync()) {
-        pdfPath = await _saveAsPdf();
-      }
+      final doc = await _persistDocument(
+        force: _documentId == null || _hasUnsavedChanges,
+      );
+      final pdfPath = doc?.filePath ?? _savedPdfPath;
 
-      if (pdfPath != null && mounted) {
+      if (pdfPath != null && File(pdfPath).existsSync() && mounted) {
         await Share.shareXFiles(
           [XFile(pdfPath)],
           subject: 'Document Scan - ${widget.pdfFileName}',
@@ -224,27 +207,26 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _isSharing = false);
-      }
     }
   }
 
   Future<void> _addPage() async {
     try {
-      final path = await context.push<String>(
+      final result = await context.push<CameraCaptureResult>(
         '/camerascreen',
         extra: CameraScreenConfig(
-          initialMode: widget.scanMode ?? ScanMode.document,
+          initialMode: _activeScanMode,
           restrictToInitialMode: true,
           returnCapturePath: true,
+          colorProfile: _colorProfile,
         ),
       );
 
-      if (path != null && mounted) {
+      if (result != null && mounted) {
         setState(() {
-          _pages.add(path);
+          _pages.add(result.imagePath);
+          _colorProfile = result.colorProfile;
+          _hasUnsavedChanges = true;
         });
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
@@ -326,9 +308,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                   '/editscanscreen',
                   extra: EditScanArgs(
                     imagePath: _pages.isNotEmpty ? _pages[0] : '',
-                    initialMode: widget.scanMode ?? ScanMode.document,
+                    initialMode: _activeScanMode,
                     documentId: _documentId,
                     imagePaths: _pages,
+                    colorProfile: _colorProfile,
+                    documentTitle: widget.pdfFileName,
                   ),
                 );
               },
@@ -363,6 +347,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         for (final index in deletedIndices.reversed) {
           _pages.removeAt(index);
         }
+        _hasUnsavedChanges = true;
       });
 
       // Update the document
@@ -391,49 +376,19 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       return;
     }
 
-    setState(() => _isSaving = true);
+    final doc = await _persistDocument(force: true);
+    if (!mounted || doc == null) return;
 
-    try {
-      if (_documentId != null) {
-        // Update existing document
-        await DocumentService.instance.updateDocument(
-          documentId: _documentId!,
-          pageImagePaths: _pages,
-          title: widget.pdfFileName.replaceAll('.pdf', ''),
-        );
-      } else {
-        // Save new document
-        await DocumentService.instance.saveDocument(
-          pageImagePaths: _pages,
-          title: widget.pdfFileName.replaceAll('.pdf', ''),
-          scanMode: widget.scanMode?.toString().split('.').last ?? 'document',
-        );
-      }
+    // Navigate to Home Screen
+    context.go('/appmainscreen');
 
-      if (!mounted) return;
-
-      setState(() => _isSaving = false);
-
-      // Navigate to Home Screen
-      context.go('/appmainscreen');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Document saved successfully'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Document saved successfully'),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   /// Exports document as Word (.docx) file
@@ -578,83 +533,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     }
   }
 
-  /// Saves PDF to Hive database and shows success
-  Future<void> _savePdfToLibrary() async {
-    if (_pages.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No pages to export')));
-      return;
-    }
-
-    setState(() => _isSaving = true);
-
-    try {
-      // Save document with UUID key
-      final doc = await DocumentService.instance.saveDocument(
-        pageImagePaths: _pages,
-        title: widget.pdfFileName.replaceAll('.pdf', ''),
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _isSaving = false;
-        _savedPdfPath = doc.filePath;
-      });
-
-      // Show success toast
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'PDF saved to library!',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          action: SnackBarAction(
-            label: 'Open',
-            textColor: Colors.white,
-            onPressed: () async {
-              await OpenFilex.open(doc.filePath);
-            },
-          ),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-
-      // Navigate back after short delay
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
-          context.pop();
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
+  String _scanModeKey(ScanMode mode) => mode.toString().split('.').last;
 
   void _showAppBarMenu() {
     showModalBottomSheet(
@@ -728,6 +607,75 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBanner(ColorScheme colorScheme) {
+    final progress = _pdfProgress;
+    if (progress == null) return const SizedBox.shrink();
+
+    final double? percent = progress.totalPages == 0
+        ? null
+        : (progress.processedPages / progress.totalPages).clamp(0.0, 1.0);
+
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceVariant.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Optimizing PDF…',
+                    style: GoogleFonts.inter(
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                value: percent,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(20),
+                backgroundColor: colorScheme.outlineVariant.withOpacity(0.3),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${progress.stage} • ${progress.processedPages}/${progress.totalPages} pages',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -817,22 +765,27 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.7,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.7,
+                ),
+                itemCount: _pages.length + 1,
+                itemBuilder: (context, index) {
+                  return _buildPageGridItem(index);
+                },
+              ),
             ),
-            itemCount: _pages.length + 1,
-            itemBuilder: (context, index) {
-              return _buildPageGridItem(index);
-            },
           ),
-        ),
+          if (_pdfProgress != null) _buildProgressBanner(cs),
+        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

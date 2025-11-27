@@ -76,11 +76,13 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
         filePath: _document!.filePath,
         format: _document!.format,
         createdAt: _document!.createdAt,
+        updatedAt: DateTime.now(),
         pageCount: _document!.pageCount,
         thumbnailPath: _document!.thumbnailPath,
         scanMode: _document!.scanMode,
         textContent: _textController.text,
         pageImagePaths: _document!.pageImagePaths,
+        colorProfile: _document!.colorProfile,
       );
 
       // Save to Hive
