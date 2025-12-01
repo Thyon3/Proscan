@@ -1,10 +1,18 @@
 import 'dart:io';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:thyscan/core/errors/failures.dart';
+import 'package:thyscan/core/errors/storage_exceptions.dart';
+import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/document_operation_queue.dart';
+import 'package:thyscan/core/services/performance_tracker.dart';
+import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
@@ -19,12 +27,11 @@ class DocumentService {
   DocumentService._();
 
   final _uuid = const Uuid();
+  final _documentsCache = <String, DocumentModel>{};
+  final _sortedCache = <String, List<String>>{};
+  bool _cacheDirty = true;
+  DateTime? _lastCacheUpdate;
 
-  /// High‑level API: save a new scanned document.
-  ///
-  /// This method delegates to the transactional repository helpers below,
-  /// ensuring that files are first written into temporary locations and
-  /// only committed once PDF generation and thumbnail creation succeed.
   Future<DocumentModel> saveDocument({
     required List<String> pageImagePaths,
     String? title,
@@ -33,6 +40,31 @@ class DocumentService {
     DocumentColorProfile colorProfile = DocumentColorProfile.color,
     PdfProgressCallback? onProgress,
     DocumentSaveOptions options = const DocumentSaveOptions(),
+  }) {
+    return DocumentOperationQueue.instance.enqueue(
+      () => PerformanceTracker.track(
+        'saveDocument',
+        () => _saveDocumentInternal(
+          pageImagePaths: pageImagePaths,
+          title: title,
+          scanMode: scanMode,
+          textContent: textContent,
+          colorProfile: colorProfile,
+          onProgress: onProgress,
+          options: options,
+        ),
+      ),
+    );
+  }
+
+  Future<DocumentModel> _saveDocumentInternal({
+    required List<String> pageImagePaths,
+    String? title,
+    required String scanMode,
+    String? textContent,
+    required DocumentColorProfile colorProfile,
+    PdfProgressCallback? onProgress,
+    required DocumentSaveOptions options,
   }) async {
     if (pageImagePaths.isEmpty) {
       throw ArgumentError('pageImagePaths cannot be empty');
@@ -49,6 +81,11 @@ class DocumentService {
     await _ensureDir(thumbsDir);
     await _ensureDir(pagesDir);
 
+    final hasDisk = await _ensureDiskSpace(pageImagePaths: pageImagePaths);
+    if (!hasDisk) {
+      throw DiskSpaceException(message: 'Insufficient disk space for save');
+    }
+
     final id = _uuid.v4();
     final createdAt = DateTime.now();
     final pageCount = pageImagePaths.length;
@@ -58,13 +95,11 @@ class DocumentService {
         ? title!
         : 'Scan ${DateFormat('MMM dd, yyyy').format(createdAt)}';
 
-    // Use a temporary file path for the PDF, then atomically rename.
     final targetFilePath = p.join(documentsDir.path, 'doc_$id.pdf');
     final tempFilePath = p.join(
       documentsDir.path,
       'doc_${id}_$timestamp.tmp.pdf',
     );
-
     final tempThumbnailPath = _buildThumbnailPath(
       thumbsDir.path,
       id,
@@ -75,7 +110,7 @@ class DocumentService {
     final resolvedMetadata = (options.metadata ?? const PdfMetadata())
         .withFallbacks(title: docTitle, fallbackKeywords: resolvedTags);
 
-    final generationConfig = PdfGenerationConfig(
+    final baseConfig = PdfGenerationConfig(
       maxPageSizeMb: options.compressionPreset.maxPageSizeMb,
       pageWidth: options.paperSize.format.width,
       pageHeight: options.paperSize.format.height,
@@ -83,6 +118,13 @@ class DocumentService {
       addWhiteBackground: options.addWhiteBackground,
       metadata: resolvedMetadata.toPdfDocumentMetadata(),
     );
+
+    final appliedConfig =
+        ResourceGuard.instance.hasSufficientMemory(minFreeMb: 250)
+        ? baseConfig
+        : baseConfig.copyWith(
+            maxPageSizeMb: max(0.8, baseConfig.maxPageSizeMb * 0.75),
+          );
 
     PdfGenerationResult? pdfResult;
     String? committedFilePath;
@@ -95,20 +137,18 @@ class DocumentService {
         optimizedDirPath: pagesDir.path,
         documentId: id,
         batchId: timestamp.toString(),
-        config: generationConfig,
+        config: appliedConfig,
         onProgress: onProgress,
       );
 
-      // Atomically "commit" the PDF by renaming the temp file.
       final tempFile = File(tempFilePath);
       if (!await tempFile.exists()) {
         throw StorageFailure('Temporary PDF file missing after generation');
       }
       final finalFile = await tempFile.rename(targetFilePath);
-      committedFilePath = finalFile.path;
+      final savedPdfPath = finalFile.path;
+      committedFilePath = savedPdfPath;
 
-      // Create thumbnail from first optimized page, written directly
-      // to its final location.
       if (pdfResult.optimizedImagePaths.isNotEmpty) {
         final firstPageFile = File(pdfResult.optimizedImagePaths.first);
         if (await firstPageFile.exists()) {
@@ -120,7 +160,7 @@ class DocumentService {
       final doc = DocumentModel(
         id: id,
         title: docTitle,
-        filePath: committedFilePath ?? targetFilePath,
+        filePath: savedPdfPath,
         thumbnailPath: committedThumbPath ?? '',
         format: 'pdf',
         pageCount: pageCount,
@@ -136,10 +176,9 @@ class DocumentService {
 
       final box = Hive.box<DocumentModel>(boxName);
       await box.put(id, doc);
-
+      _markCacheDirty();
       return doc;
     } catch (e) {
-      // Best‑effort rollback of any temporary or partially committed files.
       await _deleteIfExists(tempFilePath);
       if (committedFilePath != null) {
         await _deleteIfExists(committedFilePath);
@@ -154,52 +193,23 @@ class DocumentService {
   /// Retrieves all documents safely, filtering out corrupted entries or missing files.
   /// Returns a list of valid [DocumentModel]s.
   Future<List<DocumentModel>> getAllDocumentsSafe() async {
-    try {
-      final box = Hive.box<DocumentModel>(boxName);
-      final validDocs = <DocumentModel>[];
-      final keysToDelete = <dynamic>[];
-
-      for (final key in box.keys) {
-        try {
-          final doc = box.get(key);
-          if (doc == null) {
-            keysToDelete.add(key);
-            continue;
-          }
-
-          // Integrity Check: Verify file existence
-          final file = File(doc.filePath);
-          if (!await file.exists()) {
-            // Mark for deletion if the physical file is gone
-            // (Optional: You could also just hide it or show an error state)
-            keysToDelete.add(key);
-            continue;
-          }
-
-          validDocs.add(doc);
-        } catch (e) {
-          // If a specific record is corrupted, mark it for deletion
-          keysToDelete.add(key);
-        }
-      }
-
-      // Clean up ghost records
-      if (keysToDelete.isNotEmpty) {
-        await box.deleteAll(keysToDelete);
-      }
-
-      validDocs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return validDocs;
-    } catch (e) {
-      throw StorageFailure('Failed to retrieve documents: $e');
-    }
+    await _refreshCache(forceRefresh: true);
+    final docs = _documentsCache.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return docs;
   }
 
-  // Deprecated: Use getAllDocumentsSafe() instead
+  @Deprecated('Use getDocumentsPaginated or getAllDocumentsSafe instead.')
   List<DocumentModel> getAllDocuments() {
+    if (_documentsCache.isNotEmpty && !_cacheDirty) {
+      final docs = _documentsCache.values.toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return docs;
+    }
+
     final box = Hive.box<DocumentModel>(boxName);
-    final docs = box.values.toList();
-    docs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final docs = box.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return docs;
   }
 
@@ -211,6 +221,31 @@ class DocumentService {
     DocumentColorProfile? colorProfile,
     PdfProgressCallback? onProgress,
     DocumentSaveOptions options = const DocumentSaveOptions(),
+  }) {
+    return DocumentOperationQueue.instance.enqueue(
+      () => PerformanceTracker.track(
+        'updateDocument',
+        () => _updateDocumentInternal(
+          documentId: documentId,
+          pageImagePaths: pageImagePaths,
+          title: title,
+          scanMode: scanMode,
+          colorProfile: colorProfile,
+          onProgress: onProgress,
+          options: options,
+        ),
+      ),
+    );
+  }
+
+  Future<DocumentModel> _updateDocumentInternal({
+    required String documentId,
+    required List<String> pageImagePaths,
+    String? title,
+    String? scanMode,
+    DocumentColorProfile? colorProfile,
+    PdfProgressCallback? onProgress,
+    required DocumentSaveOptions options,
   }) async {
     if (pageImagePaths.isEmpty) {
       throw ArgumentError('pageImagePaths cannot be empty');
@@ -220,7 +255,11 @@ class DocumentService {
     final existingDoc = box.get(documentId);
 
     if (existingDoc == null) {
-      throw Exception('Document not found');
+      throw DocumentStorageException(
+        message: 'Document not found',
+        documentId: documentId,
+        type: StorageErrorType.notFound,
+      );
     }
 
     final appDocsDir = await getApplicationDocumentsDirectory();
@@ -234,6 +273,14 @@ class DocumentService {
     await _ensureDir(thumbsDir);
     await _ensureDir(pagesDir);
 
+    final hasDisk = await _ensureDiskSpace(pageImagePaths: pageImagePaths);
+    if (!hasDisk) {
+      throw DiskSpaceException(
+        message: 'Insufficient disk space for update',
+        documentId: documentId,
+      );
+    }
+
     final pageCount = pageImagePaths.length;
     final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
     final filePath = p.join(documentsDir.path, 'doc_$documentId.pdf');
@@ -246,7 +293,7 @@ class DocumentService {
       title: docTitle,
       fallbackKeywords: resolvedTags,
     );
-    final generationConfig = PdfGenerationConfig(
+    final baseConfig = PdfGenerationConfig(
       maxPageSizeMb: options.compressionPreset.maxPageSizeMb,
       pageWidth: options.paperSize.format.width,
       pageHeight: options.paperSize.format.height,
@@ -254,6 +301,12 @@ class DocumentService {
       addWhiteBackground: options.addWhiteBackground,
       metadata: resolvedMetadata.toPdfDocumentMetadata(),
     );
+    final appliedConfig =
+        ResourceGuard.instance.hasSufficientMemory(minFreeMb: 250)
+        ? baseConfig
+        : baseConfig.copyWith(
+            maxPageSizeMb: max(0.8, baseConfig.maxPageSizeMb * 0.75),
+          );
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
 
@@ -278,7 +331,7 @@ class DocumentService {
         optimizedDirPath: pagesDir.path,
         documentId: documentId,
         batchId: timestamp.toString(),
-        config: generationConfig,
+        config: appliedConfig,
         onProgress: onProgress,
       );
 
@@ -287,7 +340,8 @@ class DocumentService {
         throw StorageFailure('Temporary PDF file missing after generation');
       }
       final finalFile = await tempFile.rename(filePath);
-      committedFilePath = finalFile.path;
+      final savedPdfPath = finalFile.path;
+      committedFilePath = savedPdfPath;
 
       if (pdfResult.optimizedImagePaths.isNotEmpty) {
         final firstPageFile = File(pdfResult.optimizedImagePaths.first);
@@ -302,22 +356,19 @@ class DocumentService {
         await _deleteIfExists(existingDoc.thumbnailPath);
       }
 
-      // Only after successful commit do we best‑effort clean old page images.
       for (final oldPagePath in existingDoc.pageImagePaths) {
         try {
           if (!pdfResult.optimizedImagePaths.contains(oldPagePath)) {
             final pageFile = File(oldPagePath);
             if (await pageFile.exists()) await pageFile.delete();
           }
-        } catch (_) {
-          // Ignore deletion errors for old files
-        }
+        } catch (_) {}
       }
 
       final updatedDoc = DocumentModel(
         id: documentId,
         title: docTitle,
-        filePath: committedFilePath ?? filePath,
+        filePath: savedPdfPath,
         thumbnailPath: committedThumbPath ?? existingDoc.thumbnailPath,
         format: 'pdf',
         pageCount: pageCount,
@@ -332,6 +383,7 @@ class DocumentService {
       );
 
       await box.put(documentId, updatedDoc);
+      _markCacheDirty();
       return updatedDoc;
     } catch (e) {
       await _deleteIfExists(tempFilePath);
@@ -349,6 +401,23 @@ class DocumentService {
     required String text,
     String? title,
     String scanMode = 'text',
+  }) {
+    return DocumentOperationQueue.instance.enqueue(
+      () => PerformanceTracker.track(
+        'saveTextDocument',
+        () => _saveTextDocumentInternal(
+          text: text,
+          title: title,
+          scanMode: scanMode,
+        ),
+      ),
+    );
+  }
+
+  Future<DocumentModel> _saveTextDocumentInternal({
+    required String text,
+    String? title,
+    required String scanMode,
   }) async {
     if (text.isEmpty) {
       throw ArgumentError('text cannot be empty');
@@ -415,11 +484,20 @@ class DocumentService {
 
     final box = Hive.box<DocumentModel>(boxName);
     await box.put(id, doc);
-
+    _markCacheDirty();
     return doc;
   }
 
-  Future<void> deleteDocument(String id) async {
+  Future<void> deleteDocument(String id) {
+    return DocumentOperationQueue.instance.enqueue(
+      () => PerformanceTracker.track(
+        'deleteDocument',
+        () => _deleteDocumentInternal(id),
+      ),
+    );
+  }
+
+  Future<void> _deleteDocumentInternal(String id) async {
     final box = Hive.box<DocumentModel>(boxName);
     final doc = box.get(id);
 
@@ -443,10 +521,20 @@ class DocumentService {
       }
 
       await box.delete(id);
+      _markCacheDirty();
     }
   }
 
-  Future<void> renameDocument(String id, String newTitle) async {
+  Future<void> renameDocument(String id, String newTitle) {
+    return DocumentOperationQueue.instance.enqueue(
+      () => PerformanceTracker.track(
+        'renameDocument',
+        () => _renameDocumentInternal(id, newTitle),
+      ),
+    );
+  }
+
+  Future<void> _renameDocumentInternal(String id, String newTitle) async {
     final box = Hive.box<DocumentModel>(boxName);
     final doc = box.get(id);
 
@@ -468,7 +556,101 @@ class DocumentService {
         metadata: doc.metadata,
       );
       await box.put(id, updatedDoc);
+      _markCacheDirty();
     }
+  }
+
+  Future<PaginatedDocuments> getDocumentsPaginated({
+    int page = 0,
+    int pageSize = 20,
+    String sortBy = 'createdAt',
+    bool descending = true,
+    bool forceRefresh = false,
+  }) async {
+    await _refreshCache(forceRefresh: forceRefresh);
+    final sortedIds = await _getSortedIds(sortBy, descending);
+
+    final start = page * pageSize;
+    if (start >= sortedIds.length) {
+      return PaginatedDocuments(
+        page: page,
+        pageSize: pageSize,
+        totalItems: sortedIds.length,
+        items: const [],
+        hasMore: false,
+      );
+    }
+
+    final end = min(start + pageSize, sortedIds.length);
+    final items = sortedIds
+        .sublist(start, end)
+        .map((id) => _documentsCache[id])
+        .whereType<DocumentModel>()
+        .toList();
+
+    return PaginatedDocuments(
+      page: page,
+      pageSize: pageSize,
+      totalItems: sortedIds.length,
+      items: items,
+      hasMore: end < sortedIds.length,
+    );
+  }
+
+  Future<void> _refreshCache({bool forceRefresh = false}) async {
+    if (!forceRefresh && !_cacheDirty && _documentsCache.isNotEmpty) {
+      return;
+    }
+
+    final box = Hive.box<DocumentModel>(boxName);
+    final docs = box.values.toList();
+    _documentsCache
+      ..clear()
+      ..addEntries(docs.map((doc) => MapEntry(doc.id, doc)));
+    _sortedCache.clear();
+    _cacheDirty = false;
+    _lastCacheUpdate = DateTime.now();
+    AppLogger.info(
+      'Document cache refreshed',
+      data: {
+        'count': _documentsCache.length,
+        'timestamp': _lastCacheUpdate!.toIso8601String(),
+      },
+    );
+  }
+
+  Future<List<String>> _getSortedIds(String sortBy, bool descending) async {
+    final sortKey = '$sortBy|${descending ? 'desc' : 'asc'}';
+    if (_sortedCache.containsKey(sortKey)) {
+      return _sortedCache[sortKey]!;
+    }
+
+    final payload = {
+      'docs': _documentsCache.values
+          .map(
+            (doc) => {
+              'id': doc.id,
+              'title': doc.title,
+              'createdAt': doc.createdAt.millisecondsSinceEpoch,
+              'updatedAt': doc.updatedAt.millisecondsSinceEpoch,
+              'pageCount': doc.pageCount,
+            },
+          )
+          .toList(),
+      'sortBy': sortBy,
+      'descending': descending,
+    };
+
+    final sortedIds = await compute<Map<String, dynamic>, List<String>>(
+      _sortDocumentIdsIsolate,
+      payload,
+    );
+    _sortedCache[sortKey] = sortedIds;
+    return sortedIds;
+  }
+
+  void _markCacheDirty() {
+    _cacheDirty = true;
   }
 
   String _buildThumbnailPath(String baseDir, String documentId, int timestamp) {
@@ -490,6 +672,23 @@ class DocumentService {
     } catch (_) {}
   }
 
+  Future<bool> _ensureDiskSpace({required List<String> pageImagePaths}) async {
+    var requiredBytes = 0;
+    for (final path in pageImagePaths) {
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          requiredBytes += await file.length();
+        }
+      } catch (_) {}
+    }
+    requiredBytes = max(requiredBytes, 10 * 1024 * 1024);
+
+    return ResourceGuard.instance.hasSufficientDiskSpace(
+      requiredBytes: requiredBytes,
+    );
+  }
+
   PdfMetadata _metadataFromDocument(DocumentModel doc) {
     final data = doc.metadata;
     return PdfMetadata(
@@ -502,4 +701,147 @@ class DocumentService {
       creator: data['creator'],
     );
   }
+
+  Future<DatabaseHealthReport> runHealthCheck() async {
+    final missingDocuments = <String>[];
+    final missingThumbnails = <String>[];
+    final orphanedFiles = <String>[];
+
+    final appDocsDir = await getApplicationDocumentsDirectory();
+    final documentsDir = Directory(
+      p.join(appDocsDir.path, 'scanned_documents'),
+    );
+    final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
+
+    await _ensureDir(documentsDir);
+    await _ensureDir(thumbsDir);
+
+    final box = Hive.box<DocumentModel>(boxName);
+    final referencedDocuments = <String>{};
+    final referencedThumbnails = <String>{};
+
+    for (final doc in box.values) {
+      referencedDocuments.add(doc.filePath);
+      referencedThumbnails.add(doc.thumbnailPath);
+
+      if (!await File(doc.filePath).exists()) {
+        missingDocuments.add(doc.id);
+      }
+      if (doc.thumbnailPath.isNotEmpty &&
+          !await File(doc.thumbnailPath).exists()) {
+        missingThumbnails.add(doc.id);
+      }
+    }
+
+    for (final file in documentsDir.listSync().whereType<File>().map(
+      (f) => f.path,
+    )) {
+      if (!referencedDocuments.contains(file)) {
+        orphanedFiles.add(file);
+      }
+    }
+    for (final file in thumbsDir.listSync().whereType<File>().map(
+      (f) => f.path,
+    )) {
+      if (!referencedThumbnails.contains(file)) {
+        orphanedFiles.add(file);
+      }
+    }
+
+    return DatabaseHealthReport(
+      missingDocumentIds: missingDocuments,
+      missingThumbnails: missingThumbnails,
+      orphanedFiles: orphanedFiles,
+    );
+  }
+
+  Future<void> initializeWithHealthCheck({bool autoRepair = true}) async {
+    final report = await runHealthCheck();
+    if (autoRepair) {
+      final box = Hive.box<DocumentModel>(boxName);
+      for (final id in report.missingDocumentIds) {
+        await box.delete(id);
+      }
+      for (final path in report.orphanedFiles) {
+        await _deleteIfExists(path);
+      }
+    }
+
+    if (report.hasIssues) {
+      AppLogger.warning(
+        'Database health issues detected',
+        data: {
+          'missingDocuments': report.missingDocumentIds.length,
+          'missingThumbnails': report.missingThumbnails.length,
+          'orphanedFiles': report.orphanedFiles.length,
+        },
+      );
+    }
+
+    await _refreshCache(forceRefresh: true);
+  }
+}
+
+class PaginatedDocuments {
+  const PaginatedDocuments({
+    required this.page,
+    required this.pageSize,
+    required this.totalItems,
+    required this.items,
+    required this.hasMore,
+  });
+
+  final int page;
+  final int pageSize;
+  final int totalItems;
+  final List<DocumentModel> items;
+  final bool hasMore;
+}
+
+class DatabaseHealthReport {
+  DatabaseHealthReport({
+    this.missingDocumentIds = const [],
+    this.missingThumbnails = const [],
+    this.orphanedFiles = const [],
+  });
+
+  final List<String> missingDocumentIds;
+  final List<String> missingThumbnails;
+  final List<String> orphanedFiles;
+
+  bool get hasIssues =>
+      missingDocumentIds.isNotEmpty ||
+      missingThumbnails.isNotEmpty ||
+      orphanedFiles.isNotEmpty;
+}
+
+List<String> _sortDocumentIdsIsolate(Map<String, dynamic> payload) {
+  final docs = (payload['docs'] as List)
+      .cast<Map>()
+      .map((e) => Map<String, dynamic>.from(e.cast<String, dynamic>()))
+      .toList();
+  final sortBy = payload['sortBy'] as String;
+  final descending = payload['descending'] as bool;
+
+  int comparator(Map<String, dynamic> a, Map<String, dynamic> b) {
+    int result;
+    switch (sortBy) {
+      case 'title':
+        result = (a['title'] as String).toLowerCase().compareTo(
+          (b['title'] as String).toLowerCase(),
+        );
+        break;
+      case 'updatedAt':
+        result = (a['updatedAt'] as int).compareTo(b['updatedAt'] as int);
+        break;
+      case 'createdAt':
+      default:
+        result = (a['createdAt'] as int).compareTo(b['createdAt'] as int);
+        break;
+    }
+    return descending ? -result : result;
+  }
+
+  docs.sort(comparator);
+  return docs.map((e) => e['id'] as String).toList();
 }

@@ -115,6 +115,24 @@ class PdfGenerationConfig {
   final double margin;
   final bool addWhiteBackground;
   final PdfDocumentMetadata? metadata;
+
+  PdfGenerationConfig copyWith({
+    double? maxPageSizeMb,
+    double? pageWidth,
+    double? pageHeight,
+    double? margin,
+    bool? addWhiteBackground,
+    PdfDocumentMetadata? metadata,
+  }) {
+    return PdfGenerationConfig(
+      maxPageSizeMb: maxPageSizeMb ?? this.maxPageSizeMb,
+      pageWidth: pageWidth ?? this.pageWidth,
+      pageHeight: pageHeight ?? this.pageHeight,
+      margin: margin ?? this.margin,
+      addWhiteBackground: addWhiteBackground ?? this.addWhiteBackground,
+      metadata: metadata ?? this.metadata,
+    );
+  }
 }
 
 class DocumentSaveOptions {

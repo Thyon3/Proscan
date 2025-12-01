@@ -1,5 +1,7 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 
 class ScanListItem extends StatelessWidget {
@@ -117,7 +119,9 @@ class ScanListItem extends StatelessWidget {
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: colorScheme.primary.withValues(alpha: 0.4),
+                                  color: colorScheme.primary.withValues(
+                                    alpha: 0.4,
+                                  ),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -166,8 +170,8 @@ class ScanListItem extends StatelessWidget {
                                   end: Alignment.bottomRight,
                                   colors: [
                                     colorScheme.primaryContainer,
-                                    colorScheme.primaryContainer.withValues(alpha: 
-                                      0.7,
+                                    colorScheme.primaryContainer.withValues(
+                                      alpha: 0.7,
                                     ),
                                   ],
                                 ),
@@ -181,11 +185,10 @@ class ScanListItem extends StatelessWidget {
                               ),
                             )
                           : File(scan.imagePath).existsSync()
-                          ? Image.file(
-                              File(scan.imagePath),
+                          ? CachedThumbnail(
+                              path: scan.imagePath,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _buildErrorPlaceholder(colorScheme),
+                              placeholder: _buildErrorPlaceholder(colorScheme),
                             )
                           : Image.asset(
                               scan.imagePath,
@@ -283,7 +286,9 @@ class ScanListItem extends StatelessWidget {
                             Text(
                               'Scanned on',
                               style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSurface.withValues(alpha: 0.5),
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.5,
+                                ),
                                 fontWeight: FontWeight.w500,
                                 fontSize: 11,
                               ),
@@ -291,7 +296,9 @@ class ScanListItem extends StatelessWidget {
                             Text(
                               scan.date,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurface.withValues(alpha: 0.8),
+                                color: colorScheme.onSurface.withValues(
+                                  alpha: 0.8,
+                                ),
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
                               ),

@@ -9,8 +9,6 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image/image.dart' as img;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
@@ -21,11 +19,6 @@ import 'package:thyscan/features/scan/core/services/image_processing_service.dar
 import 'package:thyscan/services/document_service.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/models/document_model.dart';
-
-extension _ColorOpacityX on Color {
-  Color withAlphaFraction(double opacity) =>
-      withValues(alpha: opacity.clamp(0.0, 1.0));
-}
 
 class EditScanScreen extends StatefulWidget {
   final String imagePath;
@@ -374,22 +367,6 @@ class _EditScanScreenState extends State<EditScanScreen> {
       ImageFilter.vintage => DocumentColorProfile.magic,
       _ => null,
     };
-  }
-
-  ImageFilter _filterFromProfile(DocumentColorProfile profile) {
-    return switch (profile) {
-      DocumentColorProfile.color => ImageFilter.none,
-      DocumentColorProfile.grayscale => ImageFilter.grayscale,
-      DocumentColorProfile.blackWhite => ImageFilter.blackAndWhite,
-      DocumentColorProfile.magic => ImageFilter.vintage,
-    };
-  }
-
-  Future<void> _handleColorProfileChange(DocumentColorProfile profile) async {
-    if (_colorProfile == profile) return;
-    setState(() => _colorProfile = profile);
-    if (_isOnAddSlot) return;
-    await _applyFilter(_filterFromProfile(profile));
   }
 
   /// Navigate to document preview/save screen
@@ -984,6 +961,12 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   Widget _buildDraggableThumbnail(int index) {
     final tile = _buildThumbnailContent(index);
+    final isBeingDragged = _draggingIndex == index;
+    final visibleTile = AnimatedOpacity(
+      duration: const Duration(milliseconds: 150),
+      opacity: isBeingDragged ? 0.5 : 1,
+      child: tile,
+    );
     return LongPressDraggable<int>(
       data: index,
       dragAnchorStrategy: pointerDragAnchorStrategy,
@@ -1025,7 +1008,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
                   width: 2,
                 ),
               ),
-              child: tile,
+              child: visibleTile,
             ),
           );
         },
@@ -1670,11 +1653,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
     final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.black,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: cs.shadow.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),

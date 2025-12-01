@@ -205,8 +205,7 @@ Future<void> _pdfGenerationEntry(_PdfIsolatePayload payload) async {
       title: metadata?.title,
       author: metadata?.author,
       subject: metadata?.subject,
-      keywords:
-          metadata == null ? null : metadata.keywords.join(','),
+      keywords: metadata?.keywords.join(','),
       creator: metadata?.creator,
     );
     final pageFormat = PdfPageFormat(payload.pageWidth, payload.pageHeight);
@@ -272,12 +271,12 @@ Future<String> _compressAndSave({
     throw Exception('Source image missing: $sourcePath');
   }
   final inputBytes = await file.readAsBytes();
-  var decoded = img.decodeImage(inputBytes);
-  if (decoded == null) {
+  final decodedImage = img.decodeImage(inputBytes);
+  if (decodedImage == null) {
     throw Exception('Unable to decode image: $sourcePath');
   }
 
-  decoded = _normalizeOrientation(decoded);
+  img.Image decoded = _normalizeOrientation(decodedImage);
 
   int quality = 95;
   double scale = 1.0;
@@ -289,13 +288,13 @@ Future<String> _compressAndSave({
     } else {
       scale = max(0.5, scale - 0.1);
       decoded = img.copyResize(
-        decoded!,
-        width: (decoded!.width * scale).round(),
+        decoded,
+        width: (decoded.width * scale).round(),
         height: (decoded.height * scale).round(),
         interpolation: img.Interpolation.linear,
       );
     }
-    encoded = _encodeWithQuality(decoded!, quality);
+    encoded = _encodeWithQuality(decoded, quality);
   }
 
   final optimizedName = '${documentId}_${batchId}_page_$pageIndex.jpg';

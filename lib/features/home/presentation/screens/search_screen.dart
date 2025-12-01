@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
@@ -848,7 +849,29 @@ class _SearchScreenState extends State<SearchScreen>
             child:
                 doc.thumbnailPath.isNotEmpty &&
                     File(doc.thumbnailPath).existsSync()
-                ? Image.file(File(doc.thumbnailPath), fit: BoxFit.cover)
+                ? CachedThumbnail(
+                    path: doc.thumbnailPath,
+                    fit: BoxFit.cover,
+                    placeholder: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            colorScheme.primary.withOpacity(0.12),
+                            colorScheme.primary.withOpacity(0.06),
+                          ],
+                        ),
+                      ),
+                      child: Icon(
+                        doc.format == 'pdf'
+                            ? Icons.picture_as_pdf_rounded
+                            : Icons.description_rounded,
+                        color: colorScheme.primary,
+                        size: 28,
+                      ),
+                    ),
+                  )
                 : Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(

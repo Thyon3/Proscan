@@ -1,5 +1,7 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 
 class LibraryScanListItem extends StatelessWidget {
@@ -119,32 +121,34 @@ class LibraryScanListItem extends StatelessWidget {
                             ),
                           )
                         : File(scan.imagePath).existsSync()
-                            ? Image.file(
-                                File(scan.imagePath),
-                                width: 64,
-                                height: 84,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: colorScheme.surfaceVariant,
-                                  child: Icon(
-                                    Icons.image_not_supported,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                              )
-                            : Image.asset(
-                                scan.imagePath,
-                                width: 64,
-                                height: 84,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
-                                  color: colorScheme.surfaceVariant,
-                                  child: Icon(
-                                    Icons.image_not_supported,
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
+                        ? SizedBox(
+                            width: 64,
+                            height: 84,
+                            child: CachedThumbnail(
+                              path: scan.imagePath,
+                              fit: BoxFit.cover,
+                              placeholder: Container(
+                                color: colorScheme.surfaceVariant,
+                                child: Icon(
+                                  Icons.image_not_supported,
+                                  color: colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                            ),
+                          )
+                        : Image.asset(
+                            scan.imagePath,
+                            width: 64,
+                            height: 84,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: colorScheme.surfaceVariant,
+                              child: Icon(
+                                Icons.image_not_supported,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
                     Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -418,9 +422,7 @@ class LibraryScanListItem extends StatelessWidget {
               Navigator.pop(context);
               onDelete?.call();
             },
-            style: FilledButton.styleFrom(
-              backgroundColor: colorScheme.error,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: colorScheme.error),
             child: const Text('Delete'),
           ),
         ],
