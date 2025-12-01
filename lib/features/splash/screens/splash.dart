@@ -109,8 +109,8 @@ class _SplashScreenState extends State<SplashScreen>
                             shape: BoxShape.circle,
                             gradient: RadialGradient(
                               colors: [
-                                const Color(0xFF3DCC4B).withOpacity(0.2),
-                                const Color(0xFF3DCC4B).withOpacity(0.05),
+                                const Color(0xFF3DCC4B).withValues(alpha: 0.2),
+                                const Color(0xFF3DCC4B).withValues(alpha: 0.05),
                                 Colors.transparent,
                               ],
                               stops: const [0.0, 0.5, 1.0],
@@ -131,12 +131,12 @@ class _SplashScreenState extends State<SplashScreen>
                                 BoxShadow(
                                   color: const Color(
                                     0xFF3DCC4B,
-                                  ).withOpacity(0.3),
+                                  ).withValues(alpha: 0.3),
                                   blurRadius: 20 * scale,
                                   spreadRadius: 2 * scale,
                                 ),
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.5),
+                                  color: Colors.black.withValues(alpha: 0.5),
                                   blurRadius: 30 * scale,
                                   spreadRadius: 5 * scale,
                                   offset: const Offset(0, 10),
@@ -175,11 +175,11 @@ class _SplashScreenState extends State<SplashScreen>
                                             colors: [
                                               const Color(
                                                 0xFF3DCC4B,
-                                              ).withOpacity(0.0),
+                                              ).withValues(alpha: 0.0),
                                               const Color(0xFF3DCC4B),
                                               const Color(
                                                 0xFF3DCC4B,
-                                              ).withOpacity(0.0),
+                                              ).withValues(alpha: 0.0),
                                             ],
                                           ),
                                           borderRadius: BorderRadius.circular(

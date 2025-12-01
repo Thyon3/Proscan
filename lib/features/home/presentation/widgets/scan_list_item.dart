@@ -40,29 +40,29 @@ class ScanListItem extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isSelected
-              ? colorScheme.primary.withOpacity(0.08)
+              ? colorScheme.primary.withValues(alpha: 0.08)
               : colorScheme.surface,
           borderRadius: BorderRadius.circular(24),
           border: isSelected
               ? Border.all(
-                  color: colorScheme.primary.withOpacity(0.3),
+                  color: colorScheme.primary.withValues(alpha: 0.3),
                   width: 2.5,
                 )
               : Border.all(
-                  color: colorScheme.outline.withOpacity(0.08),
+                  color: colorScheme.outline.withValues(alpha: 0.08),
                   width: 1.5,
                 ),
           boxShadow: [
             if (isSelected)
               BoxShadow(
-                color: colorScheme.primary.withOpacity(0.15),
+                color: colorScheme.primary.withValues(alpha: 0.15),
                 blurRadius: 20,
                 spreadRadius: 2,
                 offset: const Offset(0, 6),
               )
             else
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 blurRadius: 15,
                 offset: const Offset(0, 4),
               ),
@@ -72,8 +72,8 @@ class ScanListItem extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    colorScheme.primary.withOpacity(0.03),
-                    colorScheme.primary.withOpacity(0.01),
+                    colorScheme.primary.withValues(alpha: 0.03),
+                    colorScheme.primary.withValues(alpha: 0.01),
                   ],
                 )
               : null,
@@ -100,7 +100,7 @@ class ScanListItem extends StatelessWidget {
                             ? LinearGradient(
                                 colors: [
                                   colorScheme.primary,
-                                  colorScheme.primary.withOpacity(0.8),
+                                  colorScheme.primary.withValues(alpha: 0.8),
                                 ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
@@ -111,13 +111,13 @@ class ScanListItem extends StatelessWidget {
                         border: Border.all(
                           color: isSelected
                               ? colorScheme.primary
-                              : colorScheme.onSurface.withOpacity(0.2),
+                              : colorScheme.onSurface.withValues(alpha: 0.2),
                           width: 2.5,
                         ),
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
-                                  color: colorScheme.primary.withOpacity(0.4),
+                                  color: colorScheme.primary.withValues(alpha: 0.4),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
@@ -146,7 +146,7 @@ class ScanListItem extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withValues(alpha: 0.15),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
@@ -166,7 +166,7 @@ class ScanListItem extends StatelessWidget {
                                   end: Alignment.bottomRight,
                                   colors: [
                                     colorScheme.primaryContainer,
-                                    colorScheme.primaryContainer.withOpacity(
+                                    colorScheme.primaryContainer.withValues(alpha: 
                                       0.7,
                                     ),
                                   ],
@@ -202,7 +202,7 @@ class ScanListItem extends StatelessWidget {
                             end: Alignment.bottomCenter,
                             colors: [
                               Colors.transparent,
-                              Colors.black.withOpacity(0.3),
+                              Colors.black.withValues(alpha: 0.3),
                             ],
                             stops: const [0.6, 1.0],
                           ),
@@ -219,7 +219,7 @@ class ScanListItem extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.7),
+                            color: Colors.black.withValues(alpha: 0.7),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
@@ -266,7 +266,7 @@ class ScanListItem extends StatelessWidget {
                         width: 32,
                         height: 32,
                         decoration: BoxDecoration(
-                          color: colorScheme.primary.withOpacity(0.1),
+                          color: colorScheme.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
@@ -283,7 +283,7 @@ class ScanListItem extends StatelessWidget {
                             Text(
                               'Scanned on',
                               style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onSurface.withOpacity(0.5),
+                                color: colorScheme.onSurface.withValues(alpha: 0.5),
                                 fontWeight: FontWeight.w500,
                                 fontSize: 11,
                               ),
@@ -291,7 +291,7 @@ class ScanListItem extends StatelessWidget {
                             Text(
                               scan.date,
                               style: theme.textTheme.bodySmall?.copyWith(
-                                color: colorScheme.onSurface.withOpacity(0.8),
+                                color: colorScheme.onSurface.withValues(alpha: 0.8),
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
                               ),
@@ -317,13 +317,13 @@ class ScanListItem extends StatelessWidget {
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                colorScheme.primary.withOpacity(0.15),
-                                colorScheme.primary.withOpacity(0.08),
+                                colorScheme.primary.withValues(alpha: 0.15),
+                                colorScheme.primary.withValues(alpha: 0.08),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: colorScheme.primary.withOpacity(0.2),
+                              color: colorScheme.primary.withValues(alpha: 0.2),
                               width: 1,
                             ),
                           ),
@@ -365,16 +365,16 @@ class ScanListItem extends StatelessWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: colorScheme.surfaceVariant.withOpacity(0.3),
+                      color: colorScheme.surfaceVariant.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: colorScheme.outline.withOpacity(0.1),
+                        color: colorScheme.outline.withValues(alpha: 0.1),
                       ),
                     ),
                     child: Icon(
                       Icons.more_horiz_rounded,
                       size: 20,
-                      color: colorScheme.onSurface.withOpacity(0.6),
+                      color: colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
@@ -393,7 +393,7 @@ class ScanListItem extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             colorScheme.surfaceVariant,
-            colorScheme.surfaceVariant.withOpacity(0.7),
+            colorScheme.surfaceVariant.withValues(alpha: 0.7),
           ],
         ),
       ),
@@ -401,7 +401,7 @@ class ScanListItem extends StatelessWidget {
         child: Icon(
           Icons.image_not_supported_rounded,
           size: 32,
-          color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
         ),
       ),
     );
@@ -439,7 +439,7 @@ class ScanListItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
               blurRadius: 30,
               offset: const Offset(0, 10),
             ),
@@ -455,7 +455,7 @@ class ScanListItem extends StatelessWidget {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: colorScheme.onSurface.withOpacity(0.3),
+                  color: colorScheme.onSurface.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -472,7 +472,7 @@ class ScanListItem extends StatelessWidget {
                         gradient: LinearGradient(
                           colors: [
                             colorScheme.primary,
-                            colorScheme.primary.withOpacity(0.8),
+                            colorScheme.primary.withValues(alpha: 0.8),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(12),
@@ -576,8 +576,8 @@ class ScanListItem extends StatelessWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: isDestructive
-                      ? colorScheme.error.withOpacity(0.1)
-                      : colorScheme.primary.withOpacity(0.1),
+                      ? colorScheme.error.withValues(alpha: 0.1)
+                      : colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, color: color, size: 22),
@@ -606,7 +606,7 @@ class ScanListItem extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: colorScheme.onSurface.withOpacity(0.3),
+                color: colorScheme.onSurface.withValues(alpha: 0.3),
                 size: 20,
               ),
             ],
@@ -638,7 +638,7 @@ class ScanListItem extends StatelessWidget {
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: colorScheme.error.withOpacity(0.1),
+                  color: colorScheme.error.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(

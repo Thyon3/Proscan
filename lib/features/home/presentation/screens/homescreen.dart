@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/core/theme/constants/app_design.dart';
 import 'package:thyscan/features/home/presentation/widgets/premium_modal.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
@@ -230,7 +231,7 @@ class HomeScreen extends ConsumerWidget {
   /// Share document PDF
   Future<void> _shareDocument(BuildContext context, DocumentModel doc) async {
     try {
-      await Share.shareXFiles(
+      await ShareUtils.shareFiles(
         [XFile(doc.filePath)],
         subject: doc.title,
         text: 'Check out this scanned document!',
@@ -721,7 +722,7 @@ class HomeScreen extends ConsumerWidget {
 
       final files = selectedDocs.map((doc) => XFile(doc.filePath)).toList();
 
-      await Share.shareXFiles(
+      await ShareUtils.shareFiles(
         files,
         text: 'Check out these scanned documents!',
       );

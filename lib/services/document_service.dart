@@ -46,16 +46,6 @@ class DocumentService {
       pagesDir.createSync(recursive: true);
     }
 
-    if (!documentsDir.existsSync()) {
-      documentsDir.createSync(recursive: true);
-    }
-    if (!thumbsDir.existsSync()) {
-      thumbsDir.createSync(recursive: true);
-    }
-    if (!pagesDir.existsSync()) {
-      pagesDir.createSync(recursive: true);
-    }
-
     final id = _uuid.v4();
     final createdAt = DateTime.now();
     final pageCount = pageImagePaths.length;

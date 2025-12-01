@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/features/scan/core/services/barcode_scanner_service.dart';
 import 'package:thyscan/features/scan/core/utils/url_utils.dart';
 
@@ -78,7 +79,7 @@ class BarcodeResultSheet extends StatelessWidget {
 
   Future<void> _shareContent(BuildContext context) async {
     try {
-      await Share.share(
+      await ShareUtils.shareText(
         barcodeData.rawValue,
         subject: 'Scanned ${_getDataTypeLabel(barcodeData.dataType)}',
       );
@@ -137,7 +138,7 @@ class BarcodeResultSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: cs.onSurface.withOpacity(0.3),
+                color: cs.onSurface.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -201,7 +202,7 @@ class BarcodeResultSheet extends StatelessWidget {
                   color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: cs.outline.withOpacity(0.2),
+                    color: cs.outline.withValues(alpha: 0.2),
                   ),
                 ),
                 child: SelectableText(

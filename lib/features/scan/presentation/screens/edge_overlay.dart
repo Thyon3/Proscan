@@ -41,7 +41,7 @@ class EdgePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final glowPaint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.4)
+      ..color = Colors.cyanAccent.withValues(alpha: 0.4)
       ..strokeWidth = 12
       ..style = PaintingStyle.stroke
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);

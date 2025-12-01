@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -179,7 +180,7 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
     if (_document == null) return;
 
     try {
-      await Share.shareXFiles(
+      await ShareUtils.shareFiles(
         [XFile(_document!.filePath)],
         subject: _document!.title,
       );
@@ -194,7 +195,7 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
 
   Future<void> _shareFile(String filePath) async {
     try {
-      await Share.shareXFiles([XFile(filePath)]);
+      await ShareUtils.shareFiles([XFile(filePath)]);
     } catch (e) {
       debugPrint('Share failed: $e');
     }
@@ -307,8 +308,11 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: !_isModified,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+
         if (_isModified) {
           final shouldSave = await showDialog<bool>(
             context: context,
@@ -331,8 +335,11 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
           if (shouldSave == true) {
             await _saveDocument();
           }
+          
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
         }
-        return true;
       },
       child: Scaffold(
         appBar: AppBar(
@@ -423,7 +430,7 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                      color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.3),
                       border: Border(
                         bottom: BorderSide(
                           color: theme.dividerColor,
@@ -469,7 +476,7 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.orange.withOpacity(0.2),
+                              color: Colors.orange.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -535,7 +542,7 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
                       color: theme.colorScheme.surface,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 10,
                           offset: const Offset(0, -2),
                         ),

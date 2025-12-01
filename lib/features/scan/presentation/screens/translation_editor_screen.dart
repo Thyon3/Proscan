@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/presentation/widgets/loading_overlay.dart';
 import 'package:thyscan/features/scan/providers/translation_provider.dart';
@@ -181,7 +182,8 @@ class _TranslationEditorScreenState
             action: SnackBarAction(
               label: 'Share',
               textColor: Colors.white,
-              onPressed: () => Share.shareXFiles([XFile(docxPath)]),
+              onPressed: () =>
+                  ShareUtils.shareFiles([XFile(docxPath)]),
             ),
           ),
         );
@@ -203,7 +205,10 @@ class _TranslationEditorScreenState
     if (text.isEmpty) return;
 
     try {
-      await Share.share(text, subject: _document?.title ?? 'Translation');
+      await ShareUtils.shareText(
+        text,
+        subject: _document?.title ?? 'Translation',
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -236,7 +241,7 @@ class _TranslationEditorScreenState
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: Theme.of(ctx).colorScheme.onSurface.withOpacity(0.3),
+                  color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -360,8 +365,11 @@ class _TranslationEditorScreenState
     final theme = Theme.of(context);
     final state = ref.watch(translationProvider);
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: !_isModified,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+
         if (_isModified) {
           final shouldSave = await showDialog<bool>(
             context: context,
@@ -384,8 +392,11 @@ class _TranslationEditorScreenState
           if (shouldSave == true) {
             await _saveDocument();
           }
+          
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
         }
-        return true;
       },
       child: Scaffold(
         appBar: AppBar(
@@ -433,7 +444,7 @@ class _TranslationEditorScreenState
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.3),
                 border: Border(
                   bottom: BorderSide(
                     color: theme.dividerColor,
@@ -477,7 +488,7 @@ class _TranslationEditorScreenState
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.2),
+                        color: Colors.orange.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -543,7 +554,7 @@ class _TranslationEditorScreenState
                 color: theme.colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),

@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
@@ -13,6 +13,11 @@ import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/features/scan/presentation/screens/delete_pages_screen.dart';
 import 'package:thyscan/services/document_service.dart';
+import 'package:thyscan/core/utils/share_utils.dart';
+
+extension _ColorAlphaX on Color {
+  Color alpha(double opacity) => withValues(alpha: opacity);
+}
 
 class SavePdfScreen extends StatefulWidget {
   final List<String> imagePaths;
@@ -95,9 +100,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   Future<DocumentModel?> _persistDocument({bool force = false}) async {
     if (_pages.isEmpty) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No pages to save')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No pages to save')));
       }
       return null;
     }
@@ -121,10 +126,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     try {
       final title = widget.pdfFileName.replaceAll('.pdf', '');
       final scanModeKey = _scanModeKey(_activeScanMode);
-      final progressHandler = (PdfGenerationProgress progress) {
+      void progressHandler(PdfGenerationProgress progress) {
         if (!mounted) return;
         setState(() => _pdfProgress = progress);
-      };
+      }
 
       late DocumentModel doc;
       if (_documentId == null) {
@@ -193,8 +198,8 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       final pdfPath = doc?.filePath ?? _savedPdfPath;
 
       if (pdfPath != null && File(pdfPath).existsSync() && mounted) {
-        await Share.shareXFiles(
-          [XFile(pdfPath)],
+        await _shareFile(
+          pdfPath,
           subject: 'Document Scan - ${widget.pdfFileName}',
           text: 'Check out this document I scanned!',
         );
@@ -242,6 +247,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Could not add page: $e')));
     }
+  }
+
+  Future<void> _shareFile(String path, {String? subject, String? text}) async {
+    final files = <XFile>[XFile(path)];
+    await ShareUtils.shareFiles(files, subject: subject, text: text);
   }
 
   void _handleBottomNavTap(int index) {
@@ -336,9 +346,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   Future<void> _handleDeletePages() async {
     final deletedIndices = await Navigator.push<List<int>>(
       context,
-      MaterialPageRoute(
-        builder: (context) => DeletePagesScreen(pages: _pages),
-      ),
+      MaterialPageRoute(builder: (context) => DeletePagesScreen(pages: _pages)),
     );
 
     if (deletedIndices != null && deletedIndices.isNotEmpty && mounted) {
@@ -379,6 +387,8 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     final doc = await _persistDocument(force: true);
     if (!mounted || doc == null) return;
 
+    await _promptShareAfterSave(doc);
+
     // Navigate to Home Screen
     context.go('/appmainscreen');
 
@@ -389,6 +399,86 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _promptShareAfterSave(DocumentModel doc) async {
+    if (!mounted) return;
+    final shouldShare =
+        await showModalBottomSheet<bool>(
+          context: context,
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (context) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    Icons.ios_share_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Share your PDF?',
+                  style: GoogleFonts.inter(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Send ${doc.title} right away or skip for now.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Maybe later'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Share now'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ) ??
+        false;
+
+    if (shouldShare) {
+      await _shareFile(
+        doc.filePath,
+        subject: doc.title,
+        text: 'Sent from ThyScan',
+      );
+    }
   }
 
   /// Exports document as Word (.docx) file
@@ -509,13 +599,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             action: SnackBarAction(
               label: 'Share',
               textColor: Colors.white,
-              onPressed: () async {
-                await Share.shareXFiles(
-                  [XFile(docxPath)],
-                  subject: fileName,
-                  text: 'Check out this Word document!',
-                );
-              },
+              onPressed: () => _shareFile(
+                docxPath,
+                subject: fileName,
+                text: 'Check out this Word document!',
+              ),
             ),
             duration: const Duration(seconds: 3),
           ),
@@ -628,11 +716,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           margin: const EdgeInsets.all(16),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceVariant.withOpacity(0.95),
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.95),
             borderRadius: BorderRadius.circular(18),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.12),
+                color: Colors.black.withValues(alpha: 0.12),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -663,14 +751,16 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                 value: percent,
                 minHeight: 6,
                 borderRadius: BorderRadius.circular(20),
-                backgroundColor: colorScheme.outlineVariant.withOpacity(0.3),
+                backgroundColor: colorScheme.outlineVariant.withValues(
+                  alpha: 0.3,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 '${progress.stage} • ${progress.processedPages}/${progress.totalPages} pages',
                 style: GoogleFonts.inter(
                   fontSize: 12,
-                  color: colorScheme.onSurface.withOpacity(0.7),
+                  color: colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
               ),
             ],
@@ -692,7 +782,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           decoration: BoxDecoration(
             color: Colors.black,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: cs.outline.withOpacity(0.2), width: 1),
+            border: Border.all(
+              color: cs.outline.withValues(alpha: 0.2),
+              width: 1,
+            ),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -709,7 +802,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             color: Colors.black,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: cs.outline.withOpacity(0.3),
+              color: cs.outline.withValues(alpha: 0.3),
               width: 2,
               style: BorderStyle.solid,
             ),
@@ -720,7 +813,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
               Icon(
                 Icons.add_photo_alternate_rounded,
                 size: 48,
-                color: cs.onSurface.withOpacity(0.7),
+                color: cs.onSurface.withValues(alpha: 0.7),
               ),
               const SizedBox(height: 8),
               Text(
@@ -728,7 +821,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                 style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withOpacity(0.7),
+                  color: cs.onSurface.withValues(alpha: 0.7),
                 ),
               ),
             ],
@@ -792,7 +885,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           color: cs.surface,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -849,7 +942,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         children: [
           Icon(
             icon,
-            color: isSelected ? cs.primary : cs.onSurface.withOpacity(0.6),
+            color: isSelected
+                ? cs.primary
+                : cs.onSurface.withValues(alpha: 0.6),
             size: 24,
           ),
           const SizedBox(height: 4),
@@ -858,7 +953,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             style: GoogleFonts.inter(
               fontSize: 12,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected ? cs.primary : cs.onSurface.withOpacity(0.6),
+              color: isSelected
+                  ? cs.primary
+                  : cs.onSurface.withValues(alpha: 0.6),
             ),
           ),
         ],

@@ -22,33 +22,26 @@ class LoadingOverlay extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surface.withOpacity(0.9),
+          color: theme.colorScheme.surface.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.25),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
-        child: Row(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
-              width: 26,
-              height: 26,
-              child: CircularProgressIndicator(strokeWidth: 3),
-            ),
-            if (message != null && message!.isNotEmpty) ...[
-              const SizedBox(width: 16),
-              Flexible(
-                child: Text(
-                  message!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+            const CircularProgressIndicator(),
+            if (message != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                message!,
+                style: theme.textTheme.bodyMedium,
+                textAlign: TextAlign.center,
               ),
             ],
           ],
@@ -57,7 +50,7 @@ class LoadingOverlay extends StatelessWidget {
     );
   }
 
-  /// Shows a modal loading overlay.
+  /// Shows a loading overlay on top of the current screen.
   static Future<void> show(
     BuildContext context, {
     String? message,
@@ -66,10 +59,10 @@ class LoadingOverlay extends StatelessWidget {
     return showDialog<void>(
       context: context,
       barrierDismissible: barrierDismissible,
-      barrierColor: Colors.black.withOpacity(0.4),
+      barrierColor: Colors.black.withValues(alpha: 0.4),
       useRootNavigator: true,
-      builder: (_) => WillPopScope(
-        onWillPop: () async => barrierDismissible,
+      builder: (_) => PopScope(
+        canPop: barrierDismissible,
         child: LoadingOverlay(message: message),
       ),
     );

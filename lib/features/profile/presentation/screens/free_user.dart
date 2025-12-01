@@ -43,11 +43,11 @@ class _FreeUserProfileScreenState extends State<FreeUserProfileScreen> {
                     children: [
                       CircleAvatar(
                         radius: 28 * scale,
-                        backgroundColor: cs.surfaceVariant.withOpacity(0.8),
+                        backgroundColor: cs.surfaceVariant.withValues(alpha: 0.8),
                         child: Icon(
                           Icons.person_rounded,
                           size: 30 * scale,
-                          color: cs.onSurface.withOpacity(0.7),
+                          color: cs.onSurface.withValues(alpha: 0.7),
                         ),
                       ),
                       SizedBox(height: 12 * scale),
@@ -61,7 +61,7 @@ class _FreeUserProfileScreenState extends State<FreeUserProfileScreen> {
                       Text(
                         'j.mill@example.com',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.textTheme.bodyMedium?.color?.withOpacity(
+                          color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 
                             0.7,
                           ),
                         ),

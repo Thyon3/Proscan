@@ -94,7 +94,7 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                   width: 64,
                   height: 64,
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer.withOpacity(0.2),
+                    color: theme.colorScheme.errorContainer.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -122,7 +122,7 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                   textAlign: TextAlign.center,
                   style: GoogleFonts.inter(
                     fontSize: 14,
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                     height: 1.5,
                   ),
                 ),
@@ -222,7 +222,7 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
             margin: const EdgeInsets.only(right: 16),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: scheme.outline.withOpacity(0.3)),
+              border: Border.all(color: scheme.outline.withValues(alpha: 0.3)),
             ),
             child: TextButton.icon(
               onPressed: _toggleSelectAll,
@@ -260,12 +260,12 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  scheme.errorContainer.withOpacity(0.1),
-                  scheme.primaryContainer.withOpacity(0.05),
+                  scheme.errorContainer.withValues(alpha: 0.1),
+                  scheme.primaryContainer.withValues(alpha: 0.05),
                 ],
               ),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: scheme.outline.withOpacity(0.1)),
+              border: Border.all(color: scheme.outline.withValues(alpha: 0.1)),
             ),
             child: Row(
               children: [
@@ -273,7 +273,7 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: scheme.error.withOpacity(0.1),
+                    color: scheme.error.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -300,7 +300,7 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                         'Tap on pages to select/deselect. At least one page must remain.',
                         style: GoogleFonts.inter(
                           fontSize: 13,
-                          color: scheme.onSurface.withOpacity(0.6),
+                          color: scheme.onSurface.withValues(alpha: 0.6),
                           height: 1.4,
                         ),
                       ),
@@ -322,12 +322,12 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                   colors: [
-                    scheme.primary.withOpacity(0.1),
-                    scheme.primaryContainer.withOpacity(0.05),
+                    scheme.primary.withValues(alpha: 0.1),
+                    scheme.primaryContainer.withValues(alpha: 0.05),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: scheme.primary.withOpacity(0.2)),
+                border: Border.all(color: scheme.primary.withValues(alpha: 0.2)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -381,20 +381,20 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                         border: Border.all(
                           color: isSelected
                               ? scheme.error
-                              : scheme.outline.withOpacity(0.3),
+                              : scheme.outline.withValues(alpha: 0.3),
                           width: isSelected ? 2.5 : 1.5,
                         ),
                         boxShadow: [
                           if (isSelected)
                             BoxShadow(
-                              color: scheme.error.withOpacity(0.3),
+                              color: scheme.error.withValues(alpha: 0.3),
                               blurRadius: 15,
                               spreadRadius: 2,
                               offset: const Offset(0, 4),
                             )
                           else if (!isDark)
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black.withValues(alpha: 0.05),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
                             ),
@@ -429,8 +429,8 @@ class _DeletePagesScreenState extends State<DeletePagesScreen> {
                                     begin: Alignment.topCenter,
                                     end: Alignment.bottomCenter,
                                     colors: [
-                                      scheme.error.withOpacity(0.2),
-                                      scheme.error.withOpacity(0.4),
+                                      scheme.error.withValues(alpha: 0.2),
+                                      scheme.error.withValues(alpha: 0.4),
                                     ],
                                   ),
                                 ),

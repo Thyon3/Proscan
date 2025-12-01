@@ -61,6 +61,8 @@ class CameraSettings {
   }
 }
 
+enum EdgeGuidanceState { scanning, holding, ready }
+
 class SmartCameraScreen extends ConsumerStatefulWidget {
   final ScanMode initialMode;
   final bool restrictToInitialMode;
@@ -95,7 +97,9 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   int _cameraIndex = 0;
   final EdgeDetector _edgeDetector = EdgeDetector();
   List<ui.Offset>? _detectedEdges;
-  
+  EdgeGuidanceState _edgeGuidanceState = EdgeGuidanceState.scanning;
+  Timer? _edgeGuidanceDebounce;
+
   // Barcode scanning
   final BarcodeScannerService _barcodeScannerService = BarcodeScannerService();
   bool _isBarcodeResultShowing = false;
@@ -123,6 +127,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     _controller?.dispose();
     _edgeDetector.dispose();
     unawaited(_barcodeScannerService.dispose());
+    _edgeGuidanceDebounce?.cancel();
     super.dispose();
   }
 
@@ -142,7 +147,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
         if (barcodeData != null && mounted && !_isBarcodeResultShowing) {
           // Trigger haptic feedback
           HapticFeedback.heavyImpact();
-          
+
           // Show result sheet
           _showBarcodeResult(barcodeData);
         }
@@ -159,6 +164,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       if (!mounted) return;
 
       setState(() => _detectedEdges = edges);
+      _updateEdgeGuidance(edges != null && edges.length == 4);
 
       // Auto-capture when edges are detected and auto-capture is enabled
       if (_settings.autoCapture &&
@@ -183,6 +189,27 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       try {
         await _controller!.stopImageStream();
       } catch (_) {}
+    }
+  }
+
+  void _updateEdgeGuidance(bool hasStableEdges) {
+    if (hasStableEdges) {
+      if (_edgeGuidanceState != EdgeGuidanceState.ready) {
+        setState(() => _edgeGuidanceState = EdgeGuidanceState.holding);
+      }
+      _edgeGuidanceDebounce ??= Timer(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        setState(() {
+          _edgeGuidanceState = EdgeGuidanceState.ready;
+          _edgeGuidanceDebounce = null;
+        });
+      });
+    } else {
+      _edgeGuidanceDebounce?.cancel();
+      _edgeGuidanceDebounce = null;
+      if (_edgeGuidanceState != EdgeGuidanceState.scanning && mounted) {
+        setState(() => _edgeGuidanceState = EdgeGuidanceState.scanning);
+      }
     }
   }
 
@@ -252,7 +279,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
 
   Future<void> _changeMode(ScanMode mode) async {
     if (!_availableModes.contains(mode)) return;
-    
+
     // Handle mode switching for barcode scanning
     if (_currentMode == ScanMode.scanCode && mode != ScanMode.scanCode) {
       // Switching away from barcode mode - resume if paused
@@ -264,7 +291,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       _barcodeScannerService.resume();
       _isBarcodeResultShowing = false;
     }
-    
+
     setState(() {
       _currentMode = mode;
       _detectedEdges = null;
@@ -274,11 +301,11 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
 
   void _showBarcodeResult(BarcodeData barcodeData) {
     if (_isBarcodeResultShowing || !mounted) return;
-    
+
     setState(() {
       _isBarcodeResultShowing = true;
     });
-    
+
     // Pause barcode scanning while showing result
     _barcodeScannerService.pause();
 
@@ -370,10 +397,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       // Handle Extract Text mode differently
       if (_currentMode == ScanMode.extractText) {
         // Navigate to text editor screen with OCR processing
-        context.push(
-          '/texteditorscreen',
-          extra: {'imagePath': path},
-        );
+        context.push('/texteditorscreen', extra: {'imagePath': path});
       } else if (widget.returnCapturePath) {
         context.pop(captureResult);
       } else {
@@ -441,10 +465,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       // Handle Extract Text mode differently
       if (_currentMode == ScanMode.extractText) {
         // Navigate to text editor screen with OCR processing
-        context.push(
-          '/texteditorscreen',
-          extra: {'imagePath': path},
-        );
+        context.push('/texteditorscreen', extra: {'imagePath': path});
       } else if (widget.returnCapturePath) {
         context.pop(captureResult);
       } else {
@@ -542,7 +563,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
         showDialog<void>(
           context: context,
           barrierDismissible: false,
-          barrierColor: Colors.black.withOpacity(0.5),
+          barrierColor: Colors.black.withValues(alpha: 0.5),
           builder: (ctx) => const _TimestampLoadingDialog(),
         );
       }
@@ -611,7 +632,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -639,7 +660,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -662,7 +683,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -725,9 +746,9 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
               margin: const EdgeInsets.only(top: 80),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
               ),
               child: Text(
                 _currentMode.hint,
@@ -738,6 +759,13 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
                 ),
                 textAlign: TextAlign.center,
               ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 150),
+              child: _EdgeGuidanceChip(state: _edgeGuidanceState),
             ),
           ),
 
@@ -837,7 +865,7 @@ class _ColorProfileSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.35),
+        color: Colors.black.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Wrap(
@@ -849,15 +877,15 @@ class _ColorProfileSelector extends StatelessWidget {
           return ChoiceChip(
             label: Text(profile.label),
             selected: isSelected,
-            selectedColor: colorScheme.primary.withOpacity(0.2),
-            backgroundColor: Colors.white.withOpacity(0.08),
+            selectedColor: colorScheme.primary.withValues(alpha: 0.2),
+            backgroundColor: Colors.white.withValues(alpha: 0.08),
             labelStyle: TextStyle(
               color: isSelected ? Colors.white : Colors.white70,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             ),
             side: BorderSide(
               color: isSelected
-                  ? colorScheme.primary.withOpacity(0.6)
+                  ? colorScheme.primary.withValues(alpha: 0.6)
                   : Colors.white24,
             ),
             onSelected: (_) => onChanged(profile),
@@ -918,10 +946,10 @@ class _CameraSettingsSheetState extends State<CameraSettingsSheet> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.8),
+            color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.1)),
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
             ),
           ),
           child: Column(
@@ -933,7 +961,7 @@ class _CameraSettingsSheetState extends State<CameraSettingsSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -951,7 +979,7 @@ class _CameraSettingsSheetState extends State<CameraSettingsSheet> {
               Text(
                 'Configure your camera preferences',
                 style: GoogleFonts.inter(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   fontSize: 14,
                 ),
               ),
@@ -1053,7 +1081,7 @@ class _SettingsItem extends StatelessWidget {
                 Text(
                   subtitle,
                   style: GoogleFonts.inter(
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                     fontSize: 14,
                   ),
                 ),
@@ -1065,7 +1093,7 @@ class _SettingsItem extends StatelessWidget {
             value: value,
             onChanged: onChanged,
             activeColor: Colors.white,
-            activeTrackColor: Colors.white.withOpacity(0.5),
+            activeTrackColor: Colors.white.withValues(alpha: 0.5),
           ),
         ],
       ),
@@ -1110,11 +1138,11 @@ class _ModeSelector extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? Colors.white.withOpacity(0.2)
+                    ? Colors.white.withValues(alpha: 0.2)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
                 border: isSelected
-                    ? Border.all(color: Colors.white.withOpacity(0.5))
+                    ? Border.all(color: Colors.white.withValues(alpha: 0.5))
                     : null,
               ),
               child: Center(
@@ -1123,7 +1151,9 @@ class _ModeSelector extends StatelessWidget {
                   style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? Colors.white : Colors.white.withOpacity(0.6),
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.white.withValues(alpha: 0.6),
                     letterSpacing: 0.5,
                   ),
                 ),
@@ -1146,7 +1176,7 @@ class _GridOverlay extends StatelessWidget {
         margin: const EdgeInsets.all(40),
         decoration: BoxDecoration(
           border: Border.all(
-            color: Colors.cyanAccent.withOpacity(0.8),
+            color: Colors.cyanAccent.withValues(alpha: 0.8),
             width: 2,
           ),
           borderRadius: BorderRadius.circular(12),
@@ -1161,7 +1191,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.3)
+      ..color = Colors.cyanAccent.withValues(alpha: 0.3)
       ..strokeWidth = 1;
     for (double i = 1; i < 3; i++) {
       final x = size.width * i / 3;
@@ -1185,11 +1215,14 @@ class _IDCardOverlay extends StatelessWidget {
       width: 320,
       height: 200,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.orange.withOpacity(0.8), width: 3),
+        border: Border.all(
+          color: Colors.orange.withValues(alpha: 0.8),
+          width: 3,
+        ),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.orange.withOpacity(0.2),
+            color: Colors.orange.withValues(alpha: 0.2),
             blurRadius: 10,
             spreadRadius: 2,
           ),
@@ -1198,7 +1231,7 @@ class _IDCardOverlay extends StatelessWidget {
       child: Icon(
         Icons.credit_card_rounded,
         size: 50,
-        color: Colors.orange.withOpacity(0.7),
+        color: Colors.orange.withValues(alpha: 0.7),
       ),
     ),
   );
@@ -1213,7 +1246,7 @@ class _DewarpHint extends StatelessWidget {
       margin: const EdgeInsets.only(top: 140),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.green.withOpacity(0.8),
+        color: Colors.green.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -1265,7 +1298,7 @@ class _ShutterButton extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
+                  color: Colors.black.withValues(alpha: 0.3),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -1281,7 +1314,7 @@ class _ShutterButton extends StatelessWidget {
               ? null
               : [
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.5),
+                    color: Colors.white.withValues(alpha: 0.5),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -1318,12 +1351,12 @@ class _RoundIconButton extends StatelessWidget {
         width: 52,
         height: 52,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.35),
+          color: Colors.black.withValues(alpha: 0.35),
           shape: BoxShape.circle,
           border: Border.all(color: Colors.white24, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.25),
+              color: Colors.black.withValues(alpha: 0.25),
               blurRadius: 8,
               offset: const Offset(0, 3),
             ),
@@ -1344,11 +1377,10 @@ class _TimestampLoadingDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async => false,
+    return PopScope(
+      canPop: false,
       child: Dialog(
         elevation: 0,
-        backgroundColor: Colors.black.withOpacity(0.8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -1382,6 +1414,61 @@ class _TimestampLoadingDialog extends StatelessWidget {
   }
 }
 
+class _EdgeGuidanceChip extends StatelessWidget {
+  const _EdgeGuidanceChip({required this.state});
+
+  final EdgeGuidanceState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final ready = state == EdgeGuidanceState.ready;
+    final holding = state == EdgeGuidanceState.holding;
+
+    Color bg;
+    IconData icon;
+    String label;
+    Color fg;
+
+    if (ready) {
+      bg = cs.primaryContainer.withValues(alpha: 0.9);
+      icon = Icons.check_circle_rounded;
+      label = 'Edges locked';
+      fg = cs.onPrimary;
+    } else if (holding) {
+      bg = Colors.amber.withValues(alpha: 0.9);
+      icon = Icons.hourglass_top_rounded;
+      label = 'Hold steady...';
+      fg = Colors.black;
+    } else {
+      bg = cs.surfaceContainerHighest.withValues(alpha: 0.8);
+      icon = Icons.center_focus_strong;
+      label = 'Align document';
+      fg = cs.onSurface;
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: fg),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: GoogleFonts.inter(color: fg, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 ColorFilter? _previewFilterForProfile(DocumentColorProfile profile) {
   switch (profile) {
     case DocumentColorProfile.color:
@@ -1395,10 +1482,7 @@ ColorFilter? _previewFilterForProfile(DocumentColorProfile profile) {
   }
 }
 
-img.Image _applyProfileFilter(
-  img.Image image,
-  DocumentColorProfile profile,
-) {
+img.Image _applyProfileFilter(img.Image image, DocumentColorProfile profile) {
   switch (profile) {
     case DocumentColorProfile.color:
       return image;
@@ -1418,22 +1502,70 @@ img.Image _applyProfileFilter(
 }
 
 const List<double> _grayscaleMatrix = <double>[
-  0.33, 0.33, 0.33, 0, 0,
-  0.33, 0.33, 0.33, 0, 0,
-  0.33, 0.33, 0.33, 0, 0,
-  0, 0, 0, 1, 0,
+  0.33,
+  0.33,
+  0.33,
+  0,
+  0,
+  0.33,
+  0.33,
+  0.33,
+  0,
+  0,
+  0.33,
+  0.33,
+  0.33,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
 ];
 
 const List<double> _blackWhiteMatrix = <double>[
-  0.6, 0.6, 0.6, 0, -128,
-  0.6, 0.6, 0.6, 0, -128,
-  0.6, 0.6, 0.6, 0, -128,
-  0, 0, 0, 1, 0,
+  0.6,
+  0.6,
+  0.6,
+  0,
+  -128,
+  0.6,
+  0.6,
+  0.6,
+  0,
+  -128,
+  0.6,
+  0.6,
+  0.6,
+  0,
+  -128,
+  0,
+  0,
+  0,
+  1,
+  0,
 ];
 
 const List<double> _magicMatrix = <double>[
-  1.2, 0.05, 0.05, 0, 0,
-  0.05, 1.15, 0.05, 0, 0,
-  0.05, 0.05, 1.1, 0, 0,
-  0, 0, 0, 1, 0,
+  1.2,
+  0.05,
+  0.05,
+  0,
+  0,
+  0.05,
+  1.15,
+  0.05,
+  0,
+  0,
+  0.05,
+  0.05,
+  1.1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
 ];

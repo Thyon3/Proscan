@@ -69,7 +69,7 @@ class _PremiumExportDialogState extends State<PremiumExportDialog>
               borderRadius: BorderRadius.circular(32),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.5 : 0.15),
+                  color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.15),
                   blurRadius: 40,
                   spreadRadius: 0,
                   offset: const Offset(0, 20),
@@ -87,8 +87,8 @@ class _PremiumExportDialogState extends State<PremiumExportDialog>
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        cs.primaryContainer.withOpacity(0.3),
-                        cs.secondaryContainer.withOpacity(0.2),
+                        cs.primaryContainer.withValues(alpha: 0.3),
+                        cs.secondaryContainer.withValues(alpha: 0.2),
                       ],
                     ),
                     borderRadius: const BorderRadius.only(
@@ -101,7 +101,7 @@ class _PremiumExportDialogState extends State<PremiumExportDialog>
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: cs.primary.withOpacity(0.15),
+                          color: cs.primary.withValues(alpha: 0.15),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -138,13 +138,13 @@ class _PremiumExportDialogState extends State<PremiumExportDialog>
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          cs.errorContainer.withOpacity(0.3),
-                          cs.error.withOpacity(0.1),
+                          cs.errorContainer.withValues(alpha: 0.3),
+                          cs.error.withValues(alpha: 0.1),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: cs.outline.withOpacity(0.1),
+                        color: cs.outline.withValues(alpha: 0.1),
                         width: 1,
                       ),
                     ),
@@ -153,7 +153,7 @@ class _PremiumExportDialogState extends State<PremiumExportDialog>
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: cs.error.withOpacity(0.15),
+                            color: cs.error.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Icon(

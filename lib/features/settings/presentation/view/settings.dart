@@ -89,7 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: _language,
               trailing: Icon(
                 Iconsax.arrow_right_3,
-                color: scheme.onSurface.withOpacity(0.5),
+                color: scheme.onSurface.withValues(alpha: 0.5),
                 size: 20,
               ),
               scheme: scheme,
@@ -118,7 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'Learn about our privacy practices',
               trailing: Icon(
                 Iconsax.arrow_right_3,
-                color: scheme.onSurface.withOpacity(0.5),
+                color: scheme.onSurface.withValues(alpha: 0.5),
                 size: 20,
               ),
               scheme: scheme,
@@ -131,7 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'Get help and contact support',
               trailing: Icon(
                 Iconsax.arrow_right_3,
-                color: scheme.onSurface.withOpacity(0.5),
+                color: scheme.onSurface.withValues(alpha: 0.5),
                 size: 20,
               ),
               scheme: scheme,
@@ -147,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   vertical: 12,
                 ),
                 decoration: BoxDecoration(
-                  color: scheme.surfaceVariant.withOpacity(0.5),
+                  color: scheme.surfaceVariant.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
@@ -155,7 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: scheme.onSurface.withOpacity(0.6),
+                    color: scheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -197,12 +197,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
         ],
-        border: Border.all(color: scheme.outline.withOpacity(0.1), width: 1),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.1), width: 1),
       ),
       child: Material(
         color: Colors.transparent,
@@ -223,8 +223,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        scheme.primary.withOpacity(0.1),
-                        scheme.primaryContainer.withOpacity(0.1),
+                        scheme.primary.withValues(alpha: 0.1),
+                        scheme.primaryContainer.withValues(alpha: 0.1),
                       ],
                     ),
                     shape: BoxShape.circle,
@@ -251,7 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle,
                         style: GoogleFonts.inter(
                           fontSize: 13,
-                          color: scheme.onSurface.withOpacity(0.6),
+                          color: scheme.onSurface.withValues(alpha: 0.6),
                           height: 1.3,
                         ),
                       ),
@@ -290,7 +290,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -320,10 +320,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: isSelected ? scheme.primary.withOpacity(0.1) : scheme.surface,
+        color: isSelected ? scheme.primary.withValues(alpha: 0.1) : scheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isSelected ? scheme.primary : scheme.outline.withOpacity(0.2),
+          color: isSelected ? scheme.primary : scheme.outline.withValues(alpha: 0.2),
           width: 1.5,
         ),
       ),
@@ -332,7 +332,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           isSelected ? Iconsax.tick_circle : Iconsax.global,
           color: isSelected
               ? scheme.primary
-              : scheme.onSurface.withOpacity(0.5),
+              : scheme.onSurface.withValues(alpha: 0.5),
           size: 22,
         ),
         title: Text(

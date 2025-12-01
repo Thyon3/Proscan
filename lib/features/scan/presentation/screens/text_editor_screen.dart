@@ -208,7 +208,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                       color: cs.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: cs.outline.withOpacity(0.2),
+                        color: cs.outline.withValues(alpha: 0.2),
                         width: 1,
                       ),
                     ),
@@ -229,7 +229,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                           hintText: 'Edit extracted text here...',
                           hintStyle: GoogleFonts.inter(
                             fontSize: 16,
-                            color: cs.onSurfaceVariant.withOpacity(0.5),
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.5),
                           ),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.all(8),
@@ -245,7 +245,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                     color: cs.surface,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 10,
                         offset: const Offset(0, -2),
                       ),

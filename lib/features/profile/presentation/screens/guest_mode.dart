@@ -33,7 +33,7 @@ class ProfileGuestScreen extends StatelessWidget {
                   children: [
                     SizedBox(height: 16 * scale),
                     _CircleIcon(
-                      bg: cs.primary.withOpacity(0.12),
+                      bg: cs.primary.withValues(alpha: 0.12),
                       icon: Icons.sync_lock_rounded,
                       iconColor: cs.primary,
                       size: 56 * scale,
@@ -54,7 +54,7 @@ class ProfileGuestScreen extends StatelessWidget {
                       'Access your scans on any device.',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                       ),
                     ),
                     SizedBox(height: 16 * scale),
@@ -80,7 +80,7 @@ class ProfileGuestScreen extends StatelessWidget {
                         size: 28 * scale,
                       ),
                       height: 48 * scale,
-                      tone: cs.primary.withOpacity(0.1),
+                      tone: cs.primary.withValues(alpha: 0.1),
                     ),
                     SizedBox(height: 10 * scale),
                     _AuthButton.tonal(
@@ -94,7 +94,7 @@ class ProfileGuestScreen extends StatelessWidget {
                         size: 22 * scale,
                       ),
                       height: 48 * scale,
-                      tone: cs.primary.withOpacity(0.1),
+                      tone: cs.primary.withValues(alpha: 0.1),
                     ),
 
                     SizedBox(height: 12 * scale),
@@ -105,7 +105,7 @@ class ProfileGuestScreen extends StatelessWidget {
                       child: Text(
                         'Continue free without account',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                           decoration: TextDecoration.underline,
                         ),
                       ),
@@ -125,7 +125,7 @@ class ProfileGuestScreen extends StatelessWidget {
                   style: theme.textTheme.labelLarge?.copyWith(
                     letterSpacing: 0.6,
                     fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),
@@ -173,7 +173,7 @@ class ProfileGuestScreen extends StatelessWidget {
                   style: theme.textTheme.labelLarge?.copyWith(
                     letterSpacing: 0.6,
                     fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
               ),

@@ -243,7 +243,7 @@ class _ProUserProfileScreenState extends State<ProUserProfileScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: cs.error.withOpacity(0.2),
+                        color: cs.error.withValues(alpha: 0.2),
                         blurRadius: 15,
                         offset: const Offset(0, 4),
                       ),
@@ -331,15 +331,15 @@ class _PremiumHeaderSection extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            cs.primary.withOpacity(0.1),
-            cs.primaryContainer.withOpacity(0.05),
+            cs.primary.withValues(alpha: 0.1),
+            cs.primaryContainer.withValues(alpha: 0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outline.withOpacity(0.1)),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -361,7 +361,7 @@ class _PremiumHeaderSection extends StatelessWidget {
               },
               icon: Icon(
                 Iconsax.setting_2,
-                color: cs.onSurface.withOpacity(0.7),
+                color: cs.onSurface.withValues(alpha: 0.7),
                 size: 24 * scale,
               ),
             ),
@@ -413,7 +413,7 @@ class _PremiumHeaderSection extends StatelessWidget {
             'asnakemengesha80@gmail.com',
             style: GoogleFonts.inter(
               fontSize: 14 * scale,
-              color: cs.onSurface.withOpacity(0.7),
+              color: cs.onSurface.withValues(alpha: 0.7),
             ),
           ),
           SizedBox(height: 12 * scale),
@@ -422,7 +422,7 @@ class _PremiumHeaderSection extends StatelessWidget {
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: cs.primary.withOpacity(0.3)),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
             ),
             child: Material(
               color: Colors.transparent,
@@ -460,7 +460,7 @@ class _PremiumHeaderSection extends StatelessWidget {
                     backupLabel,
                     style: GoogleFonts.inter(
                       fontSize: 13 * scale,
-                      color: cs.onSurface.withOpacity(0.7),
+                      color: cs.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
                   Text(
@@ -526,12 +526,12 @@ class _PremiumSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
             ],
-            border: Border.all(color: cs.outline.withOpacity(0.1)),
+            border: Border.all(color: cs.outline.withValues(alpha: 0.1)),
           ),
           child: Column(children: children),
         ),
@@ -580,8 +580,8 @@ class _PremiumTile extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      cs.primary.withOpacity(0.1),
-                      cs.primaryContainer.withOpacity(0.1),
+                      cs.primary.withValues(alpha: 0.1),
+                      cs.primaryContainer.withValues(alpha: 0.1),
                     ],
                   ),
                   shape: BoxShape.circle,
@@ -609,7 +609,7 @@ class _PremiumTile extends StatelessWidget {
                         subtitle!,
                         style: GoogleFonts.inter(
                           fontSize: 13,
-                          color: cs.onSurface.withOpacity(0.6),
+                          color: cs.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -623,7 +623,7 @@ class _PremiumTile extends StatelessWidget {
                   trailingText!,
                   style: GoogleFonts.inter(
                     fontSize: 14,
-                    color: cs.onSurface.withOpacity(0.7),
+                    color: cs.onSurface.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -633,7 +633,7 @@ class _PremiumTile extends StatelessWidget {
                 Icon(
                   Iconsax.arrow_right_3,
                   size: 20,
-                  color: cs.onSurface.withOpacity(0.4),
+                  color: cs.onSurface.withValues(alpha: 0.4),
                 ),
             ],
           ),
@@ -679,8 +679,8 @@ class _PremiumToggleTile extends StatelessWidget {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      cs.primary.withOpacity(0.1),
-                      cs.primaryContainer.withOpacity(0.1),
+                      cs.primary.withValues(alpha: 0.1),
+                      cs.primaryContainer.withValues(alpha: 0.1),
                     ],
                   ),
                   shape: BoxShape.circle,
@@ -720,7 +720,7 @@ class _PremiumToggleTile extends StatelessWidget {
                         ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -740,7 +740,7 @@ class _PremiumToggleTile extends StatelessWidget {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withValues(alpha: 0.2),
                               blurRadius: 4,
                               offset: const Offset(0, 2),
                             ),
@@ -780,7 +780,7 @@ class _PremiumProChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: cs.primary.withOpacity(0.3),
+            color: cs.primary.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -823,7 +823,7 @@ class _PremiumProgressBar extends StatelessWidget {
     return Container(
       height: height,
       decoration: BoxDecoration(
-        color: cs.surfaceVariant.withOpacity(0.5),
+        color: cs.surfaceVariant.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(radius),
       ),
       child: Stack(
