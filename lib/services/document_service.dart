@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:thyscan/core/errors/failures.dart';
+import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/models/document_color_profile.dart';
@@ -19,6 +20,11 @@ class DocumentService {
 
   final _uuid = const Uuid();
 
+  /// High‑level API: save a new scanned document.
+  ///
+  /// This method delegates to the transactional repository helpers below,
+  /// ensuring that files are first written into temporary locations and
+  /// only committed once PDF generation and thumbnail creation succeed.
   Future<DocumentModel> saveDocument({
     required List<String> pageImagePaths,
     String? title,
@@ -26,25 +32,22 @@ class DocumentService {
     String? textContent,
     DocumentColorProfile colorProfile = DocumentColorProfile.color,
     PdfProgressCallback? onProgress,
+    DocumentSaveOptions options = const DocumentSaveOptions(),
   }) async {
     if (pageImagePaths.isEmpty) {
       throw ArgumentError('pageImagePaths cannot be empty');
     }
 
     final appDocsDir = await getApplicationDocumentsDirectory();
-    final documentsDir = Directory(p.join(appDocsDir.path, 'scanned_documents'));
+    final documentsDir = Directory(
+      p.join(appDocsDir.path, 'scanned_documents'),
+    );
     final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
     final pagesDir = Directory(p.join(appDocsDir.path, 'page_images'));
 
-    if (!documentsDir.existsSync()) {
-      documentsDir.createSync(recursive: true);
-    }
-    if (!thumbsDir.existsSync()) {
-      thumbsDir.createSync(recursive: true);
-    }
-    if (!pagesDir.existsSync()) {
-      pagesDir.createSync(recursive: true);
-    }
+    await _ensureDir(documentsDir);
+    await _ensureDir(thumbsDir);
+    await _ensureDir(pagesDir);
 
     final id = _uuid.v4();
     final createdAt = DateTime.now();
@@ -55,50 +58,97 @@ class DocumentService {
         ? title!
         : 'Scan ${DateFormat('MMM dd, yyyy').format(createdAt)}';
 
-    final filePath = p.join(documentsDir.path, 'doc_$id.pdf');
-    final thumbnailPath = _buildThumbnailPath(
+    // Use a temporary file path for the PDF, then atomically rename.
+    final targetFilePath = p.join(documentsDir.path, 'doc_$id.pdf');
+    final tempFilePath = p.join(
+      documentsDir.path,
+      'doc_${id}_$timestamp.tmp.pdf',
+    );
+
+    final tempThumbnailPath = _buildThumbnailPath(
       thumbsDir.path,
       id,
       timestamp,
     );
 
-    final pdfResult = await PdfGenerationService.instance.generate(
-      imagePaths: pageImagePaths,
-      outputPdfPath: filePath,
-      optimizedDirPath: pagesDir.path,
-      documentId: id,
-      batchId: createdAt.millisecondsSinceEpoch.toString(),
-      onProgress: onProgress,
+    final resolvedTags = options.tags ?? [scanMode];
+    final resolvedMetadata = (options.metadata ?? const PdfMetadata())
+        .withFallbacks(title: docTitle, fallbackKeywords: resolvedTags);
+
+    final generationConfig = PdfGenerationConfig(
+      maxPageSizeMb: options.compressionPreset.maxPageSizeMb,
+      pageWidth: options.paperSize.format.width,
+      pageHeight: options.paperSize.format.height,
+      margin: options.paperSize.suggestedMargin,
+      addWhiteBackground: options.addWhiteBackground,
+      metadata: resolvedMetadata.toPdfDocumentMetadata(),
     );
 
-    // Save thumbnail
-    if (pdfResult.optimizedImagePaths.isNotEmpty) {
-      final firstPageFile = File(pdfResult.optimizedImagePaths.first);
-      if (await firstPageFile.exists()) {
-        await firstPageFile.copy(thumbnailPath);
+    PdfGenerationResult? pdfResult;
+    String? committedFilePath;
+    String? committedThumbPath;
+
+    try {
+      pdfResult = await PdfGenerationService.instance.generate(
+        imagePaths: pageImagePaths,
+        outputPdfPath: tempFilePath,
+        optimizedDirPath: pagesDir.path,
+        documentId: id,
+        batchId: timestamp.toString(),
+        config: generationConfig,
+        onProgress: onProgress,
+      );
+
+      // Atomically "commit" the PDF by renaming the temp file.
+      final tempFile = File(tempFilePath);
+      if (!await tempFile.exists()) {
+        throw StorageFailure('Temporary PDF file missing after generation');
       }
+      final finalFile = await tempFile.rename(targetFilePath);
+      committedFilePath = finalFile.path;
+
+      // Create thumbnail from first optimized page, written directly
+      // to its final location.
+      if (pdfResult.optimizedImagePaths.isNotEmpty) {
+        final firstPageFile = File(pdfResult.optimizedImagePaths.first);
+        if (await firstPageFile.exists()) {
+          await firstPageFile.copy(tempThumbnailPath);
+          committedThumbPath = tempThumbnailPath;
+        }
+      }
+
+      final doc = DocumentModel(
+        id: id,
+        title: docTitle,
+        filePath: committedFilePath ?? targetFilePath,
+        thumbnailPath: committedThumbPath ?? '',
+        format: 'pdf',
+        pageCount: pageCount,
+        createdAt: createdAt,
+        updatedAt: createdAt,
+        pageImagePaths: pdfResult.optimizedImagePaths,
+        scanMode: scanMode,
+        textContent: textContent,
+        colorProfile: colorProfile.key,
+        tags: resolvedTags,
+        metadata: resolvedMetadata.toDocumentMap(),
+      );
+
+      final box = Hive.box<DocumentModel>(boxName);
+      await box.put(id, doc);
+
+      return doc;
+    } catch (e) {
+      // Best‑effort rollback of any temporary or partially committed files.
+      await _deleteIfExists(tempFilePath);
+      if (committedFilePath != null) {
+        await _deleteIfExists(committedFilePath);
+      }
+      if (committedThumbPath != null) {
+        await _deleteIfExists(committedThumbPath);
+      }
+      rethrow;
     }
-
-    // Save to Hive with ALL page image paths
-    final doc = DocumentModel(
-      id: id,
-      title: docTitle,
-      filePath: filePath,
-      thumbnailPath: thumbnailPath,
-      format: 'pdf',
-      pageCount: pageCount,
-      createdAt: createdAt,
-      updatedAt: createdAt,
-      pageImagePaths: pdfResult.optimizedImagePaths,
-      scanMode: scanMode,
-      textContent: textContent,
-      colorProfile: colorProfile.key,
-    );
-
-    final box = Hive.box<DocumentModel>(boxName);
-    await box.put(id, doc);
-
-    return doc;
   }
 
   /// Retrieves all documents safely, filtering out corrupted entries or missing files.
@@ -160,6 +210,7 @@ class DocumentService {
     String? scanMode,
     DocumentColorProfile? colorProfile,
     PdfProgressCallback? onProgress,
+    DocumentSaveOptions options = const DocumentSaveOptions(),
   }) async {
     if (pageImagePaths.isEmpty) {
       throw ArgumentError('pageImagePaths cannot be empty');
@@ -167,18 +218,21 @@ class DocumentService {
 
     final box = Hive.box<DocumentModel>(boxName);
     final existingDoc = box.get(documentId);
-    
+
     if (existingDoc == null) {
       throw Exception('Document not found');
     }
 
-    // We will delete old files ONLY after successfully saving the new ones
-    // to prevent data loss if the source files are the same as the old files.
-
     final appDocsDir = await getApplicationDocumentsDirectory();
-    final documentsDir = Directory(p.join(appDocsDir.path, 'scanned_documents'));
+    final documentsDir = Directory(
+      p.join(appDocsDir.path, 'scanned_documents'),
+    );
     final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
     final pagesDir = Directory(p.join(appDocsDir.path, 'page_images'));
+
+    await _ensureDir(documentsDir);
+    await _ensureDir(thumbsDir);
+    await _ensureDir(pagesDir);
 
     final pageCount = pageImagePaths.length;
     final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
@@ -186,72 +240,109 @@ class DocumentService {
     final newScanMode = scanMode ?? existingDoc.scanMode;
     final newColorProfile =
         colorProfile ?? DocumentColorProfile.fromKey(existingDoc.colorProfile);
-    
-    // Use a timestamp to ensure unique filenames for the new pages
-    // This prevents conflicts if we are overwriting files that are currently in use
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-    final pdfResult = await PdfGenerationService.instance.generate(
-      imagePaths: pageImagePaths,
-      outputPdfPath: filePath,
-      optimizedDirPath: pagesDir.path,
-      documentId: documentId,
-      batchId: timestamp.toString(),
-      onProgress: onProgress,
+    final resolvedTags = options.tags ?? existingDoc.tags;
+    final baseMetadata = options.metadata ?? _metadataFromDocument(existingDoc);
+    final resolvedMetadata = baseMetadata.withFallbacks(
+      title: docTitle,
+      fallbackKeywords: resolvedTags,
+    );
+    final generationConfig = PdfGenerationConfig(
+      maxPageSizeMb: options.compressionPreset.maxPageSizeMb,
+      pageWidth: options.paperSize.format.width,
+      pageHeight: options.paperSize.format.height,
+      margin: options.paperSize.suggestedMargin,
+      addWhiteBackground: options.addWhiteBackground,
+      metadata: resolvedMetadata.toPdfDocumentMetadata(),
     );
 
-    final newThumbnailPath = _buildThumbnailPath(
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+    final tempFilePath = p.join(
+      documentsDir.path,
+      'doc_${documentId}_$timestamp.tmp.pdf',
+    );
+    final tempThumbPath = _buildThumbnailPath(
       thumbsDir.path,
       documentId,
       timestamp,
     );
 
-    // Update thumbnail
-    if (pdfResult.optimizedImagePaths.isNotEmpty) {
-      final firstPageFile = File(pdfResult.optimizedImagePaths.first);
-      if (await firstPageFile.exists()) {
-        await firstPageFile.copy(newThumbnailPath);
+    PdfGenerationResult? pdfResult;
+    String? committedFilePath;
+    String? committedThumbPath;
+
+    try {
+      pdfResult = await PdfGenerationService.instance.generate(
+        imagePaths: pageImagePaths,
+        outputPdfPath: tempFilePath,
+        optimizedDirPath: pagesDir.path,
+        documentId: documentId,
+        batchId: timestamp.toString(),
+        config: generationConfig,
+        onProgress: onProgress,
+      );
+
+      final tempFile = File(tempFilePath);
+      if (!await tempFile.exists()) {
+        throw StorageFailure('Temporary PDF file missing after generation');
       }
-    }
+      final finalFile = await tempFile.rename(filePath);
+      committedFilePath = finalFile.path;
 
-    if (existingDoc.thumbnailPath.isNotEmpty &&
-        existingDoc.thumbnailPath != newThumbnailPath) {
-      await _deleteIfExists(existingDoc.thumbnailPath);
-    }
-
-    // NOW it is safe to delete the OLD page images
-    // We compare with the NEW paths to ensure we don't delete what we just saved
-    // (though the timestamp should prevent this anyway)
-    for (final oldPagePath in existingDoc.pageImagePaths) {
-      try {
-        // Don't delete if it's in the new list (unlikely due to timestamp, but good safety)
-        if (!pdfResult.optimizedImagePaths.contains(oldPagePath)) {
-          final pageFile = File(oldPagePath);
-          if (await pageFile.exists()) await pageFile.delete();
+      if (pdfResult.optimizedImagePaths.isNotEmpty) {
+        final firstPageFile = File(pdfResult.optimizedImagePaths.first);
+        if (await firstPageFile.exists()) {
+          await firstPageFile.copy(tempThumbPath);
+          committedThumbPath = tempThumbPath;
         }
-      } catch (_) {
-        // Ignore deletion errors for old files
       }
+
+      if (existingDoc.thumbnailPath.isNotEmpty &&
+          existingDoc.thumbnailPath != committedThumbPath) {
+        await _deleteIfExists(existingDoc.thumbnailPath);
+      }
+
+      // Only after successful commit do we best‑effort clean old page images.
+      for (final oldPagePath in existingDoc.pageImagePaths) {
+        try {
+          if (!pdfResult.optimizedImagePaths.contains(oldPagePath)) {
+            final pageFile = File(oldPagePath);
+            if (await pageFile.exists()) await pageFile.delete();
+          }
+        } catch (_) {
+          // Ignore deletion errors for old files
+        }
+      }
+
+      final updatedDoc = DocumentModel(
+        id: documentId,
+        title: docTitle,
+        filePath: committedFilePath ?? filePath,
+        thumbnailPath: committedThumbPath ?? existingDoc.thumbnailPath,
+        format: 'pdf',
+        pageCount: pageCount,
+        createdAt: existingDoc.createdAt,
+        updatedAt: DateTime.now(),
+        pageImagePaths: pdfResult.optimizedImagePaths,
+        scanMode: newScanMode,
+        colorProfile: newColorProfile.key,
+        textContent: existingDoc.textContent,
+        tags: resolvedTags,
+        metadata: resolvedMetadata.toDocumentMap(),
+      );
+
+      await box.put(documentId, updatedDoc);
+      return updatedDoc;
+    } catch (e) {
+      await _deleteIfExists(tempFilePath);
+      if (committedFilePath != null) {
+        await _deleteIfExists(committedFilePath);
+      }
+      if (committedThumbPath != null) {
+        await _deleteIfExists(committedThumbPath);
+      }
+      rethrow;
     }
-
-    // Update in Hive
-    final updatedDoc = DocumentModel(
-      id: documentId,
-      title: docTitle,
-      filePath: filePath,
-      thumbnailPath: newThumbnailPath,
-      format: 'pdf',
-      pageCount: pageCount,
-      createdAt: existingDoc.createdAt,
-      updatedAt: DateTime.now(),
-      pageImagePaths: pdfResult.optimizedImagePaths,
-      scanMode: newScanMode,
-      colorProfile: newColorProfile.key,
-      textContent: existingDoc.textContent,
-    );
-
-    await box.put(documentId, updatedDoc);
-    return updatedDoc;
   }
 
   Future<DocumentModel> saveTextDocument({
@@ -264,15 +355,13 @@ class DocumentService {
     }
 
     final appDocsDir = await getApplicationDocumentsDirectory();
-    final documentsDir = Directory(p.join(appDocsDir.path, 'scanned_documents'));
+    final documentsDir = Directory(
+      p.join(appDocsDir.path, 'scanned_documents'),
+    );
     final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
 
-    if (!documentsDir.existsSync()) {
-      documentsDir.createSync(recursive: true);
-    }
-    if (!thumbsDir.existsSync()) {
-      thumbsDir.createSync(recursive: true);
-    }
+    await _ensureDir(documentsDir);
+    await _ensureDir(thumbsDir);
 
     final id = _uuid.v4();
     final createdAt = DateTime.now();
@@ -312,11 +401,16 @@ class DocumentService {
       format: 'docx',
       pageCount: 1,
       createdAt: createdAt,
-       updatedAt: createdAt,
+      updatedAt: createdAt,
       pageImagePaths: [], // No page images for text documents
       scanMode: scanMode,
       textContent: text, // Store the text content
       colorProfile: DocumentColorProfile.color.key,
+      tags: const ['text'],
+      metadata: const {
+        'title': 'Text Document',
+        'creator': 'ThyScan Text Suite',
+      },
     );
 
     final box = Hive.box<DocumentModel>(boxName);
@@ -328,18 +422,18 @@ class DocumentService {
   Future<void> deleteDocument(String id) async {
     final box = Hive.box<DocumentModel>(boxName);
     final doc = box.get(id);
-    
+
     if (doc != null) {
       try {
         final file = File(doc.filePath);
         if (await file.exists()) await file.delete();
       } catch (_) {}
-      
+
       try {
         final thumb = File(doc.thumbnailPath);
         if (await thumb.exists()) await thumb.delete();
       } catch (_) {}
-      
+
       // Delete all page images
       for (final pagePath in doc.pageImagePaths) {
         try {
@@ -347,10 +441,11 @@ class DocumentService {
           if (await pageFile.exists()) await pageFile.delete();
         } catch (_) {}
       }
-      
+
       await box.delete(id);
     }
   }
+
   Future<void> renameDocument(String id, String newTitle) async {
     final box = Hive.box<DocumentModel>(boxName);
     final doc = box.get(id);
@@ -369,6 +464,8 @@ class DocumentService {
         textContent: doc.textContent,
         updatedAt: DateTime.now(),
         colorProfile: doc.colorProfile,
+        tags: doc.tags,
+        metadata: doc.metadata,
       );
       await box.put(id, updatedDoc);
     }
@@ -378,6 +475,12 @@ class DocumentService {
     return p.join(baseDir, 'thumb_${documentId}_$timestamp.jpg');
   }
 
+  Future<void> _ensureDir(Directory dir) async {
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+  }
+
   Future<void> _deleteIfExists(String path) async {
     try {
       final file = File(path);
@@ -385,5 +488,18 @@ class DocumentService {
         await file.delete();
       }
     } catch (_) {}
+  }
+
+  PdfMetadata _metadataFromDocument(DocumentModel doc) {
+    final data = doc.metadata;
+    return PdfMetadata(
+      title: data['title'],
+      author: data['author'],
+      subject: data['subject'],
+      keywords: (data['keywords']?.split(',') ?? doc.tags)
+          .where((s) => s.isNotEmpty)
+          .toList(),
+      creator: data['creator'],
+    );
   }
 }

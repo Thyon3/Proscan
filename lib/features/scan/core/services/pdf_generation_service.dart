@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 
 class PdfGenerationProgress {
   const PdfGenerationProgress({
@@ -46,8 +47,7 @@ class PdfGenerationService {
     required String optimizedDirPath,
     required String documentId,
     String batchId = '',
-    double maxPageSizeMb = 1.9,
-    bool addWhiteBackground = true,
+    PdfGenerationConfig config = const PdfGenerationConfig(),
     void Function(PdfGenerationProgress progress)? onProgress,
   }) async {
     if (imagePaths.isEmpty) {
@@ -72,8 +72,20 @@ class PdfGenerationService {
       batchId: batchId.isEmpty
           ? DateTime.now().millisecondsSinceEpoch.toString()
           : batchId,
-      maxPageSizeBytes: (maxPageSizeMb * 1024 * 1024).round(),
-      addWhiteBackground: addWhiteBackground,
+      maxPageSizeBytes: (config.maxPageSizeMb * 1024 * 1024).round(),
+      addWhiteBackground: config.addWhiteBackground,
+      pageWidth: config.pageWidth,
+      pageHeight: config.pageHeight,
+      margin: config.margin,
+      metadata: config.metadata == null
+          ? null
+          : _PdfMetadataPayload(
+              title: config.metadata!.title,
+              author: config.metadata!.author,
+              subject: config.metadata!.subject,
+              keywords: config.metadata!.keywords,
+              creator: config.metadata!.creator,
+            ),
     );
 
     final isolate = await Isolate.spawn<_PdfIsolatePayload>(
@@ -128,6 +140,10 @@ class _PdfIsolatePayload {
     required this.batchId,
     required this.maxPageSizeBytes,
     required this.addWhiteBackground,
+    required this.pageWidth,
+    required this.pageHeight,
+    required this.margin,
+    this.metadata,
   });
 
   final SendPort sendPort;
@@ -138,6 +154,10 @@ class _PdfIsolatePayload {
   final String batchId;
   final int maxPageSizeBytes;
   final bool addWhiteBackground;
+  final double pageWidth;
+  final double pageHeight;
+  final double margin;
+  final _PdfMetadataPayload? metadata;
 }
 
 class _PdfProgressMessage {
@@ -160,11 +180,36 @@ class _PdfErrorMessage {
   final String message;
 }
 
+class _PdfMetadataPayload {
+  const _PdfMetadataPayload({
+    this.title,
+    this.author,
+    this.subject,
+    this.keywords = const [],
+    this.creator,
+  });
+
+  final String? title;
+  final String? author;
+  final String? subject;
+  final List<String> keywords;
+  final String? creator;
+}
+
 Future<void> _pdfGenerationEntry(_PdfIsolatePayload payload) async {
   final sendPort = payload.sendPort;
   try {
     final optimizedPaths = <String>[];
-    final document = pw.Document();
+    final metadata = payload.metadata;
+    final document = pw.Document(
+      title: metadata?.title,
+      author: metadata?.author,
+      subject: metadata?.subject,
+      keywords:
+          metadata == null ? null : metadata.keywords.join(','),
+      creator: metadata?.creator,
+    );
+    final pageFormat = PdfPageFormat(payload.pageWidth, payload.pageHeight);
 
     for (int i = 0; i < payload.imagePaths.length; i++) {
       final optimizedPath = await _compressAndSave(
@@ -182,8 +227,8 @@ Future<void> _pdfGenerationEntry(_PdfIsolatePayload payload) async {
 
       document.addPage(
         pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.all(24),
+          pageFormat: pageFormat,
+          margin: pw.EdgeInsets.all(payload.margin),
           build: (_) => pw.Container(
             color: payload.addWhiteBackground ? PdfColors.white : null,
             child: pw.FittedBox(

@@ -5,8 +5,8 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
+import 'package:image/image.dart' as img;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -15,7 +15,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 import 'package:thyscan/models/document_color_profile.dart';
+import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
+import 'package:thyscan/features/scan/core/services/image_processing_service.dart';
 import 'package:thyscan/services/document_service.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -291,24 +293,10 @@ class _EditScanScreenState extends State<EditScanScreen> {
       final currentRotation = _pageRotations[_currentIndex] ?? 0;
       final newRotation = (currentRotation + 90) % 360;
 
-      // Always rotate 90 degrees from current state
-      final file = File(_pages[_currentIndex]);
-      final bytes = await file.readAsBytes();
-      final image = img.decodeImage(bytes);
-
-      if (image == null) return;
-
-      // Rotate 90 degrees clockwise
-      final rotatedImage = img.copyRotate(image, angle: 90);
-      final rotatedBytes = Uint8List.fromList(
-        img.encodeJpg(rotatedImage, quality: 95),
+      final sourcePath = _pages[_currentIndex];
+      final newPath = await ImageProcessingService.instance.rotate90(
+        sourcePath,
       );
-
-      // Save rotated image
-      final dir = await getTemporaryDirectory();
-      final filename = 'rotated_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final newPath = '${dir.path}/$filename';
-      await File(newPath).writeAsBytes(rotatedBytes);
 
       setState(() {
         _pages[_currentIndex] = newPath;
@@ -327,52 +315,33 @@ class _EditScanScreenState extends State<EditScanScreen> {
     if (_isOnAddSlot) return;
 
     try {
-      final file = File(_pages[_currentIndex]);
-      final bytes = await file.readAsBytes();
-      var image = img.decodeImage(bytes);
-
-      if (image == null) return;
-
-      switch (filter) {
-        case ImageFilter.grayscale:
-          image = img.grayscale(image);
-          break;
-        case ImageFilter.sepia:
-          image = img.sepia(image);
-          break;
-        case ImageFilter.invert:
-          image = img.invert(image);
-          break;
-        case ImageFilter.brightness:
-          image = img.adjustColor(image, brightness: 1.2);
-          break;
-        case ImageFilter.contrast:
-          image = img.adjustColor(image, contrast: 1.3);
-          break;
-        case ImageFilter.vintage:
-          image = img.sepia(image);
-          image = img.adjustColor(image, brightness: 0.9, contrast: 1.1);
-          break;
-        case ImageFilter.blackAndWhite:
-          image = img.grayscale(image);
-          image = img.adjustColor(image, contrast: 1.5);
-          break;
-        case ImageFilter.none:
-          // No filter applied, use original
-          break;
-      }
-
       if (filter != ImageFilter.none) {
-        final filteredBytes = Uint8List.fromList(
-          img.encodeJpg(image, quality: 95),
+        final sourcePath = _pages[_currentIndex];
+        final newPath = await ImageProcessingService.instance.applyFilter(
+          sourcePath,
+          (image) {
+            switch (filter) {
+              case ImageFilter.grayscale:
+                return img.grayscale(image);
+              case ImageFilter.sepia:
+                return img.sepia(image);
+              case ImageFilter.invert:
+                return img.invert(image);
+              case ImageFilter.brightness:
+                return img.adjustColor(image, brightness: 1.2);
+              case ImageFilter.contrast:
+                return img.adjustColor(image, contrast: 1.3);
+              case ImageFilter.vintage:
+                final sepia = img.sepia(image);
+                return img.adjustColor(sepia, brightness: 0.9, contrast: 1.1);
+              case ImageFilter.blackAndWhite:
+                final gray = img.grayscale(image);
+                return img.adjustColor(gray, contrast: 1.5);
+              case ImageFilter.none:
+                return image;
+            }
+          },
         );
-
-        // Save filtered image
-        final dir = await getTemporaryDirectory();
-        final filename =
-            'filtered_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final newPath = '${dir.path}/$filename';
-        await File(newPath).writeAsBytes(filteredBytes);
 
         setState(() {
           _pages[_currentIndex] = newPath;
@@ -474,6 +443,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
         title: _pdfFileName,
         scanMode: _scanModeKey(widget.initialMode),
         colorProfile: _colorProfile,
+        options: _buildSaveOptions(),
         onProgress: (progress) {
           if (!mounted) return;
           setState(() => _pdfProgress = progress);
@@ -518,6 +488,15 @@ class _EditScanScreenState extends State<EditScanScreen> {
   }
 
   String _scanModeKey(ScanMode mode) => mode.toString().split('.').last;
+
+  DocumentSaveOptions _buildSaveOptions() {
+    final tagSet = {_scanModeKey(widget.initialMode), _colorProfile.key}
+      ..removeWhere((element) => element.isEmpty);
+    return DocumentSaveOptions.enterpriseDefaults(
+      title: _pdfFileName,
+      tags: tagSet.toList(),
+    );
+  }
 
   void _goToPreviousPage() {
     if (_currentIndex > 0) {
@@ -849,7 +828,10 @@ class _EditScanScreenState extends State<EditScanScreen> {
               cs.surfaceContainerHighest.withValues(alpha: 0.2),
             ],
           ),
-          border: Border.all(color: cs.outline.withValues(alpha: 0.2), width: 1.5),
+          border: Border.all(
+            color: cs.outline.withValues(alpha: 0.2),
+            width: 1.5,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.08),
@@ -878,7 +860,10 @@ class _EditScanScreenState extends State<EditScanScreen> {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [cs.primary.withValues(alpha: 0.1), cs.primary.withValues(alpha: 0.05)],
+                      colors: [
+                        cs.primary.withValues(alpha: 0.1),
+                        cs.primary.withValues(alpha: 0.05),
+                      ],
                     ),
                     shape: BoxShape.circle,
                     border: Border.all(
@@ -1164,11 +1149,15 @@ class _EditScanScreenState extends State<EditScanScreen> {
             onPressed: isFirstPage ? null : _goToPreviousPage,
             icon: Icon(
               Icons.chevron_left_rounded,
-              color: isFirstPage ? cs.onSurface.withValues(alpha: 0.3) : cs.primary,
+              color: isFirstPage
+                  ? cs.onSurface.withValues(alpha: 0.3)
+                  : cs.primary,
               size: 32,
             ),
             style: IconButton.styleFrom(
-              backgroundColor: isFirstPage ? null : cs.primary.withValues(alpha: 0.1),
+              backgroundColor: isFirstPage
+                  ? null
+                  : cs.primary.withValues(alpha: 0.1),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1196,11 +1185,15 @@ class _EditScanScreenState extends State<EditScanScreen> {
             onPressed: isLastPage ? null : _goToNextPage,
             icon: Icon(
               Icons.chevron_right_rounded,
-              color: isLastPage ? cs.onSurface.withValues(alpha: 0.3) : cs.primary,
+              color: isLastPage
+                  ? cs.onSurface.withValues(alpha: 0.3)
+                  : cs.primary,
               size: 32,
             ),
             style: IconButton.styleFrom(
-              backgroundColor: isLastPage ? null : cs.primary.withValues(alpha: 0.1),
+              backgroundColor: isLastPage
+                  ? null
+                  : cs.primary.withValues(alpha: 0.1),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -1300,7 +1293,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -1321,7 +1316,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
               Text(
                 'Give your document a meaningful name',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
               ),
               const SizedBox(height: 24),
@@ -1343,7 +1340,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
                   decoration: InputDecoration(
                     hintText: 'Enter document name',
                     hintStyle: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.4),
                     ),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(
@@ -1384,7 +1383,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
                 child: Text(
                   'File will be saved as: ${controller.text.trim().isEmpty ? 'document' : controller.text.trim()}.pdf',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.5),
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -1496,7 +1497,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
         actions: [
           IconButton(
             icon: Icon(
-              _isGridView ? Icons.view_carousel_rounded : Icons.grid_view_rounded,
+              _isGridView
+                  ? Icons.view_carousel_rounded
+                  : Icons.grid_view_rounded,
               color: cs.onSurface,
             ),
             tooltip: _isGridView ? 'List View' : 'Grid View',
@@ -1637,11 +1640,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
       onDragEnd: (_) => setState(() => _draggingIndex = null),
       feedback: Material(
         color: Colors.transparent,
-        child: SizedBox(
-          width: 160,
-          height: 220,
-          child: tile,
-        ),
+        child: SizedBox(width: 160, height: 220, child: tile),
       ),
       childWhenDragging: Opacity(opacity: 0.3, child: tile),
       child: DragTarget<int>(
@@ -1686,10 +1685,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.file(
-              File(_pages[index]),
-              fit: BoxFit.cover,
-            ),
+            Image.file(File(_pages[index]), fit: BoxFit.cover),
             Positioned(
               bottom: 0,
               left: 0,

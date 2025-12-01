@@ -29,13 +29,15 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       updatedAt: (fields[10] as DateTime?) ?? fields[4] as DateTime,
       colorProfile: fields[11] as String? ?? 'color',
       pageImagePaths: (fields[7] as List?)?.cast<String>(),
+      tags: (fields[12] as List?)?.cast<String>(),
+      metadata: (fields[13] as Map?)?.cast<String, String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, DocumentModel obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -59,7 +61,11 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       ..writeByte(10)
       ..write(obj.updatedAt)
       ..writeByte(11)
-      ..write(obj.colorProfile);
+      ..write(obj.colorProfile)
+      ..writeByte(12)
+      ..write(obj.tags)
+      ..writeByte(13)
+      ..write(obj.metadata);
   }
 
   @override
@@ -72,4 +78,3 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
           runtimeType == other.runtimeType &&
           typeId == other.typeId;
 }
-

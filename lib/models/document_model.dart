@@ -42,10 +42,18 @@ class DocumentModel extends HiveObject {
   @HiveField(11, defaultValue: 'color')
   final String colorProfile;
 
+  @HiveField(12, defaultValue: <String>[])
+  final List<String>? _tags;
+
+  @HiveField(13, defaultValue: <String, String>{})
+  final Map<String, String>? _metadata;
+
   // Public getter that guarantees non-null list
   List<String> get pageImagePaths => _pageImagePaths ?? [];
   DocumentColorProfile get colorProfileEnum =>
       DocumentColorProfile.fromKey(colorProfile);
+  List<String> get tags => _tags ?? const [];
+  Map<String, String> get metadata => _metadata ?? const {};
 
   DocumentModel({
     required this.id,
@@ -60,7 +68,11 @@ class DocumentModel extends HiveObject {
     required this.updatedAt,
     this.colorProfile = 'color',
     List<String>? pageImagePaths,
-  }) : _pageImagePaths = pageImagePaths;
+    List<String>? tags,
+    Map<String, String>? metadata,
+  }) : _pageImagePaths = pageImagePaths,
+       _tags = tags,
+       _metadata = metadata;
   DocumentModel copyWith({
     String? id,
     String? title,
@@ -74,6 +86,8 @@ class DocumentModel extends HiveObject {
     List<String>? pageImagePaths,
     DateTime? updatedAt,
     String? colorProfile,
+    List<String>? tags,
+    Map<String, String>? metadata,
   }) {
     return DocumentModel(
       id: id ?? this.id,
@@ -88,6 +102,8 @@ class DocumentModel extends HiveObject {
       updatedAt: updatedAt ?? this.updatedAt,
       colorProfile: colorProfile ?? this.colorProfile,
       pageImagePaths: pageImagePaths ?? this.pageImagePaths,
+      tags: tags ?? this.tags,
+      metadata: metadata ?? this.metadata,
     );
   }
 }
