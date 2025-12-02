@@ -1,9 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -29,93 +27,85 @@ class HomeScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Get Hive box for real-time updates
-    final box = Hive.box<DocumentModel>(DocumentService.boxName);
+    // Get filtered and sorted documents from provider (reactive to Hive changes)
+    final filteredDocs = ref.watch(filteredDocumentsProvider);
+    final recentDocs = filteredDocs.take(8).toList();
 
     return Scaffold(
       backgroundColor: colorScheme.background,
-      appBar: _buildPremiumAppBar(context, homeState, homeNotifier, box),
-      body: ValueListenableBuilder<Box<DocumentModel>>(
-        valueListenable: box.listenable(),
-        builder: (context, box, _) {
-          // Get filtered and sorted documents from provider
-          final filteredDocs = ref.watch(filteredDocumentsProvider);
-          final recentDocs = filteredDocs.take(8).toList();
+      appBar: _buildPremiumAppBar(context, homeState, homeNotifier, ref),
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          // Header Spacing
+          if (!homeState.isSelectionMode)
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
 
-          return CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              // Header Spacing
-              if (!homeState.isSelectionMode)
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          // Welcome Section
+          if (!homeState.isSelectionMode)
+            SliverToBoxAdapter(
+              child: _buildWelcomeSection(context, colorScheme),
+            ),
 
-              // Welcome Section
-              if (!homeState.isSelectionMode)
-                SliverToBoxAdapter(
-                  child: _buildWelcomeSection(context, colorScheme),
-                ),
+          // Tools Section
+          if (!homeState.isSelectionMode)
+            const SliverToBoxAdapter(child: ToolsSection()),
 
-              // Tools Section
-              if (!homeState.isSelectionMode)
-                const SliverToBoxAdapter(child: ToolsSection()),
-
-              // Recent Scans Section
-              if (!homeState.isSelectionMode)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 40, bottom: 16),
-                    child: RecentScansSection(),
-                  ),
-                ),
-
-              // Show empty state or document list
-              if (recentDocs.isEmpty && !homeState.isSelectionMode)
-                SliverToBoxAdapter(child: _buildPremiumEmptyState(context))
-              else if (recentDocs.isNotEmpty)
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final doc = recentDocs[index];
-                      final scan = _documentToScan(doc);
-                      final isSelected = homeState.selectedScanIds.contains(
-                        scan.id,
-                      );
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: ScanListItem(
-                          scan: scan,
-                          isSelectionMode: homeState.isSelectionMode,
-                          isSelected: isSelected,
-                          onLongPress: () {
-                            homeNotifier.enterSelectionMode(scan.id);
-                          },
-                          onTap: () {
-                            if (homeState.isSelectionMode) {
-                              homeNotifier.toggleScanSelection(scan.id);
-                            } else {
-                              _openDocument(context, doc);
-                            }
-                          },
-                          onEdit: () => _openDocument(context, doc),
-                          onDelete: () => _deleteDocument(context, doc),
-                          onShare: () => _shareDocument(context, doc),
-                        ),
-                      );
-                    }, childCount: recentDocs.length),
-                  ),
-                ),
-
-              // Bottom padding
-              SliverToBoxAdapter(
-                child: SizedBox(height: homeState.isSelectionMode ? 120 : 60),
+          // Recent Scans Section
+          if (!homeState.isSelectionMode)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: 40, bottom: 16),
+                child: RecentScansSection(),
               ),
-            ],
-          );
-        },
+            ),
+
+          // Show empty state or document list
+          if (recentDocs.isEmpty && !homeState.isSelectionMode)
+            SliverToBoxAdapter(child: _buildPremiumEmptyState(context))
+          else if (recentDocs.isNotEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final doc = recentDocs[index];
+                  final scan = _documentToScan(doc);
+                  final isSelected = homeState.selectedScanIds.contains(
+                    scan.id,
+                  );
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ScanListItem(
+                      scan: scan,
+                      isSelectionMode: homeState.isSelectionMode,
+                      isSelected: isSelected,
+                      onLongPress: () {
+                        homeNotifier.enterSelectionMode(scan.id);
+                      },
+                      onTap: () {
+                        if (homeState.isSelectionMode) {
+                          homeNotifier.toggleScanSelection(scan.id);
+                        } else {
+                          _openDocument(context, doc);
+                        }
+                      },
+                      onEdit: () => _openDocument(context, doc),
+                      onDelete: () => _deleteDocument(context, doc),
+                      onShare: () => _shareDocument(context, doc),
+                    ),
+                  );
+                }, childCount: recentDocs.length),
+              ),
+            ),
+
+          // Bottom padding
+          SliverToBoxAdapter(
+            child: SizedBox(height: homeState.isSelectionMode ? 120 : 60),
+          ),
+        ],
       ),
-      bottomNavigationBar: _buildBottomBar(context, homeState, homeNotifier),
+      bottomNavigationBar: _buildBottomBar(context, ref, homeState, homeNotifier),
     );
   }
 
@@ -340,13 +330,14 @@ class HomeScreen extends ConsumerWidget {
     BuildContext context,
     HomeState state,
     HomeNotifier notifier,
-    Box<DocumentModel> box,
+    WidgetRef ref,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     if (state.isSelectionMode) {
-      final allDocs = DocumentService.instance.getAllDocuments();
+      // Use reactive provider for real-time updates
+      final allDocs = ref.watch(filteredDocumentsProvider);
       final recentDocs = allDocs.take(8).toList();
       final areAllSelected = state.selectedScanIds.length == recentDocs.length;
 
@@ -387,7 +378,7 @@ class HomeScreen extends ConsumerWidget {
                 if (areAllSelected) {
                   notifier.exitSelectionMode();
                 } else {
-                  final allDocs = DocumentService.instance.getAllDocuments();
+                  final allDocs = ref.read(filteredDocumentsProvider);
                   final recentDocs = allDocs.take(8).toList();
                   final allIds = recentDocs.map((doc) => doc.id).toList();
                   notifier.selectAll(allIds);
@@ -503,13 +494,14 @@ class HomeScreen extends ConsumerWidget {
 
   Widget? _buildBottomBar(
     BuildContext context,
+    WidgetRef ref,
     HomeState state,
     HomeNotifier notifier,
   ) {
     if (state.isSelectionMode) {
       return _PremiumSelectionActionBar(
-        onDelete: () => _deleteSelectedDocuments(context, state, notifier),
-        onShare: () => _shareSelectedDocuments(context, state),
+        onDelete: () => _deleteSelectedDocuments(context, ref, state, notifier),
+        onShare: () => _shareSelectedDocuments(context, ref, state),
       );
     }
     return null;
@@ -517,6 +509,7 @@ class HomeScreen extends ConsumerWidget {
 
   Future<void> _deleteSelectedDocuments(
     BuildContext context,
+    WidgetRef ref,
     HomeState state,
     HomeNotifier notifier,
   ) async {
@@ -710,10 +703,11 @@ class HomeScreen extends ConsumerWidget {
 
   Future<void> _shareSelectedDocuments(
     BuildContext context,
+    WidgetRef ref,
     HomeState state,
   ) async {
     try {
-      final allDocs = DocumentService.instance.getAllDocuments();
+      final allDocs = ref.read(allDocumentsProvider);
       final selectedDocs = allDocs
           .where((doc) => state.selectedScanIds.contains(doc.id))
           .toList();

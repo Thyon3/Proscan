@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
@@ -26,96 +25,89 @@ class LibraryScreen extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // Get Hive box for real-time updates
-    final box = Hive.box<DocumentModel>(DocumentService.boxName);
+    // Get filtered and sorted documents from provider (reactive to Hive changes)
+    final allDocs = ref.watch(filteredDocumentsProvider);
 
     return Scaffold(
       backgroundColor: colorScheme.background,
       appBar: _buildPremiumAppBar(
         context,
+        ref,
         libraryState,
         libraryNotifier,
-        box,
         screenWidth,
       ),
       bottomNavigationBar: libraryState.isSelectionMode
           ? _PremiumSelectionActionBottomBar(
               onDelete: () => _deleteSelectedDocuments(
                 context,
+                ref,
                 libraryState,
                 libraryNotifier,
               ),
-              onShare: () => _shareSelectedDocuments(context, libraryState),
+              onShare: () => _shareSelectedDocuments(context, ref, libraryState),
             )
           : null,
-      body: ValueListenableBuilder<Box<DocumentModel>>(
-        valueListenable: box.listenable(),
-        builder: (context, box, _) {
-          // Get filtered and sorted documents from provider
-          final allDocs = ref.watch(filteredDocumentsProvider);
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          // Premium Filter Bar
+          if (!libraryState.isSelectionMode)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: 8, bottom: 8),
+                child: LibraryFilterBar(),
+              ),
+            ),
 
-          return CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              // Premium Filter Bar
-              if (!libraryState.isSelectionMode)
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.only(top: 8, bottom: 8),
-                    child: LibraryFilterBar(),
-                  ),
-                ),
+          // Show empty state or document list
+          if (allDocs.isEmpty)
+            SliverToBoxAdapter(child: _buildPremiumEmptyState(context))
+          else
+            SliverPadding(
+              padding: EdgeInsets.only(
+                top: 16,
+                bottom: libraryState.isSelectionMode ? 100 : 40,
+                left: _getCardMargin(
+                  screenWidth,
+                ), // Dynamic margin based on screen size
+                right: _getCardMargin(screenWidth),
+              ),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final doc = allDocs[index];
+                  // Convert DocumentModel to Scan for compatibility
+                  final scan = _documentToScan(doc);
+                  final isSelected = libraryState.selectedScanIds.contains(
+                    scan.id,
+                  );
 
-              // Show empty state or document list
-              if (allDocs.isEmpty)
-                SliverToBoxAdapter(child: _buildPremiumEmptyState(context))
-              else
-                SliverPadding(
-                  padding: EdgeInsets.only(
-                    top: 16,
-                    bottom: libraryState.isSelectionMode ? 100 : 40,
-                    left: _getCardMargin(
-                      screenWidth,
-                    ), // Dynamic margin based on screen size
-                    right: _getCardMargin(screenWidth),
-                  ),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final doc = allDocs[index];
-                      // Convert DocumentModel to Scan for compatibility
-                      final scan = _documentToScan(doc);
-                      final isSelected = libraryState.selectedScanIds.contains(
-                        scan.id,
-                      );
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: LibraryScanListItem(
-                          scan: scan,
-                          isSelectionMode: libraryState.isSelectionMode,
-                          isSelected: isSelected,
-                          onLongPress: () {
-                            libraryNotifier.enterSelectionMode(scan.id);
-                          },
-                          onTap: () {
-                            if (libraryState.isSelectionMode) {
-                              libraryNotifier.toggleScanSelection(scan.id);
-                            } else {
-                              // Open document in SavePdfScreen
-                              _openDocument(context, doc);
-                            }
-                          },
-                          onEdit: () => _openDocument(context, doc),
-                          onDelete: () => _deleteDocument(context, doc),
-                          onShare: () => _shareDocument(context, doc),
-                        ),
-                      );
-                    }, childCount: allDocs.length),
-                  ),
-                ),
-            ],
-          );
-        },
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: LibraryScanListItem(
+                      scan: scan,
+                      isSelectionMode: libraryState.isSelectionMode,
+                      isSelected: isSelected,
+                      onLongPress: () {
+                        libraryNotifier.enterSelectionMode(scan.id);
+                      },
+                      onTap: () {
+                        if (libraryState.isSelectionMode) {
+                          libraryNotifier.toggleScanSelection(scan.id);
+                        } else {
+                          // Open document in SavePdfScreen
+                          _openDocument(context, doc);
+                        }
+                      },
+                      onEdit: () => _openDocument(context, doc),
+                      onDelete: () => _deleteDocument(context, doc),
+                      onShare: () => _shareDocument(context, doc),
+                    ),
+                  );
+                }, childCount: allDocs.length),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -300,14 +292,15 @@ class LibraryScreen extends ConsumerWidget {
 
   PreferredSizeWidget _buildPremiumAppBar(
     BuildContext context,
+    WidgetRef ref,
     LibraryState state,
     LibraryNotifier notifier,
-    Box<DocumentModel> box,
     double screenWidth,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final allDocs = DocumentService.instance.getAllDocuments();
+    // Use reactive provider instead of direct service call for real-time updates
+    final allDocs = ref.watch(allDocumentsProvider);
     final areAllSelected = state.selectedScanIds.length == allDocs.length;
     final isTablet = screenWidth > 600;
 
@@ -347,11 +340,11 @@ class LibraryScreen extends ConsumerWidget {
               onPressed: () {
                 if (areAllSelected) {
                   notifier.selectNone();
-                } else {
-                  final allDocs = DocumentService.instance.getAllDocuments();
-                  final allIds = allDocs.map((doc) => doc.id).toList();
-                  notifier.selectAll(allIds);
-                }
+                                } else {
+                                  final allDocsIds = ref.read(allDocumentsProvider);
+                                  final allIds = allDocsIds.map((doc) => doc.id).toList();
+                                  notifier.selectAll(allIds);
+                                }
               },
               style: FilledButton.styleFrom(
                 backgroundColor: colorScheme.primaryContainer,
@@ -449,8 +442,7 @@ class LibraryScreen extends ConsumerWidget {
                           Flexible(
                             child: FilledButton.tonal(
                               onPressed: () {
-                                final allDocs = DocumentService.instance
-                                    .getAllDocuments();
+                                final allDocs = ref.watch(allDocumentsProvider);
                                 if (allDocs.isNotEmpty) {
                                   notifier.enterSelectionMode(allDocs.first.id);
                                 }
@@ -566,6 +558,7 @@ class LibraryScreen extends ConsumerWidget {
 
   Future<void> _deleteSelectedDocuments(
     BuildContext context,
+    WidgetRef ref,
     LibraryState state,
     LibraryNotifier notifier,
   ) async {
@@ -763,10 +756,11 @@ class LibraryScreen extends ConsumerWidget {
 
   Future<void> _shareSelectedDocuments(
     BuildContext context,
+    WidgetRef ref,
     LibraryState state,
   ) async {
     try {
-      final allDocs = DocumentService.instance.getAllDocuments();
+      final allDocs = ref.read(allDocumentsProvider);
       final selectedDocs = allDocs
           .where((doc) => state.selectedScanIds.contains(doc.id))
           .toList();
