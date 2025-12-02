@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:thyscan/core/errors/failures.dart';
+import 'package:thyscan/core/errors/pdf_exceptions.dart';
 import 'package:thyscan/core/errors/storage_exceptions.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/document_operation_queue.dart';
@@ -18,6 +19,7 @@ import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/pdf_preprocessor.dart';
 
 typedef PdfProgressCallback = void Function(PdfGenerationProgress progress);
 
@@ -70,6 +72,9 @@ class DocumentService {
       throw ArgumentError('pageImagePaths cannot be empty');
     }
 
+    final pageCount = pageImagePaths.length;
+    options.validate(pageCount: pageCount);
+
     final appDocsDir = await getApplicationDocumentsDirectory();
     final documentsDir = Directory(
       p.join(appDocsDir.path, 'scanned_documents'),
@@ -88,7 +93,6 @@ class DocumentService {
 
     final id = _uuid.v4();
     final createdAt = DateTime.now();
-    final pageCount = pageImagePaths.length;
     final timestamp = createdAt.millisecondsSinceEpoch;
 
     final docTitle = title?.isNotEmpty == true
@@ -129,10 +133,20 @@ class DocumentService {
     PdfGenerationResult? pdfResult;
     String? committedFilePath;
     String? committedThumbPath;
+    List<String> preprocessedPaths = const [];
 
     try {
-      pdfResult = await PdfGenerationService.instance.generate(
+      preprocessedPaths = await PdfPreprocessor.instance.preprocess(
         imagePaths: pageImagePaths,
+        dpi: options.dpi,
+      );
+
+      final generationInputs = preprocessedPaths.isNotEmpty
+          ? preprocessedPaths
+          : pageImagePaths;
+
+      pdfResult = await PdfGenerationService.instance.generate(
+        imagePaths: generationInputs,
         outputPdfPath: tempFilePath,
         optimizedDirPath: pagesDir.path,
         documentId: id,
@@ -187,6 +201,8 @@ class DocumentService {
         await _deleteIfExists(committedThumbPath);
       }
       rethrow;
+    } finally {
+      await _cleanupTempFiles(preprocessedPaths);
     }
   }
 
@@ -282,6 +298,7 @@ class DocumentService {
     }
 
     final pageCount = pageImagePaths.length;
+    options.validate(pageCount: pageCount);
     final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
     final filePath = p.join(documentsDir.path, 'doc_$documentId.pdf');
     final newScanMode = scanMode ?? existingDoc.scanMode;
@@ -323,10 +340,20 @@ class DocumentService {
     PdfGenerationResult? pdfResult;
     String? committedFilePath;
     String? committedThumbPath;
+    List<String> preprocessedPaths = const [];
 
     try {
-      pdfResult = await PdfGenerationService.instance.generate(
+      preprocessedPaths = await PdfPreprocessor.instance.preprocess(
         imagePaths: pageImagePaths,
+        dpi: options.dpi,
+      );
+
+      final generationInputs = preprocessedPaths.isNotEmpty
+          ? preprocessedPaths
+          : pageImagePaths;
+
+      pdfResult = await PdfGenerationService.instance.generate(
+        imagePaths: generationInputs,
         outputPdfPath: tempFilePath,
         optimizedDirPath: pagesDir.path,
         documentId: documentId,
@@ -394,6 +421,8 @@ class DocumentService {
         await _deleteIfExists(committedThumbPath);
       }
       rethrow;
+    } finally {
+      await _cleanupTempFiles(preprocessedPaths);
     }
   }
 
@@ -700,6 +729,17 @@ class DocumentService {
           .toList(),
       creator: data['creator'],
     );
+  }
+
+  Future<void> _cleanupTempFiles(List<String> paths) async {
+    for (final path in paths) {
+      try {
+        final file = File(path);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
+    }
   }
 
   Future<DatabaseHealthReport> runHealthCheck() async {

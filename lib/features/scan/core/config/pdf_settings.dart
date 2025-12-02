@@ -3,6 +3,7 @@
 // Shared configuration objects for PDF generation and document persistence.
 
 import 'package:pdf/pdf.dart';
+import 'package:thyscan/core/errors/pdf_exceptions.dart';
 
 enum PdfCompressionPreset { economy, balanced, archival }
 
@@ -135,6 +136,16 @@ class PdfGenerationConfig {
   }
 }
 
+enum PdfDpi {
+  dpi150(150),
+  dpi300(300);
+
+  const PdfDpi(this.value);
+  final int value;
+
+  double get scaleFactor => value / 72.0;
+}
+
 class DocumentSaveOptions {
   const DocumentSaveOptions({
     this.compressionPreset = PdfCompressionPreset.balanced,
@@ -142,6 +153,7 @@ class DocumentSaveOptions {
     this.metadata,
     this.tags,
     this.addWhiteBackground = true,
+    this.dpi = PdfDpi.dpi300,
   });
 
   final PdfCompressionPreset compressionPreset;
@@ -149,6 +161,7 @@ class DocumentSaveOptions {
   final PdfMetadata? metadata;
   final List<String>? tags;
   final bool addWhiteBackground;
+  final PdfDpi dpi;
 
   DocumentSaveOptions copyWith({
     PdfCompressionPreset? compressionPreset,
@@ -156,6 +169,7 @@ class DocumentSaveOptions {
     PdfMetadata? metadata,
     List<String>? tags,
     bool? addWhiteBackground,
+    PdfDpi? dpi,
   }) {
     return DocumentSaveOptions(
       compressionPreset: compressionPreset ?? this.compressionPreset,
@@ -163,6 +177,7 @@ class DocumentSaveOptions {
       metadata: metadata ?? this.metadata,
       tags: tags ?? this.tags,
       addWhiteBackground: addWhiteBackground ?? this.addWhiteBackground,
+      dpi: dpi ?? this.dpi,
     );
   }
 
@@ -171,6 +186,7 @@ class DocumentSaveOptions {
     List<String>? tags,
     PdfCompressionPreset compressionPreset = PdfCompressionPreset.balanced,
     PdfPaperSize paperSize = PdfPaperSize.a4,
+    PdfDpi dpi = PdfDpi.dpi300,
   }) {
     return DocumentSaveOptions(
       compressionPreset: compressionPreset,
@@ -183,6 +199,35 @@ class DocumentSaveOptions {
         creator: 'ThyScan Scanner',
       ),
       tags: tags,
+      dpi: dpi,
     );
+  }
+
+  void validate({required int pageCount}) {
+    final meta = metadata ?? const PdfMetadata();
+    if ((meta.title ?? '').length > 120) {
+      throw InvalidMetadataException('Document title exceeds 120 characters.');
+    }
+    if ((meta.author ?? '').length > 80) {
+      throw InvalidMetadataException('Author metadata is too long.');
+    }
+
+    if (!PdfPaperSize.values.contains(paperSize)) {
+      throw UnsupportedPageSizeException(
+        'Paper size $paperSize is not supported.',
+      );
+    }
+
+    if (compressionPreset == PdfCompressionPreset.archival && pageCount > 150) {
+      throw PdfTooLargeException(
+        'Archival preset is not recommended for more than 150 pages.',
+      );
+    }
+
+    if (compressionPreset == PdfCompressionPreset.economy && pageCount < 2) {
+      throw PdfTooLargeException(
+        'Economy preset is ineffective for single-page documents.',
+      );
+    }
   }
 }

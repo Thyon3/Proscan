@@ -27,14 +27,11 @@ class CachedThumbnail extends StatelessWidget {
       future: ThumbnailCacheService.instance.load(path),
       builder: (context, snapshot) {
         if (snapshot.hasData && snapshot.data != null) {
-          final image = Image.memory(
-            snapshot.data!,
-            fit: fit,
-          );
+          final image = Image.memory(snapshot.data!, fit: fit);
 
           if (borderRadius != null) {
             return ClipRRect(
-              borderRadius: borderRadius,
+              borderRadius: BorderRadius.circular(12),
               child: image,
             );
           }
@@ -64,4 +61,3 @@ class CachedThumbnail extends StatelessWidget {
     );
   }
 }
-

@@ -8,6 +8,7 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:thyscan/core/errors/pdf_exceptions.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 
 class PdfGenerationProgress {
@@ -295,6 +296,12 @@ Future<String> _compressAndSave({
       );
     }
     encoded = _encodeWithQuality(decoded, quality);
+  }
+
+  if (encoded.length > maxBytes) {
+    throw PdfTooLargeException(
+      'Unable to compress page $pageIndex below ${maxBytes ~/ 1024}KB.',
+    );
   }
 
   final optimizedName = '${documentId}_${batchId}_page_$pageIndex.jpg';
