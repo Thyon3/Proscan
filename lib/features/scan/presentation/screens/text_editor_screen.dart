@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/features/scan/core/services/ocr_service.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -142,10 +143,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     }
   }
 
-  Future<void> _exportToWord() async {
+  Future<void> _saveDocument() async {
     final text = _textController.text.trim();
     if (text.isEmpty) {
-      _showSnackBar('No text to export', isError: true);
+      _showSnackBar('No text to save', isError: true);
       return;
     }
 
@@ -161,7 +162,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
       if (mounted) {
         _showSnackBar(
           'Document saved successfully!',
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 2),
         );
         
         // Update saved state
@@ -170,7 +171,54 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
           _hasUnsavedChanges = false;
         });
         
-        // Navigate after short delay
+        // Navigate to home screen after short delay
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          context.go('/appmainscreen');
+        }
+      }
+    } catch (e, stackTrace) {
+      AppLogger.error('Save failed', error: e, stack: stackTrace);
+      if (mounted) {
+        _showSnackBar('Failed to save: ${e.toString().split(':').last.trim()}', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
+      }
+    }
+  }
+
+  Future<void> _exportToWord() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty) {
+      _showSnackBar('No text to export', isError: true);
+      return;
+    }
+
+    setState(() => _isExporting = true);
+    HapticFeedback.mediumImpact();
+
+    try {
+      // Save document first
+      await DocumentService.instance.saveTextDocument(
+        text: text,
+        title: 'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
+      );
+
+      // Export to Word document
+      final docxPath = await DocxGeneratorService.instance.generateDocxFromText(
+        text: text,
+        title: 'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
+      );
+
+      if (mounted) {
+        _showSnackBar(
+          'Exported to Word successfully!',
+          duration: const Duration(seconds: 2),
+        );
+        
+        // Navigate to home screen after short delay
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
           context.go('/appmainscreen');
@@ -296,6 +344,26 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
               icon: Icon(Icons.content_copy_rounded, color: cs.primary),
               tooltip: 'Copy',
               onPressed: _copyToClipboard,
+            ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert_rounded, color: cs.onSurface),
+              onSelected: (value) {
+                if (value == 'export') {
+                  _exportToWord();
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'export',
+                  child: Row(
+                    children: [
+                      Icon(Icons.file_download, size: 20),
+                      const SizedBox(width: 12),
+                      Text('Export to Word'),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -494,11 +562,11 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Export to Word button
+                  // Save button
                   Expanded(
                     flex: 2,
                     child: FilledButton.icon(
-                      onPressed: _isExporting ? null : _exportToWord,
+                      onPressed: _isExporting ? null : _saveDocument,
                       icon: _isExporting
                           ? const SizedBox(
                               width: 20,
@@ -508,9 +576,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : const Icon(Icons.description_rounded, size: 20),
+                          : const Icon(Icons.save_rounded, size: 20),
                       label: Text(
-                        _isExporting ? 'Saving...' : 'Save as Word',
+                        _isExporting ? 'Saving...' : 'Save',
                         style: GoogleFonts.inter(
                           fontWeight: FontWeight.w700,
                           fontSize: 15,

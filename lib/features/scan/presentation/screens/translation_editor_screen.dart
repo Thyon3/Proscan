@@ -152,6 +152,12 @@ class _TranslationEditorScreenState
         });
 
         _showSnackBar('Document saved successfully!');
+        
+        // Navigate to home screen after short delay
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          context.go('/appmainscreen');
+        }
       }
     } catch (e, stackTrace) {
       AppLogger.error('Save failed', error: e, stack: stackTrace);
@@ -184,15 +190,56 @@ class _TranslationEditorScreenState
       return;
     }
 
-    // Save first if modified
-    if (_isModified) {
-      await _saveDocument();
-    }
-
     setState(() => _isExporting = true);
     HapticFeedback.mediumImpact();
 
     try {
+      // Save document first if modified (but don't navigate)
+      if (_isModified && _document != null) {
+        try {
+          final updatedDoc = _document!.copyWith(
+            textContent: text,
+            updatedAt: DateTime.now(),
+          );
+          
+          final box = Hive.box<DocumentModel>(DocumentService.boxName);
+          await box.put(_document!.id, updatedDoc);
+          
+          final file = File(_document!.filePath);
+          await file.writeAsString(text);
+          
+          if (mounted) {
+            setState(() {
+              _document = updatedDoc;
+              _originalText = text;
+              _isModified = false;
+            });
+          }
+        } catch (e) {
+          AppLogger.warning('Failed to save before export', data: {'error': e});
+        }
+      } else if (_document == null && _isModified) {
+        // Save new document
+        try {
+          final savedDoc = await DocumentService.instance.saveTextDocument(
+            text: text,
+            title: 'Translation ${DateTime.now().toString()}',
+            scanMode: 'translate',
+          );
+          
+          if (mounted) {
+            setState(() {
+              _document = savedDoc;
+              _originalText = text;
+              _isModified = false;
+            });
+          }
+        } catch (e) {
+          AppLogger.warning('Failed to save before export', data: {'error': e});
+        }
+      }
+
+      // Now export to Word
       final docxPath = await DocxGeneratorService.instance.generateDocxFromText(
         text: text,
         title: _document?.title ?? 'Translation',
@@ -200,14 +247,15 @@ class _TranslationEditorScreenState
 
       if (mounted) {
         _showSnackBar(
-          'Exported to: ${docxPath.split('/').last}',
-          duration: const Duration(seconds: 3),
-          action: SnackBarAction(
-            label: 'Share',
-            textColor: Colors.white,
-            onPressed: () => ShareUtils.shareFiles([XFile(docxPath)]),
-          ),
+          'Exported to Word successfully!',
+          duration: const Duration(seconds: 2),
         );
+        
+        // Navigate to home screen after short delay
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          context.go('/appmainscreen');
+        }
       }
     } catch (e, stackTrace) {
       AppLogger.error('Export failed', error: e, stack: stackTrace);
@@ -416,7 +464,7 @@ class _TranslationEditorScreenState
     final state = ref.watch(translationProvider);
 
     return PopScope(
-      canPop: !_isModified,
+      canPop: true,
       onPopInvoked: (didPop) async {
         if (didPop) return;
 
@@ -424,16 +472,31 @@ class _TranslationEditorScreenState
           final shouldSave = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              title: const Text('Unsaved Changes'),
-              content: const Text('Do you want to save your changes?'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Unsaved Changes',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Do you want to save your changes before leaving?',
+                style: GoogleFonts.inter(fontSize: 14),
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Discard'),
+                  child: Text('Discard', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Save'),
+                  child: Text('Save', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
@@ -441,11 +504,11 @@ class _TranslationEditorScreenState
 
           if (shouldSave == true) {
             await _saveDocument();
-          }
-          
-          if (mounted) {
+          } else if (mounted) {
             Navigator.of(context).pop();
           }
+        } else if (mounted) {
+          Navigator.of(context).pop();
         }
       },
       child: Scaffold(
@@ -504,21 +567,26 @@ class _TranslationEditorScreenState
               icon: Icon(Icons.translate_rounded, color: theme.colorScheme.primary),
               onPressed: _onChangeLanguagePressed,
             ),
-            if (_isModified)
-              IconButton(
-                icon: _isSaving
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-                        ),
-                      )
-                    : Icon(Icons.save_rounded, color: theme.colorScheme.primary),
-                onPressed: _isSaving ? null : _saveDocument,
-                tooltip: 'Save',
-              ),
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert_rounded, color: theme.colorScheme.onSurface),
+              onSelected: (value) {
+                if (value == 'export') {
+                  _onExportDocxPressed();
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'export',
+                  child: Row(
+                    children: [
+                      Icon(Icons.file_download, size: 20),
+                      const SizedBox(width: 12),
+                      Text('Export to Word'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
         body: Column(
@@ -630,51 +698,20 @@ class _TranslationEditorScreenState
                   child: Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isExporting ? null : _onExportDocxPressed,
-                          icon: _isExporting
-                              ? SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Icon(Icons.file_download, size: 20),
-                          label: Text(
-                            'Export',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _onCopyPressed,
-                          icon: Icon(Icons.content_copy_rounded, size: 20),
-                          label: Text(
-                            'Copy',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
                         child: FilledButton.icon(
-                          onPressed: _onSharePressed,
-                          icon: Icon(Icons.share, size: 20),
+                          onPressed: _isSaving ? null : _saveDocument,
+                          icon: _isSaving
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : Icon(Icons.save_rounded, size: 20),
                           label: Text(
-                            'Share',
+                            _isSaving ? 'Saving...' : 'Save',
                             style: GoogleFonts.inter(
                               fontWeight: FontWeight.w700,
                               fontSize: 15,
@@ -686,6 +723,27 @@ class _TranslationEditorScreenState
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _onSharePressed,
+                          icon: Icon(Icons.share, size: 20),
+                          label: Text(
+                            'Share',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            side: BorderSide(
+                              color: theme.colorScheme.outline.withValues(alpha: 0.3),
                             ),
                           ),
                         ),
