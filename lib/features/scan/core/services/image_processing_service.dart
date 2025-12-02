@@ -36,13 +36,14 @@ class ImageProcessingService {
     return compute<_RotateArgs, String>(_rotateIsolate, args);
   }
 
-  /// Apply a filter transformation function to [sourcePath] and
-  /// write the result to a new temp file. The [transform] callback
-  /// must be a pure function that only operates on the provided
-  /// [img.Image] instance.
+  /// Apply a filter transformation to [sourcePath] and
+  /// write the result to a new temp file.
+  /// 
+  /// [filterName] must be one of: 'none', 'grayscale', 'sepia', 'invert',
+  /// 'brightness', 'contrast', 'vintage', 'blackAndWhite'
   Future<String> applyFilter(
     String sourcePath,
-    img.Image Function(img.Image source) transform,
+    String filterName,
   ) async {
     final tempDir = await getTemporaryDirectory();
     final targetPath =
@@ -51,7 +52,7 @@ class ImageProcessingService {
     final args = _FilterArgs(
       sourcePath: sourcePath,
       targetPath: targetPath,
-      transform: transform,
+      filterName: filterName,
     );
 
     return compute<_FilterArgs, String>(_filterIsolate, args);
@@ -74,12 +75,12 @@ class _FilterArgs {
   const _FilterArgs({
     required this.sourcePath,
     required this.targetPath,
-    required this.transform,
+    required this.filterName,
   });
 
   final String sourcePath;
   final String targetPath;
-  final img.Image Function(img.Image source) transform;
+  final String filterName;
 }
 
 // === Isolate entry points ===================================================
@@ -116,7 +117,38 @@ Future<String> _filterIsolate(_FilterArgs args) async {
     throw Exception('Unable to decode image: ${args.sourcePath}');
   }
 
-  final transformed = args.transform(decoded);
+  // Apply filter based on filterName
+  img.Image transformed;
+  switch (args.filterName) {
+    case 'grayscale':
+      transformed = img.grayscale(decoded);
+      break;
+    case 'sepia':
+      transformed = img.sepia(decoded);
+      break;
+    case 'invert':
+      transformed = img.invert(decoded);
+      break;
+    case 'brightness':
+      transformed = img.adjustColor(decoded, brightness: 1.2);
+      break;
+    case 'contrast':
+      transformed = img.adjustColor(decoded, contrast: 1.3);
+      break;
+    case 'vintage':
+      final sepia = img.sepia(decoded);
+      transformed = img.adjustColor(sepia, brightness: 0.9, contrast: 1.1);
+      break;
+    case 'blackAndWhite':
+      final gray = img.grayscale(decoded);
+      transformed = img.adjustColor(gray, contrast: 1.5);
+      break;
+    case 'none':
+    default:
+      transformed = decoded;
+      break;
+  }
+
   final encoded = Uint8List.fromList(img.encodeJpg(transformed, quality: 95));
 
   final outFile = File(args.targetPath);

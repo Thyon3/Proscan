@@ -19,6 +19,7 @@ import 'package:thyscan/features/scan/core/services/image_processing_service.dar
 import 'package:thyscan/services/document_service.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/core/services/app_logger.dart';
 
 class EditScanScreen extends StatefulWidget {
   final String imagePath;
@@ -310,30 +311,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
     try {
       if (filter != ImageFilter.none) {
         final sourcePath = _pages[_currentIndex];
+        // Convert enum to string for isolate serialization
+        final filterName = filter.toString().split('.').last;
         final newPath = await ImageProcessingService.instance.applyFilter(
           sourcePath,
-          (image) {
-            switch (filter) {
-              case ImageFilter.grayscale:
-                return img.grayscale(image);
-              case ImageFilter.sepia:
-                return img.sepia(image);
-              case ImageFilter.invert:
-                return img.invert(image);
-              case ImageFilter.brightness:
-                return img.adjustColor(image, brightness: 1.2);
-              case ImageFilter.contrast:
-                return img.adjustColor(image, contrast: 1.3);
-              case ImageFilter.vintage:
-                final sepia = img.sepia(image);
-                return img.adjustColor(sepia, brightness: 0.9, contrast: 1.1);
-              case ImageFilter.blackAndWhite:
-                final gray = img.grayscale(image);
-                return img.adjustColor(gray, contrast: 1.5);
-              case ImageFilter.none:
-                return image;
-            }
-          },
+          filterName,
         );
 
         setState(() {
@@ -345,14 +327,22 @@ class _EditScanScreenState extends State<EditScanScreen> {
             _colorProfile = mappedProfile;
           }
         });
+        
+        // Regenerate filter previews after applying filter
+        _generateFilterPreviewsForCurrentPage();
       } else {
         // Reset to original - would need to store original paths
         setState(() {
           _pageFilters[_currentIndex] = filter;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (!mounted) return;
+      AppLogger.error(
+        'Filter application failed',
+        error: e,
+        stack: stackTrace,
+      );
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Filter application failed: $e')));
