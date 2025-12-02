@@ -1,5 +1,6 @@
 // features/scan/core/services/ocr_service.dart
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
 
@@ -20,6 +21,7 @@ class OcrService {
   /// Extract text from an image file
   /// 
   /// Returns the extracted text, or null if no text is found or an error occurs
+  /// This uses the main isolate for OCR processing (ML Kit handles threading internally)
   Future<String?> extractTextFromImage(String imagePath) async {
     try {
       await initialize();
@@ -33,21 +35,23 @@ class OcrService {
       // Create InputImage from file
       final inputImage = InputImage.fromFilePath(imagePath);
 
-      // Process the image
+      // Process the image - ML Kit handles its own threading
       final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
 
-      // Extract all text blocks
-      String extractedText = '';
-      for (TextBlock block in recognizedText.blocks) {
-        for (TextLine line in block.lines) {
-          extractedText += line.text;
-          extractedText += '\n';
+      // Extract all text blocks efficiently using StringBuffer
+      final buffer = StringBuffer();
+      for (final block in recognizedText.blocks) {
+        for (final line in block.lines) {
+          buffer.writeln(line.text);
         }
-        extractedText += '\n';
+        buffer.writeln(); // Extra line between blocks
       }
 
       // Clean up the text (remove extra newlines)
-      extractedText = extractedText.trim();
+      String extractedText = buffer.toString().trim();
+      
+      // Normalize multiple newlines to double newline
+      extractedText = extractedText.replaceAll(RegExp(r'\n{3,}'), '\n\n');
 
       // Return null if no text was found
       if (extractedText.isEmpty) {

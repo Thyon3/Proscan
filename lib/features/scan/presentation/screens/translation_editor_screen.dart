@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+
+import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/presentation/widgets/loading_overlay.dart';
@@ -30,14 +33,26 @@ class TranslationEditorScreen extends ConsumerStatefulWidget {
 class _TranslationEditorScreenState
     extends ConsumerState<TranslationEditorScreen> {
   late final TextEditingController _controller;
+  late final FocusNode _focusNode;
   DocumentModel? _document;
   bool _isModified = false;
   bool _isSaving = false;
+  bool _isExporting = false;
+  Timer? _debounceTimer;
+  String? _originalText;
+
+  int get _characterCount => _controller.text.length;
+  int get _wordCount {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return 0;
+    return text.split(RegExp(r'\s+')).length;
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
+    _focusNode = FocusNode();
     
     if (widget.documentId != null) {
       _loadDocument();
@@ -45,20 +60,32 @@ class _TranslationEditorScreenState
       // Initialize with current provider state if new translation
       final state = ref.read(translationProvider);
       _controller.text = state.translatedText;
+      _originalText = state.translatedText;
     }
 
-    _controller.addListener(() {
-      if (!_isModified) {
-        setState(() => _isModified = true);
-      }
-      // Update provider state
+    _controller.addListener(_onTextChanged);
+    _focusNode.addListener(() => setState(() {}));
+  }
+
+  void _onTextChanged() {
+    final isNowModified = _controller.text != _originalText;
+    if (isNowModified != _isModified) {
+      setState(() => _isModified = isNowModified);
+    }
+    
+    // Debounce provider updates to improve performance
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
       ref.read(translationProvider.notifier).updateTranslatedText(_controller.text);
     });
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
+    _controller.removeListener(_onTextChanged);
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -71,17 +98,25 @@ class _TranslationEditorScreenState
         setState(() {
           _document = doc;
           _controller.text = doc.textContent ?? '';
+          _originalText = doc.textContent ?? '';
+          _isModified = false;
           // Update provider with loaded text
           ref.read(translationProvider.notifier).updateTranslatedText(doc.textContent ?? '');
         });
       }
-    } catch (e) {
-      debugPrint('Failed to load document: $e');
+    } catch (e, stackTrace) {
+      AppLogger.error('Failed to load document', error: e, stack: stackTrace);
+      if (mounted) {
+        _showSnackBar('Failed to load document: $e', isError: true);
+      }
     }
   }
 
   Future<void> _saveDocument() async {
+    if (!_isModified && _document != null) return;
+
     setState(() => _isSaving = true);
+    HapticFeedback.lightImpact();
 
     try {
       final text = _controller.text;
@@ -89,19 +124,9 @@ class _TranslationEditorScreenState
 
       if (_document != null) {
         // Update existing document
-        savedDoc = DocumentModel(
-          id: _document!.id,
-          title: _document!.title,
-          filePath: _document!.filePath,
-          format: _document!.format,
-          createdAt: _document!.createdAt,
-          updatedAt: DateTime.now(),
-          pageCount: _document!.pageCount,
-          thumbnailPath: _document!.thumbnailPath,
-          scanMode: _document!.scanMode,
+        savedDoc = _document!.copyWith(
           textContent: text,
-          pageImagePaths: _document!.pageImagePaths,
-          colorProfile: _document!.colorProfile,
+          updatedAt: DateTime.now(),
         );
         
         final box = Hive.box<DocumentModel>(DocumentService.boxName);
@@ -122,22 +147,16 @@ class _TranslationEditorScreenState
       if (mounted) {
         setState(() {
           _document = savedDoc;
+          _originalText = text;
           _isModified = false;
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Document saved successfully'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        _showSnackBar('Document saved successfully!');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error('Save failed', error: e, stack: stackTrace);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save: $e')),
-        );
+        _showSnackBar('Failed to save: ${e.toString().split(':').last.trim()}', isError: true);
       }
     } finally {
       if (mounted) {
@@ -149,24 +168,29 @@ class _TranslationEditorScreenState
   Future<void> _onCopyPressed() async {
     final text = _controller.text.trim();
     if (text.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nothing to copy')),
-      );
+      _showSnackBar('Nothing to copy', isError: true);
       return;
     }
 
     await Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied to clipboard')),
-    );
+    HapticFeedback.lightImpact();
+    _showSnackBar('Copied to clipboard');
   }
 
   Future<void> _onExportDocxPressed() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      _showSnackBar('No text to export', isError: true);
+      return;
+    }
+
+    // Save first if modified
+    if (_isModified) {
+      await _saveDocument();
+    }
+
+    setState(() => _isExporting = true);
+    HapticFeedback.mediumImpact();
 
     try {
       final docxPath = await DocxGeneratorService.instance.generateDocxFromText(
@@ -175,34 +199,34 @@ class _TranslationEditorScreenState
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Exported to: ${docxPath.split('/').last}'),
-            backgroundColor: Colors.green,
-            action: SnackBarAction(
-              label: 'Share',
-              textColor: Colors.white,
-              onPressed: () =>
-                  ShareUtils.shareFiles([XFile(docxPath)]),
-            ),
+        _showSnackBar(
+          'Exported to: ${docxPath.split('/').last}',
+          duration: const Duration(seconds: 3),
+          action: SnackBarAction(
+            label: 'Share',
+            textColor: Colors.white,
+            onPressed: () => ShareUtils.shareFiles([XFile(docxPath)]),
           ),
         );
-        
-        // Navigate to home screen
-        context.go('/appmainscreen');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      AppLogger.error('Export failed', error: e, stack: stackTrace);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
+        _showSnackBar('Export failed: ${e.toString().split(':').last.trim()}', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isExporting = false);
       }
     }
   }
 
   Future<void> _onSharePressed() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      _showSnackBar('No text to share', isError: true);
+      return;
+    }
 
     try {
       await ShareUtils.shareText(
@@ -210,12 +234,38 @@ class _TranslationEditorScreenState
         subject: _document?.title ?? 'Translation',
       );
     } catch (e) {
+      AppLogger.error('Share failed', error: e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Share failed: $e')),
-        );
+        _showSnackBar('Share failed: ${e.toString().split(':').last.trim()}', isError: true);
       }
     }
+  }
+
+  void _showSnackBar(String message, {bool isError = false, Duration? duration, SnackBarAction? action}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(message, style: GoogleFonts.inter(fontSize: 14)),
+            ),
+          ],
+        ),
+        backgroundColor: isError ? Colors.red.shade600 : Colors.green.shade600,
+        behavior: SnackBarBehavior.floating,
+        duration: duration ?? const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        action: action,
+      ),
+    );
   }
 
   Future<void> _onChangeLanguagePressed() async {
@@ -400,39 +450,72 @@ class _TranslationEditorScreenState
       },
       child: Scaffold(
         appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Flexible(
                 child: Text(
                   _document?.title ?? 'Translation',
-                  style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (_document != null)
                 IconButton(
-                  icon: const Icon(Icons.edit, size: 18),
+                  icon: Icon(Icons.edit_rounded, size: 18, color: theme.colorScheme.primary),
                   onPressed: _showRenameDialog,
                   tooltip: 'Rename',
                 ),
             ],
           ),
           actions: [
+            // Modified indicator
+            if (_isModified && !_isSaving)
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.circle, size: 8, color: Colors.orange),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Unsaved',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             IconButton(
               tooltip: 'Change language',
-              icon: const Icon(Icons.translate_rounded),
+              icon: Icon(Icons.translate_rounded, color: theme.colorScheme.primary),
               onPressed: _onChangeLanguagePressed,
             ),
             if (_isModified)
               IconButton(
                 icon: _isSaving
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                        ),
                       )
-                    : const Icon(Icons.save),
+                    : Icon(Icons.save_rounded, color: theme.colorScheme.primary),
                 onPressed: _isSaving ? null : _saveDocument,
                 tooltip: 'Save',
               ),
@@ -440,14 +523,14 @@ class _TranslationEditorScreenState
         ),
         body: Column(
           children: [
-            // Info bar
+            // Stats bar
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant.withValues(alpha: 0.3),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 border: Border(
                   bottom: BorderSide(
-                    color: theme.dividerColor,
+                    color: theme.dividerColor.withValues(alpha: 0.1),
                     width: 1,
                   ),
                 ),
@@ -455,93 +538,75 @@ class _TranslationEditorScreenState
               child: Row(
                 children: [
                   Icon(
-                    Icons.translate,
+                    Icons.translate_rounded,
                     color: theme.colorScheme.primary,
+                    size: 20,
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          state.targetLanguage.label,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                        Text(
-                          '${_controller.text.length} characters',
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: theme.textTheme.bodySmall?.color,
-                          ),
-                        ),
-                      ],
+                  Text(
+                    state.targetLanguage.label,
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
                     ),
                   ),
-                  if (_isModified)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'Modified',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.orange,
-                        ),
-                      ),
-                    ),
+                  const SizedBox(width: 16),
+                  _buildStatChip(theme.colorScheme, Icons.text_fields, '$_wordCount words'),
+                  const SizedBox(width: 12),
+                  _buildStatChip(theme.colorScheme, Icons.format_size, '$_characterCount chars'),
                 ],
               ),
             ),
 
             // Text editor
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: TextField(
-                  controller: _controller,
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  style: GoogleFonts.inter(
-                    fontSize: 16,
-                    height: 1.5,
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _focusNode.hasFocus
+                        ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                        : theme.dividerColor.withValues(alpha: 0.1),
+                    width: _focusNode.hasFocus ? 2 : 1,
                   ),
-                  decoration: InputDecoration(
-                    hintText: 'Translation will appear here...',
-                    hintStyle: GoogleFonts.inter(
-                      color: theme.textTheme.bodySmall?.color,
+                  boxShadow: _focusNode.hasFocus
+                      ? [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            blurRadius: 12,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.top,
+                    style: GoogleFonts.inter(
+                      fontSize: 16,
+                      height: 1.6,
+                      letterSpacing: 0.2,
+                      color: theme.colorScheme.onSurface,
                     ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: theme.dividerColor,
+                    decoration: InputDecoration(
+                      hintText: state.isLoading
+                          ? 'Translating...'
+                          : 'Translation will appear here...',
+                      hintStyle: GoogleFonts.inter(
+                        fontSize: 16,
+                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.5),
+                        height: 1.6,
                       ),
+                      border: InputBorder.none,
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: theme.dividerColor,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
-                    contentPadding: const EdgeInsets.all(16),
                   ),
                 ),
               ),
@@ -549,56 +614,114 @@ class _TranslationEditorScreenState
 
             // Bottom action bar
             Container(
-              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _onExportDocxPressed,
-                      icon: const Icon(Icons.file_download),
-                      label: const Text('Word'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isExporting ? null : _onExportDocxPressed,
+                          icon: _isExporting
+                              ? SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : Icon(Icons.file_download, size: 20),
+                          label: Text(
+                            'Export',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _onCopyPressed,
-                      icon: const Icon(Icons.copy),
-                      label: const Text('Copy'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _onCopyPressed,
+                          icon: Icon(Icons.content_copy_rounded, size: 20),
+                          label: Text(
+                            'Copy',
+                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _onSharePressed,
-                      icon: const Icon(Icons.share),
-                      label: const Text('Share'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _onSharePressed,
+                          icon: Icon(Icons.share, size: 20),
+                          label: Text(
+                            'Share',
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: theme.colorScheme.primary,
+                            foregroundColor: theme.colorScheme.onPrimary,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatChip(ColorScheme cs, IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: cs.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
+            ),
+          ),
+        ],
       ),
     );
   }
