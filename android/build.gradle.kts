@@ -1,5 +1,8 @@
 import com.android.build.gradle.LibraryExtension
+import org.gradle.api.JavaVersion
+import org.gradle.api.file.Directory
 import org.gradle.kotlin.dsl.configure
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 allprojects {
     repositories {
@@ -36,9 +39,28 @@ subprojects {
 
                 namespace = manifestNamespace ?: "com.${project.name.replace('_', '.')}"
             }
+            
+            // Force compileSdk 36 for all library modules (required for Java 9+ support)
+            // This ensures plugins can compile with modern Android SDK
+            compileSdk = 36
+            
+            // Force Java 17 for library modules
+            compileOptions {
+                sourceCompatibility = org.gradle.api.JavaVersion.VERSION_17
+                targetCompatibility = org.gradle.api.JavaVersion.VERSION_17
+            }
+        }
+    }
+    
+    // Force Kotlin jvmTarget 17 for all Kotlin tasks in all subprojects
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
         }
     }
 }
+
+
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
