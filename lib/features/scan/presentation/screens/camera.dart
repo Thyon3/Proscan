@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -375,16 +374,15 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
         colorProfile: _colorProfile,
       );
 
-      // NEW: Translate mode flow – OCR -> Translate -> Navigate
+      // Translate mode flow – OCR -> Translate -> Navigate
+      // IMPORTANT: OCR only runs on captured image file, never on preview stream
       if (_currentMode == ScanMode.translate) {
-        final inputImage = InputImage.fromFilePath(path);
-
         await LoadingOverlay.runWithDelay<void>(
           context: context,
           message: 'Scanning & translating…',
           action: () => ref
               .read(translationProvider.notifier)
-              .processInputImage(inputImage),
+              .processImageFile(path),
         );
 
         if (!mounted) return;
@@ -444,16 +442,15 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
         colorProfile: _colorProfile,
       );
 
-      // NEW: Translate mode flow for gallery images – OCR -> Translate -> Navigate
+      // Translate mode flow for gallery images – OCR -> Translate -> Navigate
+      // IMPORTANT: OCR only runs on captured image file, never on preview stream
       if (_currentMode == ScanMode.translate) {
-        final inputImage = InputImage.fromFilePath(path);
-
         await LoadingOverlay.runWithDelay<void>(
           context: context,
           message: 'Scanning & translating…',
           action: () => ref
               .read(translationProvider.notifier)
-              .processInputImage(inputImage),
+              .processImageFile(path),
         );
 
         if (!mounted) return;

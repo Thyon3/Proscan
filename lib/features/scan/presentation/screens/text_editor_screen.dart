@@ -33,7 +33,6 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
   late TextEditingController _textController;
   late FocusNode _focusNode;
   final FileExportService _fileExportService = FileExportService();
-  final OcrService _ocrService = OcrService();
   
   bool _isExporting = false;
   bool _isProcessing = false;
@@ -81,7 +80,8 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
 
     try {
       AppLogger.info('Starting OCR extraction', data: {'path': widget.imagePath});
-      final extractedText = await _ocrService.extractTextFromImage(widget.imagePath!);
+      // Use singleton OcrService - only processes file paths, never camera streams
+      final extractedText = await OcrService.instance.extractTextFromFile(widget.imagePath!);
       
       if (mounted) {
         if (extractedText == null || extractedText.isEmpty) {
@@ -122,7 +122,6 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     _focusNode.dispose();
-    _ocrService.dispose();
     super.dispose();
   }
 

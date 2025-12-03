@@ -2,41 +2,65 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:image/image.dart' as img;
+import 'package:thyscan/core/services/app_logger.dart';
 
-/// Service for extracting text from images using Google ML Kit Text Recognition
+/// Unified singleton service for extracting text from images using Google ML Kit Text Recognition.
+/// 
+/// IMPORTANT: This service ONLY processes captured image files, NOT live camera streams.
+/// Heavy ML processing should never run on preview frames - only on still images after capture.
 class OcrService {
-  final TextRecognizer _textRecognizer;
-  bool _isInitialized = false;
-
-  OcrService() : _textRecognizer = TextRecognizer();
-
-  /// Initialize the text recognizer
-  Future<void> initialize() async {
-    if (_isInitialized) return;
-    // TextRecognizer is ready to use immediately, no async initialization needed
-    _isInitialized = true;
+  static OcrService? _instance;
+  static OcrService get instance {
+    _instance ??= OcrService._();
+    return _instance!;
   }
 
-  /// Extract text from an image file
-  /// 
-  /// Returns the extracted text, or null if no text is found or an error occurs
-  /// This uses the main isolate for OCR processing (ML Kit handles threading internally)
-  Future<String?> extractTextFromImage(String imagePath) async {
-    try {
-      await initialize();
+  OcrService._();
 
-      // Read the image file
+  TextRecognizer? _textRecognizer;
+  bool _isInitialized = false;
+  bool _isDisposed = false;
+
+  /// Initialize the text recognizer (lazy initialization)
+  Future<void> _ensureInitialized() async {
+    if (_isInitialized || _isDisposed) return;
+    
+    try {
+      _textRecognizer = TextRecognizer();
+      _isInitialized = true;
+      AppLogger.info('OcrService initialized');
+    } catch (e) {
+      AppLogger.error('Failed to initialize OcrService', error: e);
+      rethrow;
+    }
+  }
+
+  /// Extract text from an image file path (captured image, not camera stream)
+  /// 
+  /// Returns the extracted text, or null if no text is found or an error occurs.
+  /// 
+  /// This method ONLY works with file paths - never call with camera stream frames.
+  Future<String?> extractTextFromFile(String imagePath) async {
+    if (_isDisposed) {
+      throw StateError('OcrService has been disposed');
+    }
+
+    try {
+      await _ensureInitialized();
+
+      // Verify file exists
       final imageFile = File(imagePath);
       if (!await imageFile.exists()) {
         throw Exception('Image file does not exist: $imagePath');
       }
 
-      // Create InputImage from file
+      AppLogger.info('Starting OCR extraction from file', data: {'path': imagePath});
+
+      // Create InputImage from file path (NOT from camera stream)
       final inputImage = InputImage.fromFilePath(imagePath);
 
       // Process the image - ML Kit handles its own threading
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+      final RecognizedText recognizedText = await _textRecognizer!.processImage(inputImage);
 
       // Extract all text blocks efficiently using StringBuffer
       final buffer = StringBuffer();
@@ -55,21 +79,32 @@ class OcrService {
 
       // Return null if no text was found
       if (extractedText.isEmpty) {
+        AppLogger.info('No text found in image', data: {'path': imagePath});
         return null;
       }
 
+      AppLogger.info('OCR extraction completed', data: {
+        'path': imagePath,
+        'textLength': extractedText.length,
+      });
+
       return extractedText;
-    } catch (e) {
+    } catch (e, stack) {
+      AppLogger.error('OCR processing failed', error: e, stack: stack, data: {'path': imagePath});
       throw Exception('OCR processing failed: $e');
     }
   }
 
   /// Extract text from an image file with detailed information
   /// 
-  /// Returns a map with 'text' and 'blocks' information
+  /// Returns a map with 'text' and 'blocks' information, or null if no text found.
   Future<Map<String, dynamic>?> extractTextWithDetails(String imagePath) async {
+    if (_isDisposed) {
+      throw StateError('OcrService has been disposed');
+    }
+
     try {
-      await initialize();
+      await _ensureInitialized();
 
       final imageFile = File(imagePath);
       if (!await imageFile.exists()) {
@@ -77,7 +112,7 @@ class OcrService {
       }
 
       final inputImage = InputImage.fromFilePath(imagePath);
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+      final RecognizedText recognizedText = await _textRecognizer!.processImage(inputImage);
 
       String extractedText = '';
       List<Map<String, dynamic>> blocks = [];
@@ -122,15 +157,21 @@ class OcrService {
         'text': extractedText,
         'blocks': blocks,
       };
-    } catch (e) {
+    } catch (e, stack) {
+      AppLogger.error('OCR extraction with details failed', error: e, stack: stack, data: {'path': imagePath});
       throw Exception('OCR processing failed: $e');
     }
   }
 
-  /// Dispose resources
+  /// Dispose resources - call this when the service is no longer needed
   void dispose() {
-    _textRecognizer.close();
+    if (_isDisposed) return;
+    
+    _isDisposed = true;
+    _textRecognizer?.close();
+    _textRecognizer = null;
     _isInitialized = false;
+    
+    AppLogger.info('OcrService disposed');
   }
 }
-

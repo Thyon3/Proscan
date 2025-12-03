@@ -12,6 +12,12 @@ class EdgeDetector {
   ObjectDetector? _detector;
   bool _isBusy = false;
   Future<void>? _initFuture;
+  
+  // Frame throttling to prevent pipeline resets
+  int _frameCounter = 0;
+  static const int _framesToSkip = 3; // Process every 4th frame
+  DateTime? _lastProcessTime;
+  static const Duration _minProcessingInterval = Duration(milliseconds: 100);
 
   Future<void> ensureInitialized() {
     _initFuture ??= _initialize();
@@ -29,14 +35,35 @@ class EdgeDetector {
   }
 
   /// Returns 4 corners in normalized coordinates (0.0 to 1.0) relative to preview
+  /// 
+  /// This performs lightweight edge detection for document boundaries during live preview.
+  /// Heavy ML processing (OCR, translation) should NEVER be called from here.
   Future<List<Offset>?> detect(
     CameraImage image,
     ScanMode mode,
     CameraDescription camera,
   ) async {
     await ensureInitialized();
+    
+    // Frame throttling: Skip frames to prevent pipeline overload
+    _frameCounter++;
+    if (_frameCounter < _framesToSkip) {
+      return null;
+    }
+    _frameCounter = 0;
+    
+    // Time-based throttling: Don't process too frequently
+    final now = DateTime.now();
+    if (_lastProcessTime != null) {
+      final timeSinceLastProcess = now.difference(_lastProcessTime!);
+      if (timeSinceLastProcess < _minProcessingInterval) {
+        return null;
+      }
+    }
+    
     if (_isBusy || _detector == null) return null;
     _isBusy = true;
+    _lastProcessTime = now;
 
     try {
       final inputImage = _cameraImageToInputImage(image, camera);
@@ -62,6 +89,7 @@ class EdgeDetector {
 
       return corners;
     } catch (e) {
+      // Silently fail for preview frames - don't spam errors
       return null;
     } finally {
       _isBusy = false;

@@ -2,9 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 // REMOVED: import 'package:flutter_riverpod/legacy.dart' show StateNotifierProvider, StateNotifier;
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:thyscan/features/scan/core/services/ocr_service.dart';
 import 'package:thyscan/features/scan/services/export_service.dart';
-import 'package:thyscan/features/scan/services/ocr_service.dart';
 import 'package:thyscan/features/scan/services/translation_service.dart';
 
 /// Supported target languages for translation.
@@ -70,7 +69,6 @@ final translationServiceProvider = Provider<TranslationService>((ref) {
 // 🟢 MIGRATED: Inherit from Notifier
 class TranslationController extends Notifier<TranslationState> {
   // 🟢 MIGRATED: Dependencies are read in build() and stored here
-  late final TranslateOcrService _ocrService;
   late final TranslationService _translationService;
   late final ExportService _exportService;
 
@@ -80,29 +78,27 @@ class TranslationController extends Notifier<TranslationState> {
   TranslationState build() {
     // Get dependencies using the exposed 'ref' property
     _translationService = ref.watch(translationServiceProvider);
-    // These services are created here and stored for later use.
-    _ocrService = TranslateOcrService();
     _exportService = ExportService();
 
     // Return the initial state
     // Note: 'ref' is now a class property, eliminating the need to pass it around.
-    ref.onDispose(() {
-      _ocrService.dispose();
-    });
-
     return const TranslationState();
   }
 
-  /// Runs OCR + translation on [inputImage].
+  /// Runs OCR + translation on a captured image file.
+  ///
+  /// IMPORTANT: This should ONLY be called with a file path from a captured image,
+  /// NEVER from a live camera stream. Heavy ML processing should only happen after capture.
   ///
   /// This is intended to be called from the camera flow for Translate mode.
-  Future<void> processInputImage(InputImage inputImage) async {
+  Future<void> processImageFile(String imagePath) async {
     if (state.isLoading) return;
 
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
-      final ocrText = await _ocrService.extractText(inputImage);
+      // Use singleton OcrService - only processes file paths, never camera streams
+      final ocrText = await OcrService.instance.extractTextFromFile(imagePath);
 
       if (ocrText == null || ocrText.trim().isEmpty) {
         state = state.copyWith(
