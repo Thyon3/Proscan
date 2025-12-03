@@ -138,8 +138,26 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     super.dispose();
   }
 
+  /// Starts the image stream for live analysis
+  /// 
+  /// This method is idempotent - it will return early if:
+  /// - Controller is null or not initialized
+  /// - Stream is already running
+  /// - Mode doesn't need live analysis
+  /// - Widget is not mounted
   Future<void> _startImageStream() async {
-    if (_controller == null || _controller!.value.isStreamingImages) return;
+    // Early exit checks - must be first
+    if (_controller == null || 
+        !_controller!.value.isInitialized || 
+        _controller!.value.isStreamingImages ||
+        !mounted) {
+      return;
+    }
+
+    // Only start stream if current mode needs live analysis
+    if (!_modeNeedsLiveAnalysis(_currentMode)) {
+      return;
+    }
 
     await _controller!.startImageStream((image) async {
       // Early exit checks - must be first to prevent unnecessary processing
@@ -242,12 +260,53 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     });
   }
 
+  /// Stops the image stream and resets analysis state
+  /// This should be called when:
+  /// - Mode doesn't need live analysis
+  /// - App goes to background
+  /// - Screen is disposed
+  /// - Navigating away from camera screen
   Future<void> _stopImageStreamIfNeeded() async {
     if (_controller == null) return;
+    
+    // Stop the image stream if it's running
     if (_controller!.value.isStreamingImages) {
       try {
         await _controller!.stopImageStream();
-      } catch (_) {}
+      } catch (_) {
+        // Silently handle errors - stream may already be stopped
+      }
+    }
+    
+    // Reset analysis state when stream stops
+    _isAnalyzing = false;
+    _lastAnalysisTime = null;
+  }
+
+  /// Determines if a scan mode requires live image stream analysis
+  /// 
+  /// Returns true for modes that need continuous edge detection or barcode scanning:
+  /// - document, idCard, book, excel, slides: Need edge detection for alignment
+  /// - scanCode: Needs live barcode scanning
+  /// - timestamp, question: Need edge detection for document alignment
+  /// 
+  /// Returns false for modes that only process captured images:
+  /// - extractText, word, translate: Only run OCR after capture
+  bool _modeNeedsLiveAnalysis(ScanMode mode) {
+    switch (mode) {
+      case ScanMode.document:
+      case ScanMode.idCard:
+      case ScanMode.book:
+      case ScanMode.excel:
+      case ScanMode.slides:
+      case ScanMode.scanCode:
+      case ScanMode.timestamp:
+      case ScanMode.question:
+        return true;
+      case ScanMode.extractText:
+      case ScanMode.word:
+      case ScanMode.translate:
+        return false;
     }
   }
 
@@ -275,13 +334,24 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final c = _controller;
-    if (c == null || !c.value.isInitialized) return;
-
-    if (state == AppLifecycleState.inactive) {
+    
+    // Stop image stream and ML analysis when app goes to background/inactive
+    if (state == AppLifecycleState.inactive || 
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       unawaited(_stopImageStreamIfNeeded());
-      c.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      _initFuture = _initCamera(preserveIndex: true);
+      
+      // Dispose controller if app is going away completely
+      if (state == AppLifecycleState.inactive && c != null && c.value.isInitialized) {
+        unawaited(c.dispose());
+      }
+    } 
+    // Only restart camera when app resumes AND we're still mounted
+    else if (state == AppLifecycleState.resumed && mounted) {
+      // Reinitialize camera only if it was disposed
+      if (c == null || !c.value.isInitialized) {
+        _initFuture = _initCamera(preserveIndex: true);
+      }
     }
   }
 
@@ -306,9 +376,14 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
 
     await _controller!.initialize();
 
-    // ← MUST CALL THIS AFTER CAMERA IS READY
+    // Initialize edge detector (lightweight, doesn't start processing yet)
     await _edgeDetector.ensureInitialized();
-    await _startImageStream();
+
+    // Only start image stream if the current mode needs live analysis
+    // This prevents unnecessary ML processing for modes like translate/extractText
+    if (_modeNeedsLiveAnalysis(_currentMode) && mounted) {
+      await _startImageStream();
+    }
 
     final isFront =
         _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
@@ -337,24 +412,47 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   }
 
   Future<void> _changeMode(ScanMode mode) async {
-    if (!_availableModes.contains(mode)) return;
+    if (!_availableModes.contains(mode) || !mounted) return;
+
+    final previousMode = _currentMode;
+    final previousModeNeededLiveAnalysis = _modeNeedsLiveAnalysis(previousMode);
+    final newModeNeedsLiveAnalysis = _modeNeedsLiveAnalysis(mode);
 
     // Handle mode switching for barcode scanning
-    if (_currentMode == ScanMode.scanCode && mode != ScanMode.scanCode) {
-      // Switching away from barcode mode - resume if paused
+    if (previousMode == ScanMode.scanCode && mode != ScanMode.scanCode) {
+      // Switching away from barcode mode
       _barcodeScannerService.resume();
       _isBarcodeResultShowing = false;
-    } else if (mode == ScanMode.scanCode && _currentMode != ScanMode.scanCode) {
+    } else if (mode == ScanMode.scanCode && previousMode != ScanMode.scanCode) {
       // Switching to barcode mode - ensure it's ready
       await _barcodeScannerService.initialize();
       _barcodeScannerService.resume();
       _isBarcodeResultShowing = false;
     }
 
+    // Update mode
     setState(() {
       _currentMode = mode;
       _detectedEdges = null;
     });
+
+    // Stop or start image stream based on mode requirements
+    if (previousModeNeededLiveAnalysis && !newModeNeedsLiveAnalysis) {
+      // Switching FROM a mode that needs live analysis TO one that doesn't
+      // Stop the image stream to save resources
+      await _stopImageStreamIfNeeded();
+    } else if (!previousModeNeededLiveAnalysis && newModeNeedsLiveAnalysis) {
+      // Switching FROM a mode that doesn't need live analysis TO one that does
+      // Start the image stream if controller is ready
+      if (_controller != null && 
+          _controller!.value.isInitialized && 
+          !_controller!.value.isStreamingImages &&
+          mounted) {
+        await _startImageStream();
+      }
+    }
+    // If both modes need live analysis or both don't, stream state stays the same
+
     await _applyModeSettings();
   }
 
@@ -434,6 +532,10 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
         colorProfile: _colorProfile,
       );
 
+      // Stop image stream before navigating away to prevent ML from running in background
+      // This is critical for performance and resource management
+      await _stopImageStreamIfNeeded();
+
       // Translate mode flow – OCR -> Translate -> Navigate
       // IMPORTANT: OCR only runs on captured image file, never on preview stream
       if (_currentMode == ScanMode.translate) {
@@ -501,6 +603,9 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
         imagePath: path,
         colorProfile: _colorProfile,
       );
+
+      // Stop image stream before navigating away to prevent ML from running in background
+      await _stopImageStreamIfNeeded();
 
       // Translate mode flow for gallery images – OCR -> Translate -> Navigate
       // IMPORTANT: OCR only runs on captured image file, never on preview stream
