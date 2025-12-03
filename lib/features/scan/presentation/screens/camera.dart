@@ -106,7 +106,11 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   // Live analysis throttling - ensures only one frame is processed at a time
   bool _isAnalyzing = false;
   DateTime? _lastAnalysisTime;
-  static const Duration _minAnalysisInterval = Duration(milliseconds: 250);
+  static const Duration _minAnalysisInterval = Duration(milliseconds: 750); // Increased to reduce buffer pressure
+  
+  // Frame skipping to reduce buffer accumulation - process every 5th frame
+  int _frameSkipCounter = 0;
+  static const int _framesToSkip = 4; // Process every 5th frame (skip 4, process 1)
 
   @override
   void initState() {
@@ -135,6 +139,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     // Reset analysis state on dispose
     _isAnalyzing = false;
     _lastAnalysisTime = null;
+    _frameSkipCounter = 0;
     super.dispose();
   }
 
@@ -160,12 +165,15 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     }
 
     await _controller!.startImageStream((image) async {
+      // CRITICAL: Return immediately for early exits to allow buffer cleanup
+      // The camera plugin manages image lifecycle automatically when callback completes quickly
+      
       // Early exit checks - must be first to prevent unnecessary processing
       if (!mounted || 
           _controller == null || 
           !_controller!.value.isInitialized || 
           _isBusy) {
-        return;
+        return; // Return immediately - plugin will release buffer
       }
 
       // Handle barcode scanning mode (has its own internal throttling)
@@ -182,13 +190,20 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
           // Show result sheet
           _showBarcodeResult(barcodeData);
         }
-        return;
+        return; // Return immediately - plugin will release buffer
       }
+
+      // Frame skipping: Process every Nth frame to reduce buffer pressure
+      _frameSkipCounter++;
+      if (_frameSkipCounter <= _framesToSkip) {
+        return; // Skip this frame immediately - plugin will release buffer
+      }
+      _frameSkipCounter = 0; // Reset counter
 
       // Throttle edge detection - ensure only one analysis runs at a time
       // Check if analysis is already in progress
       if (_isAnalyzing) {
-        return;
+        return; // Skip this frame immediately - plugin will release buffer
       }
 
       // Check if minimum interval has passed since last analysis
@@ -196,7 +211,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       if (_lastAnalysisTime != null) {
         final timeSinceLastAnalysis = now.difference(_lastAnalysisTime!);
         if (timeSinceLastAnalysis < _minAnalysisInterval) {
-          return;
+          return; // Skip this frame immediately - plugin will release buffer
         }
       }
 
@@ -281,6 +296,7 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     // Reset analysis state when stream stops
     _isAnalyzing = false;
     _lastAnalysisTime = null;
+    _frameSkipCounter = 0;
   }
 
   /// Determines if a scan mode requires live image stream analysis
