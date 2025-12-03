@@ -16,6 +16,7 @@ import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/features/scan/core/services/image_processing_service.dart';
+import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
 import 'package:thyscan/services/document_service.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -75,6 +76,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
   PdfGenerationProgress? _pdfProgress;
   bool _isGridView = false;
 
+  // Preview image paths for UI display (downscaled to reduce memory pressure)
+  // Key: original image path, Value: preview image path
+  final Map<String, String> _previewPaths = {};
+  bool _isLoadingPreviews = true;
+
   @override
   void initState() {
     super.initState();
@@ -93,8 +99,86 @@ class _EditScanScreenState extends State<EditScanScreen> {
         : 'DocScan_${DateTime.now().millisecondsSinceEpoch}';
     _pdfFileName = resolvedTitle.replaceAll('.pdf', '');
 
+    // Load preview images for all pages (for UI display)
+    _loadPreviewImages();
+
     // Generate initial filter previews for the first page
     _generateFilterPreviewsForCurrentPage();
+  }
+
+  /// Load preview images for all pages to reduce memory pressure in UI.
+  /// Preview images are downscaled versions used only for display.
+  /// Original images remain untouched for OCR, export, and processing.
+  Future<void> _loadPreviewImages() async {
+    setState(() => _isLoadingPreviews = true);
+
+    try {
+      // Load previews for all pages
+      final previewFutures = _pages.map((originalPath) async {
+        try {
+          final previewPath = await PreviewImageService.instance
+              .getOrCreatePreviewPath(originalPath);
+          return MapEntry(originalPath, previewPath);
+        } catch (e) {
+          AppLogger.warning('Failed to generate preview, using original',
+              data: {'path': originalPath, 'error': e.toString()});
+          // Fallback to original if preview generation fails
+          return MapEntry(originalPath, originalPath);
+        }
+      });
+
+      final previewEntries = await Future.wait(previewFutures);
+      
+      if (!mounted) return;
+
+      setState(() {
+        _previewPaths.addAll(Map.fromEntries(previewEntries));
+        _isLoadingPreviews = false;
+      });
+    } catch (e, stack) {
+      AppLogger.error('Failed to load preview images', error: e, stack: stack);
+      if (!mounted) return;
+      
+      // Fallback: use original paths if preview loading fails
+      setState(() {
+        for (final path in _pages) {
+          _previewPaths[path] = path;
+        }
+        _isLoadingPreviews = false;
+      });
+    }
+  }
+
+  /// Gets the preview path for a given original image path.
+  /// Falls back to original path if preview is not available.
+  String _getPreviewPath(String originalPath) {
+    return _previewPaths[originalPath] ?? originalPath;
+  }
+
+  /// Loads preview for a single image path and updates the preview paths map.
+  /// Used when new pages are added or existing pages are modified.
+  Future<void> _loadPreviewForPath(String originalPath) async {
+    if (_previewPaths.containsKey(originalPath)) {
+      return; // Already loaded
+    }
+
+    try {
+      final previewPath = await PreviewImageService.instance
+          .getOrCreatePreviewPath(originalPath);
+      if (mounted) {
+        setState(() {
+          _previewPaths[originalPath] = previewPath;
+        });
+      }
+    } catch (e) {
+      AppLogger.warning('Failed to generate preview, using original',
+          data: {'path': originalPath, 'error': e.toString()});
+      if (mounted) {
+        setState(() {
+          _previewPaths[originalPath] = originalPath;
+        });
+      }
+    }
   }
 
   @override
@@ -173,6 +257,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
       if (!mounted) return;
 
+      final oldPath = _currentPath;
       setState(() {
         final idx = _pages.indexOf(_currentPath);
         if (idx != -1) {
@@ -184,7 +269,12 @@ class _EditScanScreenState extends State<EditScanScreen> {
           _pageController.jumpToPage(_currentIndex);
         }
         _currentPath = cropped.path;
+        // Remove old preview mapping
+        _previewPaths.remove(oldPath);
       });
+      
+      // Load preview for cropped image
+      await _loadPreviewForPath(cropped.path);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -213,6 +303,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
         _currentPath = result.imagePath;
         _colorProfile = result.colorProfile;
       });
+      
+      // Load preview for the newly added page
+      await _loadPreviewForPath(result.imagePath);
 
       // Ensure PageView is updated before animating
       if (_pageController.hasClients) {
@@ -264,6 +357,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
       if (result == null || !mounted) return;
 
+      final oldPath = _pages[_currentIndex];
       setState(() {
         _pages[_currentIndex] = result.imagePath;
         _currentPath = result.imagePath;
@@ -271,7 +365,12 @@ class _EditScanScreenState extends State<EditScanScreen> {
         // Reset filter and rotation for this page
         _pageFilters.remove(_currentIndex);
         _pageRotations.remove(_currentIndex);
+        // Remove old preview mapping
+        _previewPaths.remove(oldPath);
       });
+      
+      // Load preview for retaken image
+      await _loadPreviewForPath(result.imagePath);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -292,11 +391,17 @@ class _EditScanScreenState extends State<EditScanScreen> {
         sourcePath,
       );
 
+      final oldPath = _pages[_currentIndex];
       setState(() {
         _pages[_currentIndex] = newPath;
         _currentPath = newPath;
+        // Remove old preview mapping
+        _previewPaths.remove(oldPath);
         _pageRotations[_currentIndex] = newRotation;
       });
+      
+      // Load preview for rotated image
+      await _loadPreviewForPath(newPath);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -318,16 +423,21 @@ class _EditScanScreenState extends State<EditScanScreen> {
           filterName,
         );
 
+        final oldPath = _pages[_currentIndex];
         setState(() {
           _pages[_currentIndex] = newPath;
           _currentPath = newPath;
           _pageFilters[_currentIndex] = filter;
+          // Remove old preview mapping
+          _previewPaths.remove(oldPath);
           final mappedProfile = _profileFromFilter(filter);
           if (mappedProfile != null) {
             _colorProfile = mappedProfile;
           }
         });
         
+        // Load preview for filtered image
+        await _loadPreviewForPath(newPath);
         // Regenerate filter previews after applying filter
         _generateFilterPreviewsForCurrentPage();
       } else {
@@ -483,7 +593,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
     }
   }
 
-  Widget _buildImagePage(String path) {
+  Widget _buildImagePage(String originalPath) {
+    // Use preview path for UI display to reduce memory pressure
+    // Original path is still stored for processing operations
+    final previewPath = _getPreviewPath(originalPath);
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: DecoratedBox(
@@ -503,7 +617,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
           child: InteractiveViewer(
             minScale: 0.5,
             maxScale: 5.0,
-            child: Image.file(File(path), fit: BoxFit.contain),
+            child: Image.file(File(previewPath), fit: BoxFit.contain),
           ),
         ),
       ),
@@ -1027,7 +1141,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.file(
-                  File(_pages[index]),
+                  File(_getPreviewPath(_pages[index])), // Use preview for thumbnail
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
                     color: cs.surfaceContainerHighest,
@@ -1658,7 +1772,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.file(File(_pages[index]), fit: BoxFit.cover),
+            Image.file(File(_getPreviewPath(_pages[index])), fit: BoxFit.cover), // Use preview for grid view
             Positioned(
               bottom: 0,
               left: 0,

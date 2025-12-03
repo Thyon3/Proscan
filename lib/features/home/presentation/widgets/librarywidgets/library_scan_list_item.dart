@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
+import 'package:thyscan/features/home/presentation/widgets/document_thumbnail.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 
 class LibraryScanListItem extends StatelessWidget {
@@ -124,9 +125,10 @@ class LibraryScanListItem extends StatelessWidget {
                         ? SizedBox(
                             width: 64,
                             height: 84,
-                            child: CachedThumbnail(
-                              path: scan.imagePath,
+                            child: DocumentThumbnail(
+                              imagePath: scan.imagePath,
                               fit: BoxFit.cover,
+                              borderRadius: BorderRadius.circular(12),
                               placeholder: Container(
                                 color: colorScheme.surfaceVariant,
                                 child: Icon(

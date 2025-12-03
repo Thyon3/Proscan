@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
+import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 import 'package:thyscan/models/document_color_profile.dart';
@@ -50,6 +51,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   DocumentColorProfile _colorProfile = DocumentColorProfile.color;
   late final ScanMode _activeScanMode;
   PdfGenerationProgress? _pdfProgress;
+  
+  // Preview paths for UI display (downscaled to reduce memory pressure)
+  final Map<String, String> _previewPaths = {};
+  bool _isLoadingPreviews = false;
 
   @override
   void initState() {
@@ -59,6 +64,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     _activeScanMode = widget.scanMode ?? ScanMode.document;
     _colorProfile = widget.initialColorProfile ?? DocumentColorProfile.color;
 
+    // Load preview images for all pages (for UI display)
+    _loadPreviewImages();
+
     // Only auto-save if this is a new document (no documentId provided)
     if (widget.documentId == null) {
       _autoSaveDocument();
@@ -66,6 +74,52 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       // Load existing document data
       _loadExistingDocument();
     }
+  }
+
+  /// Load preview images for all pages to reduce memory pressure in UI.
+  /// Preview images are downscaled versions used only for display.
+  /// Original images remain untouched for PDF export and processing.
+  Future<void> _loadPreviewImages() async {
+    setState(() => _isLoadingPreviews = true);
+
+    try {
+      // Load previews for all pages
+      final previewFutures = _pages.map((originalPath) async {
+        try {
+          final previewPath = await PreviewImageService.instance
+              .getOrCreatePreviewPath(originalPath);
+          return MapEntry(originalPath, previewPath);
+        } catch (e) {
+          // Fallback to original if preview generation fails
+          return MapEntry(originalPath, originalPath);
+        }
+      });
+
+      final previewEntries = await Future.wait(previewFutures);
+      
+      if (!mounted) return;
+
+      setState(() {
+        _previewPaths.addAll(Map.fromEntries(previewEntries));
+        _isLoadingPreviews = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      
+      // Fallback: use original paths if preview loading fails
+      setState(() {
+        for (final path in _pages) {
+          _previewPaths[path] = path;
+        }
+        _isLoadingPreviews = false;
+      });
+    }
+  }
+
+  /// Gets the preview path for a given original image path.
+  /// Falls back to original path if preview is not available.
+  String _getPreviewPath(String originalPath) {
+    return _previewPaths[originalPath] ?? originalPath;
   }
 
   /// Load existing document data from Hive
@@ -242,6 +296,25 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           _colorProfile = result.colorProfile;
           _hasUnsavedChanges = true;
         });
+        
+        // Load preview for newly added page
+        try {
+          final previewPath = await PreviewImageService.instance
+              .getOrCreatePreviewPath(result.imagePath);
+          if (mounted) {
+            setState(() {
+              _previewPaths[result.imagePath] = previewPath;
+            });
+          }
+        } catch (e) {
+          // Fallback to original if preview generation fails
+          if (mounted) {
+            setState(() {
+              _previewPaths[result.imagePath] = result.imagePath;
+            });
+          }
+        }
+        
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -808,7 +881,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.file(File(_pages[index]), fit: BoxFit.cover),
+            child: Image.file(
+              File(_getPreviewPath(_pages[index])), // Use preview for grid view
+              fit: BoxFit.cover,
+            ),
           ),
         ),
       );
