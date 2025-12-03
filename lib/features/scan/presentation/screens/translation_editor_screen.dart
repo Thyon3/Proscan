@@ -512,6 +512,7 @@ class _TranslationEditorScreenState
         }
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,

@@ -358,6 +358,7 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
     if (_document == null) {
       return Scaffold(
         backgroundColor: cs.surface,
+        resizeToAvoidBottomInset: false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
         body: Center(
           child: CircularProgressIndicator(color: cs.primary),
         ),
@@ -412,6 +413,7 @@ class _TextDocumentScreenState extends State<TextDocumentScreen> {
       },
       child: Scaffold(
         backgroundColor: cs.surface,
+        resizeToAvoidBottomInset: false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,

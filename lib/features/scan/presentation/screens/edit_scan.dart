@@ -1550,6 +1550,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
     return Scaffold(
       backgroundColor: cs.surface,
+      resizeToAvoidBottomInset: false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
