@@ -11,6 +11,7 @@ import 'package:thyscan/core/errors/failures.dart';
 import 'package:thyscan/core/errors/pdf_exceptions.dart';
 import 'package:thyscan/core/errors/storage_exceptions.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/app_storage_service.dart';
 import 'package:thyscan/core/services/document_operation_queue.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
@@ -99,7 +100,7 @@ class DocumentService {
         ? title!
         : 'Scan ${DateFormat('MMM dd, yyyy').format(createdAt)}';
 
-    final targetFilePath = p.join(documentsDir.path, 'doc_$id.pdf');
+    // Temp file path for PDF generation (in scanned_documents folder)
     final tempFilePath = p.join(
       documentsDir.path,
       'doc_${id}_$timestamp.tmp.pdf',
@@ -159,8 +160,14 @@ class DocumentService {
       if (!await tempFile.exists()) {
         throw StorageFailure('Temporary PDF file missing after generation');
       }
-      final finalFile = await tempFile.rename(targetFilePath);
-      final savedPdfPath = finalFile.path;
+      
+      // Move PDF from temp location to organized folder structure
+      final savedPdfPath = await AppStorageService.instance.moveToAppFolder(
+        tempFilePath: tempFilePath,
+        documentId: id,
+        scanMode: scanMode,
+        format: 'pdf',
+      );
       committedFilePath = savedPdfPath;
 
       if (pdfResult.optimizedImagePaths.isNotEmpty) {
@@ -300,7 +307,6 @@ class DocumentService {
     final pageCount = pageImagePaths.length;
     options.validate(pageCount: pageCount);
     final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
-    final filePath = p.join(documentsDir.path, 'doc_$documentId.pdf');
     final newScanMode = scanMode ?? existingDoc.scanMode;
     final newColorProfile =
         colorProfile ?? DocumentColorProfile.fromKey(existingDoc.colorProfile);
@@ -366,8 +372,35 @@ class DocumentService {
       if (!await tempFile.exists()) {
         throw StorageFailure('Temporary PDF file missing after generation');
       }
-      final finalFile = await tempFile.rename(filePath);
-      final savedPdfPath = finalFile.path;
+      
+      // Delete old file if it exists in a different location or if scan mode changed
+      final oldFilePath = existingDoc.filePath;
+      if (oldFilePath.isNotEmpty) {
+        try {
+          final oldFile = File(oldFilePath);
+          if (await oldFile.exists()) {
+            // Only delete if scan mode changed or file is in old location
+            final isOldLocation = oldFilePath.contains('scanned_documents');
+            if (newScanMode != existingDoc.scanMode || isOldLocation) {
+              await oldFile.delete();
+              AppLogger.info('Deleted old document file',
+                  data: {'oldPath': oldFilePath, 'documentId': documentId});
+            }
+          }
+        } catch (e) {
+          AppLogger.warning('Failed to delete old document file',
+              data: {'oldPath': oldFilePath, 'error': e.toString()});
+          // Continue even if deletion fails
+        }
+      }
+      
+      // Move PDF from temp location to organized folder structure
+      final savedPdfPath = await AppStorageService.instance.moveToAppFolder(
+        tempFilePath: tempFilePath,
+        documentId: documentId,
+        scanMode: newScanMode,
+        format: 'pdf',
+      );
       committedFilePath = savedPdfPath;
 
       if (pdfResult.optimizedImagePaths.isNotEmpty) {
@@ -468,21 +501,22 @@ class DocumentService {
         ? title!
         : 'Text ${DateFormat('MMM dd, yyyy').format(createdAt)}';
 
-    final filePath = p.join(documentsDir.path, 'doc_$id.docx');
     final thumbnailPath = p.join(thumbsDir.path, 'thumb_$id.png');
 
-    // Generate DOCX file using FileExportService
+    // Generate DOCX file using FileExportService (creates temp file)
     final fileExportService = FileExportService();
     final tempPath = await fileExportService.exportToWord(
       text: text,
       fileName: 'doc_$id',
     );
 
-    // Move to permanent location
-    await File(tempPath).copy(filePath);
-    try {
-      await File(tempPath).delete();
-    } catch (_) {}
+    // Move DOCX from temp location to organized folder structure
+    final filePath = await AppStorageService.instance.moveToAppFolder(
+      tempFilePath: tempPath,
+      documentId: id,
+      scanMode: scanMode,
+      format: 'docx',
+    );
 
     // Create a text thumbnail (icon-based)
     // For now, we'll use a placeholder path
