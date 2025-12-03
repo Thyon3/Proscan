@@ -1008,22 +1008,28 @@ class _EditScanScreenState extends State<EditScanScreen> {
   Widget _buildThumbnailGrid() {
     final totalItems = _pages.length + 1;
     return SizedBox(
-      height: 210,
-      child: GridView.builder(
+      height: 120,
+      child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.55,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         itemCount: totalItems,
         itemBuilder: (context, index) {
-          if (index == _pages.length) {
-            return _buildAddThumbnailTile();
+          // First item is always the add button
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: _buildAddThumbnailTile(),
+            );
           }
-          return _buildDraggableThumbnail(index);
+          // Remaining items are pages (index - 1 is the actual page index)
+          final pageIndex = index - 1;
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SizedBox(
+              width: 80,
+              child: _buildDraggableThumbnail(pageIndex),
+            ),
+          );
         },
       ),
     );
@@ -1031,32 +1037,78 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   Widget _buildAddThumbnailTile() {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: _captureAdditionalPage,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
+    return SizedBox(
+      width: 80,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _captureAdditionalPage,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cs.outline.withValues(alpha: 0.4)),
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.add_photo_alternate_rounded,
-                size: 32,
-                color: cs.primary,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  cs.primaryContainer.withValues(alpha: 0.15),
+                  cs.primary.withValues(alpha: 0.05),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Add',
-                style: TextStyle(
-                  color: cs.onSurface,
-                  fontWeight: FontWeight.w600,
+              border: Border.all(
+                color: cs.primary.withValues(alpha: 0.3),
+                width: 2,
+                style: BorderStyle.solid,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: cs.primary.withValues(alpha: 0.1),
+                  blurRadius: 8,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 2),
                 ),
+              ],
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          cs.primary.withValues(alpha: 0.2),
+                          cs.primary.withValues(alpha: 0.1),
+                        ],
+                      ),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: cs.primary.withValues(alpha: 0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.add_photo_alternate_rounded,
+                      size: 24,
+                      color: cs.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Add',
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1676,43 +1728,74 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   Widget _buildAddPageGridCard() {
     final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: _captureAdditionalPage,
-      child: Container(
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: cs.outline.withValues(alpha: 0.3),
-            width: 1.5,
-            style: BorderStyle.solid,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _captureAdditionalPage,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                cs.primaryContainer.withValues(alpha: 0.15),
+                cs.primary.withValues(alpha: 0.05),
+              ],
+            ),
+            border: Border.all(
+              color: cs.primary.withValues(alpha: 0.3),
+              width: 2,
+              style: BorderStyle.solid,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: cs.primary.withValues(alpha: 0.15),
+                blurRadius: 12,
+                spreadRadius: 0,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      cs.primary.withValues(alpha: 0.2),
+                      cs.primary.withValues(alpha: 0.1),
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: cs.primary.withValues(alpha: 0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Icon(
+                  Icons.add_photo_alternate_rounded,
+                  size: 36,
+                  color: cs.primary,
+                ),
               ),
-              child: Icon(
-                Icons.add_a_photo_rounded,
-                size: 32,
-                color: cs.primary,
+              const SizedBox(height: 16),
+              Text(
+                'Add Page',
+                style: TextStyle(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  letterSpacing: 0.3,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Add Page',
-              style: TextStyle(
-                color: cs.onSurface,
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
