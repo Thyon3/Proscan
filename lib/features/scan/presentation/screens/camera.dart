@@ -103,6 +103,11 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   final BarcodeScannerService _barcodeScannerService = BarcodeScannerService();
   bool _isBarcodeResultShowing = false;
 
+  // Live analysis throttling - ensures only one frame is processed at a time
+  bool _isAnalyzing = false;
+  DateTime? _lastAnalysisTime;
+  static const Duration _minAnalysisInterval = Duration(milliseconds: 250);
+
   @override
   void initState() {
     super.initState();
@@ -127,6 +132,9 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     _edgeDetector.dispose();
     unawaited(_barcodeScannerService.dispose());
     _edgeGuidanceDebounce?.cancel();
+    // Reset analysis state on dispose
+    _isAnalyzing = false;
+    _lastAnalysisTime = null;
     super.dispose();
   }
 
@@ -134,9 +142,15 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     if (_controller == null || _controller!.value.isStreamingImages) return;
 
     await _controller!.startImageStream((image) async {
-      if (!mounted || _isBusy) return;
+      // Early exit checks - must be first to prevent unnecessary processing
+      if (!mounted || 
+          _controller == null || 
+          !_controller!.value.isInitialized || 
+          _isBusy) {
+        return;
+      }
 
-      // Handle barcode scanning mode
+      // Handle barcode scanning mode (has its own internal throttling)
       if (_currentMode == ScanMode.scanCode && !_isBarcodeResultShowing) {
         final barcodeData = await _barcodeScannerService.processImage(
           image,
@@ -153,31 +167,77 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
         return;
       }
 
-      // Regular edge detection for other modes
-      final edges = await _edgeDetector.detect(
-        image,
-        _currentMode,
-        _controller!.description,
-      );
+      // Throttle edge detection - ensure only one analysis runs at a time
+      // Check if analysis is already in progress
+      if (_isAnalyzing) {
+        return;
+      }
 
-      if (!mounted) return;
-
-      setState(() => _detectedEdges = edges);
-      _updateEdgeGuidance(edges != null && edges.length == 4);
-
-      // Auto-capture when edges are detected and auto-capture is enabled
-      if (_settings.autoCapture &&
-          edges != null &&
-          edges.length == 4 &&
-          !_isBusy) {
-        // Add a small delay to ensure edges are stable
-        await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted &&
-            !_isBusy &&
-            _detectedEdges != null &&
-            _detectedEdges!.length == 4) {
-          unawaited(_capture());
+      // Check if minimum interval has passed since last analysis
+      final now = DateTime.now();
+      if (_lastAnalysisTime != null) {
+        final timeSinceLastAnalysis = now.difference(_lastAnalysisTime!);
+        if (timeSinceLastAnalysis < _minAnalysisInterval) {
+          return;
         }
+      }
+
+      // Double-check mounted and controller state before starting analysis
+      if (!mounted || 
+          _controller == null || 
+          !_controller!.value.isInitialized) {
+        return;
+      }
+
+      // Start analysis - mark as analyzing
+      _isAnalyzing = true;
+
+      try {
+        // Perform edge detection on this frame
+        final edges = await _edgeDetector.detect(
+          image,
+          _currentMode,
+          _controller!.description,
+        );
+
+        // Final safety check before updating UI
+        if (!mounted || 
+            _controller == null || 
+            !_controller!.value.isInitialized) {
+          return;
+        }
+
+        // Update UI state with detected edges
+        setState(() {
+          _detectedEdges = edges;
+        });
+
+        _updateEdgeGuidance(edges != null && edges.length == 4);
+
+        // Auto-capture when edges are detected and auto-capture is enabled
+        if (_settings.autoCapture &&
+            edges != null &&
+            edges.length == 4 &&
+            !_isBusy) {
+          // Add a small delay to ensure edges are stable
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (mounted &&
+              !_isBusy &&
+              _controller != null &&
+              _controller!.value.isInitialized &&
+              _detectedEdges != null &&
+              _detectedEdges!.length == 4) {
+            unawaited(_capture());
+          }
+        }
+      } catch (e) {
+        // Silently handle errors - don't spam logs for expected exceptions
+        // The EdgeDetector already handles errors internally
+      } finally {
+        // Always reset the analyzing flag and update timestamp
+        // This ensures we can process the next frame even if an error occurred
+        _isAnalyzing = false;
+        _lastAnalysisTime = DateTime.now();
       }
     });
   }
