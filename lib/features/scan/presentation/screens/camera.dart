@@ -365,9 +365,11 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       _cameraIndex = backIdx != -1 ? backIdx : 0;
     }
 
+    // Use high instead of max to reduce frame size and improve
+    // live analysis (edge detection / barcode) performance.
     _controller = CameraController(
       _cameras[_cameraIndex],
-      ResolutionPreset.max,
+      ResolutionPreset.high,
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.jpeg
@@ -663,9 +665,11 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       await _stopImageStreamIfNeeded();
       await _controller?.dispose();
 
+      // Use high instead of max to reduce frame size and improve
+      // live analysis (edge detection / barcode) performance.
       _controller = CameraController(
         _cameras[newIndex],
-        ResolutionPreset.max,
+        ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid
             ? ImageFormatGroup.jpeg
