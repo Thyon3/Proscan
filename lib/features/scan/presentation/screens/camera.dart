@@ -143,6 +143,71 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     super.dispose();
   }
 
+  /// CRITICAL: Override didUpdateWidget to prevent memory leaks when scan mode changes
+  /// This is the ONLY safe place to handle widget updates - setState/initState won't catch mode changes
+  /// When initialMode changes, we MUST stop the old ImageAnalysis analyzer immediately
+  /// before starting a new one, otherwise the old analyzer keeps running → memory leak → crash
+  @override
+  void didUpdateWidget(SmartCameraScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // CRITICAL: Check if initialMode changed - this is the root cause of memory leaks
+    if (oldWidget.initialMode != widget.initialMode) {
+      // Immediately stop the old image stream to prevent memory leak
+      // This MUST happen synchronously before any other operations
+      // We can't await in didUpdateWidget, but we trigger the stop immediately
+      // and the stream will be stopped before we start a new one
+      _stopImageStreamIfNeeded().then((_) {
+        // Only proceed if widget is still mounted after stopping stream
+        if (!mounted) return;
+        
+        // Update current mode to match new initialMode
+        setState(() {
+          _currentMode = widget.initialMode;
+          _detectedEdges = null;
+        });
+        
+        // Handle barcode scanning mode changes
+        if (oldWidget.initialMode == ScanMode.scanCode && 
+            widget.initialMode != ScanMode.scanCode) {
+          // Switching away from barcode mode
+          _barcodeScannerService.resume();
+          _isBarcodeResultShowing = false;
+        } else if (widget.initialMode == ScanMode.scanCode && 
+                   oldWidget.initialMode != ScanMode.scanCode) {
+          // Switching to barcode mode - ensure it's ready
+          _barcodeScannerService.initialize().then((_) {
+            if (mounted) {
+              _barcodeScannerService.resume();
+              _isBarcodeResultShowing = false;
+            }
+          });
+        }
+        
+        // Apply mode-specific camera settings
+        if (_controller != null && _controller!.value.isInitialized) {
+          _applyModeSettings();
+        }
+        
+        // Start new image stream if new mode needs live analysis
+        // This MUST happen after stopping the old stream (which we just did above)
+        if (_controller != null && 
+            _controller!.value.isInitialized &&
+            !_controller!.value.isStreamingImages &&
+            _modeNeedsLiveAnalysis(widget.initialMode)) {
+          _startImageStream();
+        }
+      });
+    }
+    
+    // Update color profile if it changed
+    if (oldWidget.initialColorProfile != widget.initialColorProfile && mounted) {
+      setState(() {
+        _colorProfile = widget.initialColorProfile;
+      });
+    }
+  }
+
   /// Starts the image stream for live analysis
   /// 
   /// This method is idempotent - it will return early if:

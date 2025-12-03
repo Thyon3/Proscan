@@ -932,7 +932,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      resizeToAvoidBottomInset: false, // Prevent jank from GridView rebuilds during keyboard animation
+      // CRITICAL: Prevent keyboard animation jank (IME_INSETS_SHOW/HIDE_ANIMATION)
+      // Without this, heavy GridView rebuilds during keyboard animation cause 10+ dropped frames
+      // This prevents the scaffold from resizing when keyboard opens/closes, avoiding expensive rebuilds
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
