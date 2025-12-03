@@ -6,8 +6,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:uuid/uuid.dart';
-import 'package:thyscan/core/services/persistence_queue.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
@@ -52,7 +50,6 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   DocumentColorProfile _colorProfile = DocumentColorProfile.color;
   late final ScanMode _activeScanMode;
   PdfGenerationProgress? _pdfProgress;
-  final _uuid = const Uuid();
 
   @override
   void initState() {
@@ -93,51 +90,16 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
 
   /// Automatically save document to internal storage and Hive on screen load
   Future<void> _autoSaveDocument() async {
-    await _queuePersistOperation(force: true);
+    // Wait 800ms to let camera finish before auto-saving
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (mounted) {
+      await _persistDocument(force: true);
+    }
   }
 
   /// Update existing document when pages are modified
   Future<void> _updateExistingDocument() async {
-    await _queuePersistOperation(force: true);
-  }
-
-  Future<void> _queuePersistOperation({bool force = false}) async {
-    if (_pages.isEmpty) {
-      if (mounted && force) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('No pages to save')));
-      }
-      return;
-    }
-
-    if (!force && !_hasUnsavedChanges && _documentId != null) {
-      return;
-    }
-
-    final title = widget.pdfFileName.replaceAll('.pdf', '');
-    final scanModeKey = _scanModeKey(_activeScanMode);
-    final options = _buildSaveOptions();
-
-    final job = PersistenceJob(
-      id: _uuid.v4(),
-      type: _documentId == null
-          ? PersistenceOperationType.saveNew
-          : PersistenceOperationType.updateExisting,
-      pageImagePaths: List<String>.from(_pages),
-      title: title,
-      scanMode: scanModeKey,
-      colorProfileKey: _colorProfile.key,
-      documentId: _documentId,
-      options: options,
-    );
-
-    await PersistenceQueue.instance.enqueue(job);
-    if (mounted) {
-      setState(() {
-        _hasUnsavedChanges = false;
-      });
-    }
+    await _persistDocument(force: true);
   }
 
   Future<DocumentModel?> _persistDocument({bool force = false}) async {
