@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:thyscan/providers/auth_provider.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -29,7 +30,6 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
   bool _obscurePass = true;
   bool _obscureConfirm = true;
-  bool _isLoading = false;
   bool _agreeToTerms = false;
 
   // Animations
@@ -109,25 +109,100 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
   Future<void> _signup() async {
     HapticFeedback.mediumImpact();
-    if (_formKey.currentState!.validate()) {
-      if (!_agreeToTerms) {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (!_agreeToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please agree to the Terms & Conditions',
+            style: GoogleFonts.inter(),
+          ),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final authController = ref.read(authControllerProvider.notifier);
+
+    try {
+      await authController.signUpWithEmail(
+        _emailCtrl.text.trim(),
+        _passCtrl.text,
+        name: _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim() : null,
+      );
+
+      if (!mounted) return;
+
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Account created successfully! Signing you in...',
+            style: GoogleFonts.inter(),
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Navigate to home screen
+      context.go('/appmainscreen');
+    } catch (e) {
+      if (!mounted) return;
+
+      // Error is already handled in the controller, but show snackbar for user feedback
+      final authState = ref.read(authControllerProvider);
+      if (authState.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Please agree to the Terms & Conditions',
+              authState.error!,
               style: GoogleFonts.inter(),
             ),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
           ),
         );
-        return;
       }
-      setState(() => _isLoading = true);
-      await Future.delayed(const Duration(seconds: 2));
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    HapticFeedback.mediumImpact();
+
+    final authController = ref.read(authControllerProvider.notifier);
+
+    try {
+      await authController.signInWithGoogle();
+
       if (!mounted) return;
-      setState(() => _isLoading = false);
-      context.go('/home');
+
+      // Navigate to home screen on success
+      context.go('/appmainscreen');
+    } catch (e) {
+      if (!mounted) return;
+
+      // Error is already handled in the controller (cancellation is silent)
+      final authState = ref.read(authControllerProvider);
+      if (authState.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authState.error!,
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -213,6 +288,18 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                                 keyboardType: TextInputType.emailAddress,
                                 isDark: isDark,
                                 primaryColor: primaryColor,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) {
+                                    return 'Email is required';
+                                  }
+                                  final emailRegex = RegExp(
+                                    r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                                  );
+                                  if (!emailRegex.hasMatch(v.trim())) {
+                                    return 'Please enter a valid email address';
+                                  }
+                                  return null;
+                                },
                               ),
                               const SizedBox(height: 16),
 
@@ -228,6 +315,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                                 toggleObscure: () => setState(
                                   () => _obscurePass = !_obscurePass,
                                 ),
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) {
+                                    return 'Password is required';
+                                  }
+                                  if (v.length < 6) {
+                                    return 'Password must be at least 6 characters';
+                                  }
+                                  return null;
+                                },
                               ),
                               const SizedBox(height: 16),
 
@@ -244,9 +340,15 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
                                 toggleObscure: () => setState(
                                   () => _obscureConfirm = !_obscureConfirm,
                                 ),
-                                validator: (v) => v != _passCtrl.text
-                                    ? 'Passwords do not match'
-                                    : null,
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) {
+                                    return 'Please confirm your password';
+                                  }
+                                  if (v != _passCtrl.text) {
+                                    return 'Passwords do not match';
+                                  }
+                                  return null;
+                                },
                               ),
                             ],
                           ),
@@ -282,10 +384,10 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
                         const SizedBox(height: 32),
 
-                        // Socials
+                        // Google Sign-In Button
                         _buildAnimatedEntry(
                           delay: 500,
-                          child: _buildSocialRow(isDark),
+                          child: _buildGoogleSignInButton(isDark, primaryColor),
                         ),
 
                         const SizedBox(height: 24),
@@ -560,8 +662,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
   }
 
   Widget _buildButton(Color primaryColor) {
+    final authState = ref.watch(authControllerProvider);
+    final isLoading = authState.isLoading;
+
     return GestureDetector(
-      onTap: _isLoading ? null : _signup,
+      onTap: isLoading ? null : _signup,
       child: Container(
         height: 54,
         width: double.infinity,
@@ -579,7 +684,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            if (_isLoading)
+            if (isLoading)
               const SizedBox(
                 width: 24,
                 height: 24,
@@ -626,44 +731,66 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
     );
   }
 
-  Widget _buildSocialRow(bool isDark) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _socialButton(Icons.g_mobiledata, isDark),
-        const SizedBox(width: 20),
-        _socialButton(Icons.apple, isDark),
-        const SizedBox(width: 20),
-        _socialButton(Icons.facebook, isDark),
-      ],
-    );
-  }
+  Widget _buildGoogleSignInButton(bool isDark, Color primaryColor) {
+    final authState = ref.watch(authControllerProvider);
+    final isLoading = authState.isLoading;
 
-  Widget _socialButton(IconData icon, bool isDark) {
     final bgColor = isDark ? Colors.white.withOpacity(0.05) : Colors.white;
     final borderColor = isDark
         ? Colors.white.withOpacity(0.1)
         : const Color(0xFFE2E8F0);
     final iconColor = isDark ? Colors.white : const Color(0xFF1E293B);
+    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
 
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
+    return GestureDetector(
+      onTap: isLoading ? null : _signInWithGoogle,
+      child: Container(
+        height: 54,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (isLoading)
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
                 ),
-              ],
+              )
+            else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.g_mobiledata, color: iconColor, size: 24),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Sign up with Google',
+                    style: GoogleFonts.inter(
+                      color: textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
-      child: Icon(icon, color: iconColor, size: 24),
     );
   }
 

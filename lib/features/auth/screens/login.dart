@@ -2,18 +2,20 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
+import 'package:thyscan/providers/auth_provider.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
+class _LoginScreenState extends ConsumerState<LoginScreen>
     with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
@@ -23,7 +25,6 @@ class _LoginScreenState extends State<LoginScreen>
 
   bool _obscurePass = true;
   bool _rememberMe = false;
-  bool _isLoading = false;
 
   // Animations
   late final AnimationController _nebulaController;
@@ -91,12 +92,73 @@ class _LoginScreenState extends State<LoginScreen>
 
   Future<void> _login() async {
     HapticFeedback.mediumImpact();
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      await Future.delayed(const Duration(milliseconds: 1500));
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final authController = ref.read(authControllerProvider.notifier);
+
+    try {
+      await authController.signInWithEmail(
+        _emailCtrl.text.trim(),
+        _passCtrl.text,
+      );
+
       if (!mounted) return;
-      setState(() => _isLoading = false);
+
+      // Navigate to home screen on success
       context.go('/appmainscreen');
+    } catch (e) {
+      if (!mounted) return;
+
+      // Error is already handled in the controller, but show snackbar for user feedback
+      final authState = ref.read(authControllerProvider);
+      if (authState.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authState.error!,
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    HapticFeedback.mediumImpact();
+
+    final authController = ref.read(authControllerProvider.notifier);
+
+    try {
+      await authController.signInWithGoogle();
+
+      if (!mounted) return;
+
+      // Navigate to home screen on success
+      context.go('/appmainscreen');
+    } catch (e) {
+      if (!mounted) return;
+
+      // Error is already handled in the controller (cancellation is silent)
+      final authState = ref.read(authControllerProvider);
+      if (authState.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authState.error!,
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -221,10 +283,10 @@ class _LoginScreenState extends State<LoginScreen>
 
                         const SizedBox(height: 32),
 
-                        // Socials
+                        // Google Sign-In Button
                         _buildAnimatedEntry(
                           delay: 500,
-                          child: _buildSocialRow(isDark),
+                          child: _buildGoogleSignInButton(isDark, primaryColor),
                         ),
 
                         const SizedBox(height: 24),
@@ -415,8 +477,27 @@ class _LoginScreenState extends State<LoginScreen>
                     )
                   : null,
             ),
-            validator: (v) =>
-                (v == null || v.isEmpty) ? '$label is required' : null,
+            validator: (v) {
+              if (v == null || v.isEmpty) {
+                return '$label is required';
+              }
+              // Email validation
+              if (label.toLowerCase().contains('email')) {
+                final emailRegex = RegExp(
+                  r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                );
+                if (!emailRegex.hasMatch(v.trim())) {
+                  return 'Please enter a valid email address';
+                }
+              }
+              // Password validation
+              if (label.toLowerCase().contains('password')) {
+                if (v.length < 6) {
+                  return 'Password must be at least 6 characters';
+                }
+              }
+              return null;
+            },
           ),
         );
       },
@@ -483,8 +564,11 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Widget _buildButton(Color primaryColor) {
+    final authState = ref.watch(authControllerProvider);
+    final isLoading = authState.isLoading;
+
     return GestureDetector(
-      onTap: _isLoading ? null : _login,
+      onTap: isLoading ? null : _login,
       child: Container(
         height: 54,
         width: double.infinity,
@@ -502,7 +586,7 @@ class _LoginScreenState extends State<LoginScreen>
         child: Stack(
           alignment: Alignment.center,
           children: [
-            if (_isLoading)
+            if (isLoading)
               const SizedBox(
                 width: 24,
                 height: 24,
@@ -549,44 +633,66 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildSocialRow(bool isDark) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _socialButton(Icons.g_mobiledata, isDark),
-        const SizedBox(width: 20),
-        _socialButton(Icons.apple, isDark),
-        const SizedBox(width: 20),
-        _socialButton(Icons.facebook, isDark),
-      ],
-    );
-  }
+  Widget _buildGoogleSignInButton(bool isDark, Color primaryColor) {
+    final authState = ref.watch(authControllerProvider);
+    final isLoading = authState.isLoading;
 
-  Widget _socialButton(IconData icon, bool isDark) {
     final bgColor = isDark ? Colors.white.withOpacity(0.05) : Colors.white;
     final borderColor = isDark
         ? Colors.white.withOpacity(0.1)
         : const Color(0xFFE2E8F0);
     final iconColor = isDark ? Colors.white : const Color(0xFF1E293B);
+    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
 
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: borderColor),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
+    return GestureDetector(
+      onTap: isLoading ? null : _signInWithGoogle,
+      child: Container(
+        height: 54,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: borderColor),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (isLoading)
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
                 ),
-              ],
+              )
+            else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.g_mobiledata, color: iconColor, size: 24),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Sign in with Google',
+                    style: GoogleFonts.inter(
+                      color: textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
-      child: Icon(icon, color: iconColor, size: 24),
     );
   }
 

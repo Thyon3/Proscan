@@ -14,3 +14,7 @@ class ExportFailure extends Failure {
 class FileSystemFailure extends Failure {
   const FileSystemFailure(super.message);
 }
+
+class AuthFailure extends Failure {
+  const AuthFailure(super.message);
+}

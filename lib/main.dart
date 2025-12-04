@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/config/router/router.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
@@ -25,6 +26,9 @@ Future<void> main() async {
 
   await runZonedGuarded(
     () async {
+      // Initialize AuthService (Supabase)
+      await AuthService.instance.init();
+
       await Hive.initFlutter();
       Hive.registerAdapter(DocumentModelAdapter());
       await Hive.openBox<DocumentModel>(DocumentService.boxName);
