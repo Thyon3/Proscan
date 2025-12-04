@@ -15,8 +15,10 @@ class AuthService {
   static final AuthService instance = AuthService._();
 
   bool _isInitialized = false;
+  bool _isInitializing = false;
   SupabaseClient? _supabase;
   final _userController = StreamController<AppUser?>.broadcast();
+  final _initCompleter = Completer<void>();
 
   /// Gets the Supabase client instance.
   /// Throws [StateError] if not initialized.
@@ -27,13 +29,70 @@ class AuthService {
     return _supabase!;
   }
 
+  /// Waits for AuthService to be initialized.
+  /// Returns immediately if already initialized.
+  /// Starts initialization if not already started.
+  /// Throws [AuthFailure] if initialization fails.
+  Future<void> ensureInitialized() async {
+    if (_isInitialized) {
+      return;
+    }
+
+    // If init hasn't been called yet, start it now
+    if (!_initCompleter.isCompleted) {
+      // Start initialization in the background (don't await, let completer handle it)
+      init().catchError((error) {
+        // Error is already handled in init() and completer is completed with error
+        AppLogger.error('ensureInitialized: init() failed', error: error);
+      });
+    }
+
+    // Wait for initialization to complete (with timeout)
+    try {
+      await _initCompleter.future.timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw AuthFailure(
+            'Authentication service is taking too long to initialize. Please check your internet connection and try again.',
+          );
+        },
+      );
+    } catch (e) {
+      if (e is AuthFailure) {
+        rethrow;
+      }
+      // If completer completed with error, extract the message
+      if (e is AuthFailure || e.toString().contains('AuthFailure')) {
+        final message = e is AuthFailure 
+            ? e.message 
+            : e.toString().replaceFirst('AuthFailure: ', '');
+        throw AuthFailure(message);
+      }
+      throw AuthFailure(
+        'Failed to initialize authentication service. Please restart the app.',
+      );
+    }
+  }
+
   /// Initializes Supabase with PKCE flow for deep linking support.
   /// Reads SUPABASE_URL and SUPABASE_ANON_KEY from environment or uses defaults.
   Future<void> init() async {
     if (_isInitialized) {
       AppLogger.warning('AuthService already initialized');
+      if (!_initCompleter.isCompleted) {
+        _initCompleter.complete();
+      }
       return;
     }
+
+    // Prevent multiple concurrent initialization calls
+    if (_isInitializing) {
+      AppLogger.info('AuthService initialization already in progress, waiting...');
+      await _initCompleter.future;
+      return;
+    }
+
+    _isInitializing = true;
 
     try {
       // Check if Supabase is already initialized
@@ -85,13 +144,30 @@ class AuthService {
       });
 
       _isInitialized = true;
+      _isInitializing = false;
       AppLogger.info('AuthService initialized successfully');
+      
+      // Emit initial user state to stream once initialized
+      final initialUser = currentUser;
+      _userController.add(initialUser);
+      
+      // Complete the initialization completer
+      if (!_initCompleter.isCompleted) {
+        _initCompleter.complete();
+      }
     } catch (e, stack) {
+      _isInitializing = false;
       AppLogger.error(
         'Failed to initialize AuthService',
         error: e,
         stack: stack,
       );
+      
+      // Complete with error if not already completed
+      if (!_initCompleter.isCompleted) {
+        _initCompleter.completeError(e);
+      }
+      
       throw AuthFailure('Failed to initialize authentication: ${e.toString()}');
     }
   }
@@ -103,6 +179,9 @@ class AuthService {
     String password, {
     String? name,
   }) async {
+    // Ensure AuthService is initialized before proceeding
+    await ensureInitialized();
+    
     try {
       AppLogger.info('Signing up user with email', data: {'email': email});
 
@@ -138,6 +217,9 @@ class AuthService {
 
   /// Signs in an existing user with email and password.
   Future<void> signInWithEmail(String email, String password) async {
+    // Ensure AuthService is initialized before proceeding
+    await ensureInitialized();
+    
     try {
       AppLogger.info('Signing in user with email', data: {'email': email});
 
@@ -171,6 +253,9 @@ class AuthService {
   /// Signs in a user using Google Sign-In (native flow).
   /// Uses the native Google Sign-In SDK to get tokens, then passes them to Supabase.
   Future<void> signInWithGoogle() async {
+    // Ensure AuthService is initialized before proceeding
+    await ensureInitialized();
+    
     try {
       AppLogger.info('Starting Google Sign-In (native flow)');
 
@@ -237,6 +322,9 @@ class AuthService {
 
   /// Signs out the current user and clears the session.
   Future<void> signOut() async {
+    // Ensure AuthService is initialized before proceeding
+    await ensureInitialized();
+    
     try {
       AppLogger.info('Signing out user');
 
@@ -263,12 +351,20 @@ class AuthService {
   /// Stream of the current authenticated user.
   /// Emits `null` when the user is signed out.
   /// The stream is debounced to avoid rapid state changes.
+  /// Returns a stream that emits null if not initialized, then emits user updates once initialized.
   Stream<AppUser?> get userStream {
+    // Always return a stream connected to _userController
+    // If not initialized, emit null initially
+    // Once initialized, the auth state listener will emit to _userController
     if (!_isInitialized) {
-      throw StateError('AuthService not initialized. Call init() first.');
+      // Return null stream connected to controller
+      // Once initialized, listener will start emitting to _userController
+      return Stream<AppUser?>.value(null)
+          .asyncExpand((_) => _userController.stream)
+          .distinct();
     }
 
-    // Return the current user immediately, then stream updates
+    // Return the current user immediately, then stream updates from controller
     final current = currentUser;
     return Stream<AppUser?>.value(
       current,
@@ -276,14 +372,14 @@ class AuthService {
   }
 
   /// Gets the current authenticated user synchronously.
-  /// Returns `null` if no user is signed in.
+  /// Returns `null` if no user is signed in or if service is not initialized.
   AppUser? get currentUser {
-    if (!_isInitialized) {
+    if (!_isInitialized || _supabase == null) {
       return null;
     }
 
     try {
-      final session = supabase.auth.currentSession;
+      final session = _supabase!.auth.currentSession;
       final user = session?.user;
       if (user != null) {
         return AppUser.fromSupabase(user);

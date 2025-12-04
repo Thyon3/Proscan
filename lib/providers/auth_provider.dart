@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:thyscan/core/errors/failures.dart';
 import 'package:thyscan/core/models/app_user.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 
@@ -69,25 +70,31 @@ class AuthController extends _$AuthController {
       },
     );
 
-    // Also listen to the actual stream for real-time updates
+    // Listen to the actual stream for real-time updates
+    // Handle case where AuthService might not be initialized yet
     _userSubscription?.cancel();
-    _userSubscription = AuthService.instance.userStream.listen(
-      (user) {
-        state = state.copyWith(
-          user: user,
-          isLoading: false,
-          error: null,
-        );
-      },
-      onError: (error) {
-        state = state.copyWith(
-          isLoading: false,
-          error: error.toString(),
-        );
-      },
-    );
+    try {
+      _userSubscription = AuthService.instance.userStream.listen(
+        (user) {
+          state = state.copyWith(
+            user: user,
+            isLoading: false,
+            error: null,
+          );
+        },
+        onError: (error) {
+          state = state.copyWith(
+            isLoading: false,
+            error: error.toString(),
+          );
+        },
+      );
+    } catch (e) {
+      // If AuthService is not initialized, just use null user
+      // It will update once AuthService initializes
+    }
 
-    // Get initial user synchronously
+    // Get initial user synchronously (safe - returns null if not initialized)
     final initialUser = AuthService.instance.currentUser;
     return AuthState(user: initialUser);
   }
@@ -100,9 +107,10 @@ class AuthController extends _$AuthController {
       await AuthService.instance.signInWithEmail(email, password);
       // State will be updated via the stream listener
     } catch (e) {
+      final errorMessage = _extractErrorMessage(e);
       state = state.copyWith(
         isLoading: false,
-        error: e.toString().replaceFirst('AuthFailure: ', ''),
+        error: errorMessage,
       );
       rethrow;
     }
@@ -122,9 +130,10 @@ class AuthController extends _$AuthController {
       await AuthService.instance.signInWithEmail(email, password);
       // State will be updated via the stream listener
     } catch (e) {
+      final errorMessage = _extractErrorMessage(e);
       state = state.copyWith(
         isLoading: false,
-        error: e.toString().replaceFirst('AuthFailure: ', ''),
+        error: errorMessage,
       );
       rethrow;
     }
@@ -138,7 +147,7 @@ class AuthController extends _$AuthController {
       await AuthService.instance.signInWithGoogle();
       // State will be updated via the stream listener
     } catch (e) {
-      final errorMessage = e.toString().replaceFirst('AuthFailure: ', '');
+      final errorMessage = _extractErrorMessage(e);
       // Don't set error if user cancelled
       if (errorMessage.toLowerCase().contains('cancelled')) {
         state = state.copyWith(isLoading: false);
@@ -160,12 +169,42 @@ class AuthController extends _$AuthController {
       await AuthService.instance.signOut();
       // State will be updated via the stream listener
     } catch (e) {
+      final errorMessage = _extractErrorMessage(e);
       state = state.copyWith(
         isLoading: false,
-        error: e.toString().replaceFirst('AuthFailure: ', ''),
+        error: errorMessage,
       );
       rethrow;
     }
+  }
+
+  /// Extracts a user-friendly error message from an exception
+  String _extractErrorMessage(dynamic error) {
+    // Check if it's an AuthFailure (or any Failure) and extract the message
+    if (error is AuthFailure) {
+      return error.message;
+    }
+    
+    // Check if it's a generic Failure
+    if (error is Failure) {
+      return error.message;
+    }
+    
+    // For other exceptions, try to extract meaningful message
+    final errorString = error.toString();
+    
+    // Remove common prefixes
+    if (errorString.startsWith('AuthFailure: ')) {
+      return errorString.substring('AuthFailure: '.length);
+    }
+    
+    // If it's "Instance of 'AuthFailure'", return a generic message
+    if (errorString.contains("Instance of 'AuthFailure'")) {
+      return 'Authentication failed. Please try again.';
+    }
+    
+    // Return the error string as-is, or a fallback
+    return errorString.isNotEmpty ? errorString : 'An unexpected error occurred';
   }
 
   /// Clear error state
