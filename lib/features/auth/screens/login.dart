@@ -106,8 +106,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
       if (!mounted) return;
 
-      // Navigate to home screen on success
-      context.go('/appmainscreen');
+      // Wait for auth state to update via stream
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      // Check if authentication was successful
+      final authState = ref.read(authControllerProvider);
+      if (authState.isAuthenticated) {
+        // Navigate to home screen on success
+        context.go('/appmainscreen');
+      } else {
+        // Authentication failed, show error
+        if (authState.error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                authState.error!,
+                style: GoogleFonts.inter(),
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -139,8 +163,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
       if (!mounted) return;
 
-      // Navigate to home screen on success
-      context.go('/appmainscreen');
+      // Wait for auth state to update via stream
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      // Check if authentication was successful
+      final authState = ref.read(authControllerProvider);
+      if (authState.isAuthenticated) {
+        // Navigate to home screen on success
+        context.go('/appmainscreen');
+      } else {
+        // Error is already handled in the controller (cancellation is silent)
+        if (authState.error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                authState.error!,
+                style: GoogleFonts.inter(),
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (!mounted) return;
 

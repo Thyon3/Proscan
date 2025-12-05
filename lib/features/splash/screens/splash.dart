@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/services/app_logger.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -49,11 +51,46 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Future.delayed(const Duration(seconds: 2), () {
+    // Check authentication and navigate accordingly
+    _checkAuthAndNavigate();
+  }
+
+  /// Checks authentication state and navigates to appropriate screen
+  Future<void> _checkAuthAndNavigate() async {
+    // Wait for minimum splash duration (1.8 seconds for animation)
+    await Future.delayed(const Duration(milliseconds: 1800));
+
+    if (!mounted) return;
+
+    try {
+      // Ensure AuthService is initialized
+      await AuthService.instance.ensureInitialized();
+
+      if (!mounted) return;
+
+      // Check if user is authenticated
+      final user = AuthService.instance.currentUser;
+
+      if (user != null) {
+        // User is authenticated, go to main screen
+        AppLogger.info('Splash: User authenticated, navigating to appmainscreen');
+        context.go('/appmainscreen');
+      } else {
+        // User not authenticated, go to onboarding
+        AppLogger.info('Splash: User not authenticated, navigating to onboarding');
+        context.goNamed('onboarding');
+      }
+    } catch (e, stack) {
+      AppLogger.error(
+        'Splash: Error checking authentication',
+        error: e,
+        stack: stack,
+      );
+      // On error, default to onboarding
       if (mounted) {
         context.goNamed('onboarding');
       }
-    });
+    }
   }
 
   @override

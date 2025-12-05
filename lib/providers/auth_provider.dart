@@ -1,6 +1,4 @@
 // providers/auth_provider.dart
-import 'dart:async';
-
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:thyscan/core/errors/failures.dart';
 import 'package:thyscan/core/models/app_user.dart';
@@ -44,11 +42,9 @@ Stream<AppUser?> authUserStream(Ref ref) {
 /// Riverpod controller for managing authentication state and operations
 @riverpod
 class AuthController extends _$AuthController {
-  StreamSubscription<AppUser?>? _userSubscription;
-
   @override
   AuthState build() {
-    // Watch the user stream - it returns AsyncValue, so we need to listen to the actual stream
+    // Watch the user stream via provider - this handles all state updates
     ref.listen<AsyncValue<AppUser?>>(
       authUserStreamProvider,
       (previous, next) {
@@ -69,30 +65,6 @@ class AuthController extends _$AuthController {
         );
       },
     );
-
-    // Listen to the actual stream for real-time updates
-    // Handle case where AuthService might not be initialized yet
-    _userSubscription?.cancel();
-    try {
-      _userSubscription = AuthService.instance.userStream.listen(
-        (user) {
-          state = state.copyWith(
-            user: user,
-            isLoading: false,
-            error: null,
-          );
-        },
-        onError: (error) {
-          state = state.copyWith(
-            isLoading: false,
-            error: error.toString(),
-          );
-        },
-      );
-    } catch (e) {
-      // If AuthService is not initialized, just use null user
-      // It will update once AuthService initializes
-    }
 
     // Get initial user synchronously (safe - returns null if not initialized)
     final initialUser = AuthService.instance.currentUser;
@@ -117,7 +89,8 @@ class AuthController extends _$AuthController {
   }
 
   /// Sign up with email and password
-  Future<void> signUpWithEmail(
+  /// Returns true if email confirmation is required
+  Future<bool> signUpWithEmail(
     String email,
     String password, {
     String? name,
@@ -125,10 +98,29 @@ class AuthController extends _$AuthController {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      await AuthService.instance.signUpWithEmail(email, password, name: name);
-      // Auto sign in after signup
-      await AuthService.instance.signInWithEmail(email, password);
-      // State will be updated via the stream listener
+      final requiresEmailConfirmation = await AuthService.instance.signUpWithEmail(
+        email,
+        password,
+        name: name,
+      );
+
+      if (requiresEmailConfirmation) {
+        // Email confirmation is required - don't auto sign in
+        state = state.copyWith(
+          isLoading: false,
+          error: null,
+        );
+        // Throw a specific error that can be caught and handled by UI
+        throw AuthFailure(
+          'Please check your email to confirm your account before signing in.',
+        );
+      } else {
+        // User is immediately signed in (email confirmation disabled)
+        // Auto sign in after signup
+        await AuthService.instance.signInWithEmail(email, password);
+        // State will be updated via the stream listener
+        return false;
+      }
     } catch (e) {
       final errorMessage = _extractErrorMessage(e);
       state = state.copyWith(

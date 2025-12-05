@@ -1,4 +1,5 @@
 import 'package:go_router/go_router.dart';
+import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/features/auth/screens/forgotpassword.dart';
 import 'package:thyscan/features/auth/screens/login.dart'
     hide ForgotPasswordScreen;

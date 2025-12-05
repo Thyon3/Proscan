@@ -50,8 +50,12 @@ class AuthService {
     // Wait for initialization to complete (with timeout)
     try {
       await _initCompleter.future.timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 15), // Increased from 10 to 15 seconds
         onTimeout: () {
+          // Check if init is still running
+          if (_isInitializing) {
+            AppLogger.error('Init still running after timeout - likely network issue or Supabase.initialize() hanging');
+          }
           throw AuthFailure(
             'Authentication service is taking too long to initialize. Please check your internet connection and try again.',
           );
@@ -102,58 +106,138 @@ class AuthService {
       } else {
         // Initialize with PKCE flow for deep linking support
         // Credentials are loaded from .env file via envied (compile-time obfuscated)
-        final supabaseUrl = AppEnv.supabaseUrl;
-        final supabaseAnonKey = AppEnv.supabaseAnonKey;
-
-        if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+        String supabaseUrl;
+        String supabaseAnonKey;
+        
+        try {
+          supabaseUrl = AppEnv.supabaseUrl.trim(); // Trim whitespace
+          supabaseAnonKey = AppEnv.supabaseAnonKey.trim();
+          
+          // Remove trailing slash if present
+          if (supabaseUrl.endsWith('/')) {
+            supabaseUrl = supabaseUrl.substring(0, supabaseUrl.length - 1);
+          }
+          
+          // Validate URL format
+          if (!supabaseUrl.startsWith('https://') || !supabaseUrl.endsWith('.supabase.co')) {
+            AppLogger.error('Invalid Supabase URL format', data: {'url': supabaseUrl});
+            throw AuthFailure(
+              'Invalid Supabase URL format. URL must start with https:// and end with .supabase.co',
+            );
+          }
+          
+          AppLogger.info('Loaded Supabase credentials from AppEnv', data: {
+            'url': supabaseUrl, // Log actual URL for debugging
+            'urlLength': supabaseUrl.length,
+            'keyLength': supabaseAnonKey.length,
+          });
+        } catch (e, stack) {
+          if (e is AuthFailure) {
+            rethrow;
+          }
+          AppLogger.error('Failed to load AppEnv credentials', error: e, stack: stack);
           throw AuthFailure(
-            'Supabase credentials not found. Please ensure .env file exists with SUPABASE_URL and SUPABASE_ANON_KEY, then run: flutter pub run build_runner build',
+            'Failed to load Supabase credentials. Please ensure .env file exists and run: flutter pub run build_runner build --delete-conflicting-outputs',
           );
         }
 
-        await Supabase.initialize(
-          url: supabaseUrl,
-          anonKey: supabaseAnonKey,
-          authOptions: FlutterAuthClientOptions(
-            authFlowType: AuthFlowType.pkce,
-          ),
-        );
-        _supabase = Supabase.instance.client;
-        AppLogger.info('Supabase initialized with PKCE flow');
+        if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+          AppLogger.error('Supabase credentials are empty', data: {
+            'urlEmpty': supabaseUrl.isEmpty,
+            'keyEmpty': supabaseAnonKey.isEmpty,
+          });
+          throw AuthFailure(
+            'Supabase credentials are empty. Please ensure .env file has valid SUPABASE_URL and SUPABASE_ANON_KEY, then run: flutter pub run build_runner build --delete-conflicting-outputs',
+          );
+        }
+
+        AppLogger.info('Initializing Supabase with PKCE flow...');
+        try {
+          // Add timeout to Supabase.initialize() to prevent hanging
+          await Supabase.initialize(
+            url: supabaseUrl,
+            anonKey: supabaseAnonKey,
+            authOptions: FlutterAuthClientOptions(
+              authFlowType: AuthFlowType.pkce,
+            ),
+          ).timeout(
+            const Duration(seconds: 8), // Timeout before ensureInitialized timeout
+            onTimeout: () {
+              throw TimeoutException(
+                'Supabase initialization timed out after 8 seconds. This may indicate a network issue or PKCE flow problem.',
+                const Duration(seconds: 8),
+              );
+            },
+          );
+          _supabase = Supabase.instance.client;
+          AppLogger.info('Supabase initialized successfully with PKCE flow');
+        } catch (e, stack) {
+          AppLogger.error('Supabase.initialize() failed', error: e, stack: stack);
+          
+          // Provide more specific error messages
+          String errorMessage;
+          if (e is TimeoutException) {
+            errorMessage = 'Supabase initialization timed out. Please check your internet connection. If the problem persists, try restarting the app.';
+          } else if (e.toString().contains('SocketException') || 
+                     e.toString().contains('Network') ||
+                     e.toString().contains('connection')) {
+            errorMessage = 'Network error connecting to Supabase. Please check your internet connection.';
+          } else if (e.toString().contains('Invalid') || 
+                     e.toString().contains('credentials')) {
+            errorMessage = 'Invalid Supabase credentials. Please check your .env file and regenerate with: flutter pub run build_runner build --delete-conflicting-outputs';
+          } else {
+            errorMessage = 'Failed to connect to Supabase: ${e.toString()}. Please check your internet connection and Supabase credentials.';
+          }
+          
+          throw AuthFailure(errorMessage);
+        }
       }
 
       // Listen to auth state changes and transform to AppUser stream
-      supabase.auth.onAuthStateChange.listen((data) {
-        final event = data.event;
-        final session = data.session;
+      try {
+        supabase.auth.onAuthStateChange.listen((data) {
+          final event = data.event;
+          final session = data.session;
 
-        AppLogger.info(
-          'Auth state changed: ${event.toString()}',
-          data: {'hasSession': session != null},
-        );
+          AppLogger.info(
+            'Auth state changed: ${event.toString()}',
+            data: {'hasSession': session != null},
+          );
 
-        final user = session?.user;
-        if (user != null) {
-          final appUser = AppUser.fromSupabase(user);
-          _userController.add(appUser);
-          AppLogger.info('User authenticated: ${appUser.email}');
-        } else {
-          _userController.add(null);
-          AppLogger.info('User signed out');
-        }
-      });
+          final user = session?.user;
+          if (user != null) {
+            final appUser = AppUser.fromSupabase(user);
+            _userController.add(appUser);
+            AppLogger.info('User authenticated: ${appUser.email}');
+          } else {
+            _userController.add(null);
+            AppLogger.info('User signed out');
+          }
+        });
+        AppLogger.info('Auth state change listener registered');
+      } catch (e, stack) {
+        AppLogger.error('Failed to register auth state listener', error: e, stack: stack);
+        // Don't throw - we can still use the service, just won't get real-time updates
+      }
 
       _isInitialized = true;
       _isInitializing = false;
       AppLogger.info('AuthService initialized successfully');
       
       // Emit initial user state to stream once initialized
-      final initialUser = currentUser;
-      _userController.add(initialUser);
+      try {
+        final initialUser = currentUser;
+        _userController.add(initialUser);
+        AppLogger.info('Emitted initial user state', data: {'hasUser': initialUser != null});
+      } catch (e, stack) {
+        AppLogger.error('Failed to emit initial user state', error: e, stack: stack);
+        // Continue - not critical
+      }
       
       // Complete the initialization completer
       if (!_initCompleter.isCompleted) {
         _initCompleter.complete();
+        AppLogger.info('Initialization completer completed');
       }
     } catch (e, stack) {
       _isInitializing = false;
@@ -161,20 +245,41 @@ class AuthService {
         'Failed to initialize AuthService',
         error: e,
         stack: stack,
+        data: {
+          'errorType': e.runtimeType.toString(),
+          'errorMessage': e.toString(),
+        },
       );
       
       // Complete with error if not already completed
       if (!_initCompleter.isCompleted) {
         _initCompleter.completeError(e);
+        AppLogger.info('Initialization completer completed with error');
       }
       
-      throw AuthFailure('Failed to initialize authentication: ${e.toString()}');
+      // Extract user-friendly error message
+      String errorMessage;
+      if (e is AuthFailure) {
+        errorMessage = e.message;
+      } else if (e.toString().contains('SocketException') || 
+                 e.toString().contains('Network') ||
+                 e.toString().contains('connection')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (e.toString().contains('Invalid') || 
+                 e.toString().contains('credentials')) {
+        errorMessage = 'Invalid Supabase credentials. Please check your .env file and regenerate with: flutter pub run build_runner build --delete-conflicting-outputs';
+      } else {
+        errorMessage = 'Failed to initialize authentication: ${e.toString()}';
+      }
+      
+      throw AuthFailure(errorMessage);
     }
   }
 
   /// Signs up a new user with email and password.
   /// Optionally sets the user's name in metadata.
-  Future<void> signUpWithEmail(
+  /// Returns true if email confirmation is required, false if user is immediately signed in.
+  Future<bool> signUpWithEmail(
     String email,
     String password, {
     String? name,
@@ -197,10 +302,22 @@ class AuthService {
         throw AuthFailure('Sign up failed: No user returned');
       }
 
-      AppLogger.info(
-        'User signed up successfully',
-        data: {'userId': response.user!.id},
-      );
+      // Check if email confirmation is required
+      final requiresEmailConfirmation = response.session == null;
+      
+      if (requiresEmailConfirmation) {
+        AppLogger.info(
+          'User signed up successfully - email confirmation required',
+          data: {'userId': response.user!.id},
+        );
+      } else {
+        AppLogger.info(
+          'User signed up successfully - immediately signed in',
+          data: {'userId': response.user!.id},
+        );
+      }
+
+      return requiresEmailConfirmation;
     } on AuthException catch (e) {
       final message = _mapAuthExceptionToMessage(e);
       AppLogger.error('Sign up failed', error: e, data: {'message': message});

@@ -1,7 +1,64 @@
 part of 'router.dart';
 
+/// Routes that don't require authentication
+const _publicRoutes = [
+  '/',
+  '/onboarding',
+  '/login',
+  '/signup',
+  '/forgotpassword',
+  '/verifyotp',
+  '/resetpassword',
+];
+
+/// Routes that should redirect to home if user is already authenticated
+const _authRoutes = [
+  '/login',
+  '/signup',
+  '/onboarding',
+];
+
+/// Checks if a route requires authentication
+bool _requiresAuth(String location) {
+  return !_publicRoutes.contains(location);
+}
+
+/// Checks if a route is an auth route (login/signup)
+bool _isAuthRoute(String location) {
+  return _authRoutes.contains(location);
+}
+
 final GoRouter router = GoRouter(
   initialLocation: '/',
+  redirect: (context, state) {
+    try {
+      // Get current user from AuthService (singleton)
+      final user = AuthService.instance.currentUser;
+      final isAuthenticated = user != null;
+      final location = state.matchedLocation;
+
+      // If user is authenticated and trying to access auth routes, redirect to home
+      if (isAuthenticated && _isAuthRoute(location)) {
+        return '/appmainscreen';
+      }
+
+      // If user is not authenticated and trying to access protected routes, redirect to login
+      if (!isAuthenticated && _requiresAuth(location)) {
+        return '/login';
+      }
+
+      // No redirect needed
+      return null;
+    } catch (e) {
+      // If AuthService is not initialized or there's an error, allow access to public routes
+      final location = state.matchedLocation;
+      if (_publicRoutes.contains(location)) {
+        return null;
+      }
+      // For protected routes, redirect to login
+      return '/login';
+    }
+  },
   routes: [
     GoRoute(path: '/', builder: (context, state) => SplashScreen()),
     GoRoute(

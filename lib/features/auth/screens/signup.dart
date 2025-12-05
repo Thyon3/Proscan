@@ -130,7 +130,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
     final authController = ref.read(authControllerProvider.notifier);
 
     try {
-      await authController.signUpWithEmail(
+      final requiresEmailConfirmation = await authController.signUpWithEmail(
         _emailCtrl.text.trim(),
         _passCtrl.text,
         name: _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim() : null,
@@ -138,30 +138,91 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
       if (!mounted) return;
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Account created successfully! Signing you in...',
-            style: GoogleFonts.inter(),
-          ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
-      // Navigate to home screen
-      context.go('/appmainscreen');
-    } catch (e) {
-      if (!mounted) return;
-
-      // Error is already handled in the controller, but show snackbar for user feedback
-      final authState = ref.read(authControllerProvider);
-      if (authState.error != null) {
+      if (requiresEmailConfirmation) {
+        // Email confirmation is required
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              authState.error!,
+              'Account created! Please check your email to confirm your account.',
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        // Navigate to login screen
+        context.go('/login');
+        return;
+      }
+
+      // Wait for auth state to update via stream
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      // Check if authentication was successful
+      final authState = ref.read(authControllerProvider);
+      if (authState.isAuthenticated) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Account created successfully!',
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // Navigate to home screen
+        context.go('/appmainscreen');
+      } else {
+        // Authentication failed
+        if (authState.error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                authState.error!,
+                style: GoogleFonts.inter(),
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      // Check if this is an email confirmation error (expected behavior)
+      final authState = ref.read(authControllerProvider);
+      final errorMessage = authState.error ?? '';
+      
+      if (errorMessage.contains('check your email') || 
+          errorMessage.contains('confirm your account')) {
+        // This is expected - email confirmation required
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              errorMessage,
+              style: GoogleFonts.inter(),
+            ),
+            backgroundColor: Colors.orange,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        // Navigate to login screen
+        context.go('/login');
+      } else {
+        // Actual error occurred
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              errorMessage.isNotEmpty ? errorMessage : 'An error occurred. Please try again.',
               style: GoogleFonts.inter(),
             ),
             backgroundColor: Colors.redAccent,
@@ -183,8 +244,32 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
       if (!mounted) return;
 
-      // Navigate to home screen on success
-      context.go('/appmainscreen');
+      // Wait for auth state to update via stream
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      // Check if authentication was successful
+      final authState = ref.read(authControllerProvider);
+      if (authState.isAuthenticated) {
+        // Navigate to home screen on success
+        context.go('/appmainscreen');
+      } else {
+        // Error is already handled in the controller (cancellation is silent)
+        if (authState.error != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                authState.error!,
+                style: GoogleFonts.inter(),
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (!mounted) return;
 
