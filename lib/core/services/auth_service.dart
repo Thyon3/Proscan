@@ -294,23 +294,38 @@ class AuthService {
           print('DEBUG: Exception message: ${e.toString()}');
           print('DEBUG: Stack trace: $stack');
 
-          // Provide more specific error messages
-          String errorMessage;
-          if (e is TimeoutException) {
-            errorMessage =
-                'Supabase initialization timed out. Please check your internet connection. If the problem persists, try restarting the app.';
-          } else if (e.toString().contains('SocketException') ||
+          // OFFLINE-FIRST: If network error, continue in guest mode (don't throw)
+          // Only throw for invalid credentials, not network issues
+          final isNetworkError = e is TimeoutException ||
+              e.toString().contains('SocketException') ||
               e.toString().contains('Network') ||
-              e.toString().contains('connection')) {
-            errorMessage =
-                'Network error connecting to Supabase. Please check your internet connection.';
-          } else if (e.toString().contains('Invalid') ||
+              e.toString().contains('connection') ||
+              e.toString().contains('Failed host lookup');
+
+          if (isNetworkError) {
+            // Network error - continue in guest mode (offline-first)
+            AppLogger.warning(
+              'Supabase initialization failed due to network error. Continuing in guest mode.',
+            );
+            print('DEBUG: Network error detected - continuing in guest mode');
+            // Don't throw - allow app to continue in guest mode
+            // _isInitialized will remain false, but app won't crash
+            _isInitializing = false;
+            if (!_initCompleter.isCompleted) {
+              _initCompleter.complete(); // Complete without error to allow app to continue
+            }
+            return; // Exit gracefully - app continues in guest mode
+          }
+
+          // For non-network errors (invalid credentials, etc.), still throw
+          String errorMessage;
+          if (e.toString().contains('Invalid') ||
               e.toString().contains('credentials')) {
             errorMessage =
                 'Invalid Supabase credentials. Please check your .env file and regenerate with: flutter pub run build_runner build --delete-conflicting-outputs';
           } else {
             errorMessage =
-                'Failed to connect to Supabase: ${e.toString()}. Please check your internet connection and Supabase credentials.';
+                'Failed to initialize Supabase: ${e.toString()}. Please check your configuration.';
           }
 
           throw AuthFailure(errorMessage);

@@ -1,26 +1,78 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:thyscan/features/help_and_support/presentation/screens/help_and_support.dart';
 import 'package:thyscan/features/help_and_support/presentation/screens/how_to_scan_and_crop.dart';
 import 'package:thyscan/features/settings/presentation/view/settings.dart';
 import 'package:thyscan/features/profile/presentation/screens/edit_profile.dart';
+import 'package:thyscan/providers/auth_provider.dart';
 
-class ProUserProfileScreen extends StatefulWidget {
+class ProUserProfileScreen extends ConsumerStatefulWidget {
   const ProUserProfileScreen({super.key});
 
   @override
-  State<ProUserProfileScreen> createState() => _ProUserProfileScreenState();
+  ConsumerState<ProUserProfileScreen> createState() =>
+      _ProUserProfileScreenState();
 }
 
-class _ProUserProfileScreenState extends State<ProUserProfileScreen> {
+class _ProUserProfileScreenState
+    extends ConsumerState<ProUserProfileScreen> {
   bool appLock = false;
   bool cloudBackup = true;
   bool wifiOnly = true;
 
   final double _backupProgress = 0.62;
   final String _backupLabel = 'Backed up to app • 256 MB';
+
+  /// Handles sign out - calls Supabase signOut() and stays on HomeScreen
+  Future<void> _handleSignOut(BuildContext context) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: const Text('Are you sure you want to sign out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        // Call signOut via AuthController
+        await ref.read(authControllerProvider.notifier).signOut();
+        // User stays on HomeScreen (already there via AppMainScreen)
+        // Greeting will update automatically via stream
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Signed out successfully'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error signing out: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +305,7 @@ class _ProUserProfileScreenState extends State<ProUserProfileScreen> {
                     color: Colors.transparent,
                     borderRadius: BorderRadius.circular(16),
                     child: InkWell(
-                      onTap: () {},
+                      onTap: () => _handleSignOut(context),
                       borderRadius: BorderRadius.circular(16),
                       child: Container(
                         padding: EdgeInsets.symmetric(

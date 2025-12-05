@@ -16,6 +16,7 @@ import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
+import 'package:thyscan/providers/greeting_provider.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -109,34 +110,16 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  /// Premium Welcome Section
+  /// Premium Welcome Section with Dynamic Greeting (CamScanner-style)
+  /// Updates automatically when time crosses boundaries or user logs in/out
   Widget _buildWelcomeSection(BuildContext context, ColorScheme colorScheme) {
-    final now = DateTime.now();
-    final hour = now.hour;
-    String greeting;
-
-    if (hour < 12) {
-      greeting = 'Good Morning';
-    } else if (hour < 17) {
-      greeting = 'Good Afternoon';
-    } else {
-      greeting = 'Good Evening';
-    }
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            greeting,
-            style: GoogleFonts.inter(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onBackground,
-              letterSpacing: -0.8,
-            ),
-          ),
+          // Dynamic greeting with fade animation
+          _DynamicGreetingText(colorScheme: colorScheme),
           const SizedBox(height: 4),
           Text(
             'Ready to scan some documents?',
@@ -898,6 +881,106 @@ class _PremiumActionButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Dynamic greeting text widget with smooth fade animation
+/// Updates automatically when greeting changes (time boundaries or login/logout)
+class _DynamicGreetingText extends ConsumerStatefulWidget {
+  final ColorScheme colorScheme;
+
+  const _DynamicGreetingText({required this.colorScheme});
+
+  @override
+  ConsumerState<_DynamicGreetingText> createState() =>
+      _DynamicGreetingTextState();
+}
+
+class _DynamicGreetingTextState extends ConsumerState<_DynamicGreetingText>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+  String _currentGreeting = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    );
+    _fadeController.forward();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Watch greeting stream for automatic updates
+    final greetingAsync = ref.watch(greetingProvider);
+
+    return greetingAsync.when(
+      data: (greeting) {
+        // If greeting changed, animate fade out/in
+        if (greeting != _currentGreeting && _currentGreeting.isNotEmpty) {
+          _fadeController.forward(from: 0.0);
+          _currentGreeting = greeting;
+        } else if (_currentGreeting.isEmpty) {
+          // Initial load
+          _currentGreeting = greeting;
+        }
+
+        return FadeTransition(
+          opacity: _fadeAnimation,
+          child: Text(
+            _currentGreeting,
+            style: GoogleFonts.inter(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: widget.colorScheme.onBackground,
+              letterSpacing: -0.8,
+            ),
+          ),
+        );
+      },
+      loading: () {
+        // Show initial greeting while loading
+        final initialGreeting = ref.read(currentGreetingProvider);
+        if (_currentGreeting.isEmpty) {
+          _currentGreeting = initialGreeting;
+        }
+        return Text(
+          _currentGreeting,
+          style: GoogleFonts.inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: widget.colorScheme.onBackground,
+            letterSpacing: -0.8,
+          ),
+        );
+      },
+      error: (error, stack) {
+        // Fallback to current greeting on error
+        final fallbackGreeting = ref.read(currentGreetingProvider);
+        return Text(
+          fallbackGreeting,
+          style: GoogleFonts.inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w800,
+            color: widget.colorScheme.onBackground,
+            letterSpacing: -0.8,
+          ),
+        );
+      },
     );
   }
 }

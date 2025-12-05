@@ -25,14 +25,23 @@ void main() {
       };
 
       try {
-        await AuthService.instance.init(); // ← AWAIT IT
+        // OFFLINE-FIRST: Start AuthService.init() in background (non-blocking)
+        // App opens instantly, auth initializes silently in background
+        AuthService.instance.init().catchError((error) {
+          AppLogger.error(
+            'AuthService initialization failed (continuing in guest mode)',
+            error: error,
+          );
+        });
+
+        // Initialize Hive (required for app to work)
         await Hive.initFlutter();
         Hive.registerAdapter(DocumentModelAdapter());
         await Hive.openBox<DocumentModel>(DocumentService.boxName);
 
-        AppLogger.info('All services initialized successfully');
+        AppLogger.info('Core services initialized successfully (auth initializing in background)');
       } catch (e, s) {
-        AppLogger.error('FATAL: Initialization failed', error: e, stack: s);
+        AppLogger.error('FATAL: Core initialization failed', error: e, stack: s);
         // Optional: Show crash screen
       }
 

@@ -56,40 +56,19 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   /// Checks authentication state and navigates to appropriate screen
+  /// OFFLINE-FIRST: Always goes to HomeScreen, never blocks on login
   Future<void> _checkAuthAndNavigate() async {
     // Wait for minimum splash duration (1.8 seconds for animation)
     await Future.delayed(const Duration(milliseconds: 1800));
 
     if (!mounted) return;
 
-    try {
-      // Ensure AuthService is initialized
-      await AuthService.instance.ensureInitialized();
-
-      if (!mounted) return;
-
-      // Check if user is authenticated
-      final user = AuthService.instance.currentUser;
-
-      if (user != null) {
-        // User is authenticated, go to main screen
-        AppLogger.info('Splash: User authenticated, navigating to appmainscreen');
-        context.go('/appmainscreen');
-      } else {
-        // User not authenticated, go to onboarding
-        AppLogger.info('Splash: User not authenticated, navigating to onboarding');
-        context.goNamed('onboarding');
-      }
-    } catch (e, stack) {
-      AppLogger.error(
-        'Splash: Error checking authentication',
-        error: e,
-        stack: stack,
-      );
-      // On error, default to onboarding
-      if (mounted) {
-        context.goNamed('onboarding');
-      }
+    // OFFLINE-FIRST: Always go to HomeScreen (never block on login)
+    // AuthService will silently initialize in background and auto-login if online
+    // If offline or no session, user stays in Guest Mode
+    AppLogger.info('Splash: Navigating to HomeScreen (offline-first, no blocking)');
+    if (mounted) {
+      context.go('/appmainscreen');
     }
   }
 
