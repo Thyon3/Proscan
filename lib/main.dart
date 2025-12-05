@@ -25,7 +25,6 @@ void main() {
       };
 
       try {
-        // THIS IS THE ONLY CORRECT WAY
         await AuthService.instance.init(); // ← AWAIT IT
         await Hive.initFlutter();
         Hive.registerAdapter(DocumentModelAdapter());

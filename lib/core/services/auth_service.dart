@@ -54,7 +54,9 @@ class AuthService {
         onTimeout: () {
           // Check if init is still running
           if (_isInitializing) {
-            AppLogger.error('Init still running after timeout - likely network issue or Supabase.initialize() hanging');
+            AppLogger.error(
+              'Init still running after timeout - likely network issue or Supabase.initialize() hanging',
+            );
           }
           throw AuthFailure(
             'Authentication service is taking too long to initialize. Please check your internet connection and try again.',
@@ -67,8 +69,8 @@ class AuthService {
       }
       // If completer completed with error, extract the message
       if (e is AuthFailure || e.toString().contains('AuthFailure')) {
-        final message = e is AuthFailure 
-            ? e.message 
+        final message = e is AuthFailure
+            ? e.message
             : e.toString().replaceFirst('AuthFailure: ', '');
         throw AuthFailure(message);
       }
@@ -81,6 +83,28 @@ class AuthService {
   /// Initializes Supabase with PKCE flow for deep linking support.
   /// Reads SUPABASE_URL and SUPABASE_ANON_KEY from environment or uses defaults.
   Future<void> init() async {
+    // DIAGNOSTIC: Plain print at very top (before any state changes)
+    print('DEBUG_PLAIN: AuthService.init() entered');
+
+    // DIAGNOSTIC: Safe AppEnv sample logging (before any trimming/validation)
+    final rawUrl = AppEnv.supabaseUrl;
+    final rawKey = AppEnv.supabaseAnonKey;
+    final urlLength = rawUrl?.length ?? 0;
+    final keyLength = rawKey?.length ?? 0;
+    final urlSample = urlLength > 12
+        ? '${rawUrl!.substring(0, 6)}...${rawUrl.substring(urlLength - 6)}'
+        : (rawUrl ?? 'null');
+    AppLogger.info(
+      'DEBUG: AppEnv raw values (sanitized)',
+      data: {
+        'urlLength': urlLength,
+        'keyLength': keyLength,
+        'urlSample': urlSample,
+      },
+    );
+    // Also print to stdout for logcat visibility
+    print('DEBUG: AppEnv urlLength=$urlLength, keyLength=$keyLength, urlSample=$urlSample');
+
     if (_isInitialized) {
       AppLogger.warning('AuthService already initialized');
       if (!_initCompleter.isCompleted) {
@@ -91,7 +115,9 @@ class AuthService {
 
     // Prevent multiple concurrent initialization calls
     if (_isInitializing) {
-      AppLogger.info('AuthService initialization already in progress, waiting...');
+      AppLogger.info(
+        'AuthService initialization already in progress, waiting...',
+      );
       await _initCompleter.future;
       return;
     }
@@ -99,6 +125,7 @@ class AuthService {
     _isInitializing = true;
 
     try {
+
       // Check if Supabase is already initialized
       if (Supabase.instance.isInitialized) {
         _supabase = Supabase.instance.client;
@@ -108,44 +135,58 @@ class AuthService {
         // Credentials are loaded from .env file via envied (compile-time obfuscated)
         String supabaseUrl;
         String supabaseAnonKey;
-        
+
         try {
           supabaseUrl = AppEnv.supabaseUrl.trim(); // Trim whitespace
           supabaseAnonKey = AppEnv.supabaseAnonKey.trim();
-          
+
           // Remove trailing slash if present
           if (supabaseUrl.endsWith('/')) {
             supabaseUrl = supabaseUrl.substring(0, supabaseUrl.length - 1);
           }
-          
+
           // Validate URL format
-          if (!supabaseUrl.startsWith('https://') || !supabaseUrl.endsWith('.supabase.co')) {
-            AppLogger.error('Invalid Supabase URL format', data: {'url': supabaseUrl});
+          if (!supabaseUrl.startsWith('https://') ||
+              !supabaseUrl.endsWith('.supabase.co')) {
+            AppLogger.error(
+              'Invalid Supabase URL format',
+              data: {'url': supabaseUrl},
+            );
             throw AuthFailure(
               'Invalid Supabase URL format. URL must start with https:// and end with .supabase.co',
             );
           }
-          
-          AppLogger.info('Loaded Supabase credentials from AppEnv', data: {
-            'url': supabaseUrl, // Log actual URL for debugging
-            'urlLength': supabaseUrl.length,
-            'keyLength': supabaseAnonKey.length,
-          });
+
+          AppLogger.info(
+            'Loaded Supabase credentials from AppEnv',
+            data: {
+              'url': supabaseUrl, // Log actual URL for debugging
+              'urlLength': supabaseUrl.length,
+              'keyLength': supabaseAnonKey.length,
+            },
+          );
         } catch (e, stack) {
           if (e is AuthFailure) {
             rethrow;
           }
-          AppLogger.error('Failed to load AppEnv credentials', error: e, stack: stack);
+          AppLogger.error(
+            'Failed to load AppEnv credentials',
+            error: e,
+            stack: stack,
+          );
           throw AuthFailure(
             'Failed to load Supabase credentials. Please ensure .env file exists and run: flutter pub run build_runner build --delete-conflicting-outputs',
           );
         }
 
         if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-          AppLogger.error('Supabase credentials are empty', data: {
-            'urlEmpty': supabaseUrl.isEmpty,
-            'keyEmpty': supabaseAnonKey.isEmpty,
-          });
+          AppLogger.error(
+            'Supabase credentials are empty',
+            data: {
+              'urlEmpty': supabaseUrl.isEmpty,
+              'keyEmpty': supabaseAnonKey.isEmpty,
+            },
+          );
           throw AuthFailure(
             'Supabase credentials are empty. Please ensure .env file has valid SUPABASE_URL and SUPABASE_ANON_KEY, then run: flutter pub run build_runner build --delete-conflicting-outputs',
           );
@@ -153,7 +194,20 @@ class AuthService {
 
         AppLogger.info('Initializing Supabase with PKCE flow...');
         try {
-          // Add timeout to Supabase.initialize() to prevent hanging
+          // DEBUG: Log before initialize with sanitized URL sample
+          final sanitizedUrlSample = supabaseUrl.length > 12
+              ? '${supabaseUrl.substring(0, 6)}...${supabaseUrl.substring(supabaseUrl.length - 6)}'
+              : supabaseUrl;
+          AppLogger.info(
+            'DEBUG: Calling Supabase.initialize() (30s timeout for debug)',
+            data: {
+              'urlSample': sanitizedUrlSample,
+              'urlLength': supabaseUrl.length,
+              'keyLength': supabaseAnonKey.length,
+            },
+          );
+          print('DEBUG: Calling Supabase.initialize() with urlSample=$sanitizedUrlSample, urlLength=${supabaseUrl.length}, keyLength=${supabaseAnonKey.length}');
+
           await Supabase.initialize(
             url: supabaseUrl,
             anonKey: supabaseAnonKey,
@@ -161,34 +215,53 @@ class AuthService {
               authFlowType: AuthFlowType.pkce,
             ),
           ).timeout(
-            const Duration(seconds: 8), // Timeout before ensureInitialized timeout
+            const Duration(seconds: 30), // Increased timeout for debugging
             onTimeout: () {
               throw TimeoutException(
-                'Supabase initialization timed out after 8 seconds. This may indicate a network issue or PKCE flow problem.',
-                const Duration(seconds: 8),
+                'Supabase initialization timed out after 30 seconds. This may indicate a network issue or PKCE flow problem.',
+                const Duration(seconds: 30),
               );
             },
           );
+
           _supabase = Supabase.instance.client;
           AppLogger.info('Supabase initialized successfully with PKCE flow');
+          print('DEBUG: Supabase.initialize() returned successfully');
         } catch (e, stack) {
-          AppLogger.error('Supabase.initialize() failed', error: e, stack: stack);
-          
+          // DEBUG: Full exception logging with stack trace
+          AppLogger.error(
+            'Supabase.initialize() failed',
+            error: e,
+            stack: stack,
+            data: {
+              'errorType': e.runtimeType.toString(),
+              'errorMessage': e.toString(),
+            },
+          );
+          print('DEBUG: Supabase.initialize() failed');
+          print('DEBUG: Exception type: ${e.runtimeType}');
+          print('DEBUG: Exception message: ${e.toString()}');
+          print('DEBUG: Stack trace: $stack');
+
           // Provide more specific error messages
           String errorMessage;
           if (e is TimeoutException) {
-            errorMessage = 'Supabase initialization timed out. Please check your internet connection. If the problem persists, try restarting the app.';
-          } else if (e.toString().contains('SocketException') || 
-                     e.toString().contains('Network') ||
-                     e.toString().contains('connection')) {
-            errorMessage = 'Network error connecting to Supabase. Please check your internet connection.';
-          } else if (e.toString().contains('Invalid') || 
-                     e.toString().contains('credentials')) {
-            errorMessage = 'Invalid Supabase credentials. Please check your .env file and regenerate with: flutter pub run build_runner build --delete-conflicting-outputs';
+            errorMessage =
+                'Supabase initialization timed out. Please check your internet connection. If the problem persists, try restarting the app.';
+          } else if (e.toString().contains('SocketException') ||
+              e.toString().contains('Network') ||
+              e.toString().contains('connection')) {
+            errorMessage =
+                'Network error connecting to Supabase. Please check your internet connection.';
+          } else if (e.toString().contains('Invalid') ||
+              e.toString().contains('credentials')) {
+            errorMessage =
+                'Invalid Supabase credentials. Please check your .env file and regenerate with: flutter pub run build_runner build --delete-conflicting-outputs';
           } else {
-            errorMessage = 'Failed to connect to Supabase: ${e.toString()}. Please check your internet connection and Supabase credentials.';
+            errorMessage =
+                'Failed to connect to Supabase: ${e.toString()}. Please check your internet connection and Supabase credentials.';
           }
-          
+
           throw AuthFailure(errorMessage);
         }
       }
@@ -216,24 +289,35 @@ class AuthService {
         });
         AppLogger.info('Auth state change listener registered');
       } catch (e, stack) {
-        AppLogger.error('Failed to register auth state listener', error: e, stack: stack);
+        AppLogger.error(
+          'Failed to register auth state listener',
+          error: e,
+          stack: stack,
+        );
         // Don't throw - we can still use the service, just won't get real-time updates
       }
 
       _isInitialized = true;
       _isInitializing = false;
       AppLogger.info('AuthService initialized successfully');
-      
+
       // Emit initial user state to stream once initialized
       try {
         final initialUser = currentUser;
         _userController.add(initialUser);
-        AppLogger.info('Emitted initial user state', data: {'hasUser': initialUser != null});
+        AppLogger.info(
+          'Emitted initial user state',
+          data: {'hasUser': initialUser != null},
+        );
       } catch (e, stack) {
-        AppLogger.error('Failed to emit initial user state', error: e, stack: stack);
+        AppLogger.error(
+          'Failed to emit initial user state',
+          error: e,
+          stack: stack,
+        );
         // Continue - not critical
       }
-      
+
       // Complete the initialization completer
       if (!_initCompleter.isCompleted) {
         _initCompleter.complete();
@@ -250,28 +334,30 @@ class AuthService {
           'errorMessage': e.toString(),
         },
       );
-      
+
       // Complete with error if not already completed
       if (!_initCompleter.isCompleted) {
         _initCompleter.completeError(e);
         AppLogger.info('Initialization completer completed with error');
       }
-      
+
       // Extract user-friendly error message
       String errorMessage;
       if (e is AuthFailure) {
         errorMessage = e.message;
-      } else if (e.toString().contains('SocketException') || 
-                 e.toString().contains('Network') ||
-                 e.toString().contains('connection')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (e.toString().contains('Invalid') || 
-                 e.toString().contains('credentials')) {
-        errorMessage = 'Invalid Supabase credentials. Please check your .env file and regenerate with: flutter pub run build_runner build --delete-conflicting-outputs';
+      } else if (e.toString().contains('SocketException') ||
+          e.toString().contains('Network') ||
+          e.toString().contains('connection')) {
+        errorMessage =
+            'Network error. Please check your internet connection and try again.';
+      } else if (e.toString().contains('Invalid') ||
+          e.toString().contains('credentials')) {
+        errorMessage =
+            'Invalid Supabase credentials. Please check your .env file and regenerate with: flutter pub run build_runner build --delete-conflicting-outputs';
       } else {
         errorMessage = 'Failed to initialize authentication: ${e.toString()}';
       }
-      
+
       throw AuthFailure(errorMessage);
     }
   }
@@ -286,7 +372,7 @@ class AuthService {
   }) async {
     // Ensure AuthService is initialized before proceeding
     await ensureInitialized();
-    
+
     try {
       AppLogger.info('Signing up user with email', data: {'email': email});
 
@@ -304,7 +390,7 @@ class AuthService {
 
       // Check if email confirmation is required
       final requiresEmailConfirmation = response.session == null;
-      
+
       if (requiresEmailConfirmation) {
         AppLogger.info(
           'User signed up successfully - email confirmation required',
@@ -336,7 +422,7 @@ class AuthService {
   Future<void> signInWithEmail(String email, String password) async {
     // Ensure AuthService is initialized before proceeding
     await ensureInitialized();
-    
+
     try {
       AppLogger.info('Signing in user with email', data: {'email': email});
 
@@ -372,7 +458,7 @@ class AuthService {
   Future<void> signInWithGoogle() async {
     // Ensure AuthService is initialized before proceeding
     await ensureInitialized();
-    
+
     try {
       AppLogger.info('Starting Google Sign-In (native flow)');
 
@@ -441,7 +527,7 @@ class AuthService {
   Future<void> signOut() async {
     // Ensure AuthService is initialized before proceeding
     await ensureInitialized();
-    
+
     try {
       AppLogger.info('Signing out user');
 
@@ -476,9 +562,9 @@ class AuthService {
     if (!_isInitialized) {
       // Return null stream connected to controller
       // Once initialized, listener will start emitting to _userController
-      return Stream<AppUser?>.value(null)
-          .asyncExpand((_) => _userController.stream)
-          .distinct();
+      return Stream<AppUser?>.value(
+        null,
+      ).asyncExpand((_) => _userController.stream).distinct();
     }
 
     // Return the current user immediately, then stream updates from controller

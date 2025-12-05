@@ -183,10 +183,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
         if (authState.error != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                authState.error!,
-                style: GoogleFonts.inter(),
-              ),
+              content: Text(authState.error!, style: GoogleFonts.inter()),
               backgroundColor: Colors.redAccent,
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 4),
@@ -200,16 +197,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
       // Check if this is an email confirmation error (expected behavior)
       final authState = ref.read(authControllerProvider);
       final errorMessage = authState.error ?? '';
-      
-      if (errorMessage.contains('check your email') || 
+
+      if (errorMessage.contains('check your email') ||
           errorMessage.contains('confirm your account')) {
         // This is expected - email confirmation required
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              errorMessage,
-              style: GoogleFonts.inter(),
-            ),
+            content: Text(errorMessage, style: GoogleFonts.inter()),
             backgroundColor: Colors.orange,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 5),
@@ -222,7 +216,9 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              errorMessage.isNotEmpty ? errorMessage : 'An error occurred. Please try again.',
+              errorMessage.isNotEmpty
+                  ? errorMessage
+                  : 'An error occurred. Please try again.',
               style: GoogleFonts.inter(),
             ),
             backgroundColor: Colors.redAccent,
@@ -259,10 +255,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
         if (authState.error != null) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                authState.error!,
-                style: GoogleFonts.inter(),
-              ),
+              content: Text(authState.error!, style: GoogleFonts.inter()),
               backgroundColor: Colors.redAccent,
               behavior: SnackBarBehavior.floating,
               duration: const Duration(seconds: 4),
@@ -278,10 +271,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
       if (authState.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              authState.error!,
-              style: GoogleFonts.inter(),
-            ),
+            content: Text(authState.error!, style: GoogleFonts.inter()),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
@@ -853,9 +843,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
               const SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                ),
+                child: CircularProgressIndicator(strokeWidth: 2),
               )
             else
               Row(
