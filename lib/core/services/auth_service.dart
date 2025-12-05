@@ -1,5 +1,6 @@
 // core/services/auth_service.dart
 import 'dart:async';
+import 'dart:io';
 
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -72,7 +73,7 @@ class AuthService {
         rethrow;
       }
       // For other errors, log but don't block (offline-first)
-      AppLogger.warning(
+      AppLogger.error(
         'AuthService initialization had an issue - continuing in guest mode',
         error: e,
       );
@@ -429,12 +430,12 @@ class AuthService {
   }
 
   /// Signs up a new user with email and password.
-  /// Optionally sets the user's name in metadata.
+  /// Optionally sets the user's full name in metadata.
   /// Returns true if email confirmation is required, false if user is immediately signed in.
   Future<bool> signUpWithEmail(
     String email,
     String password, {
-    String? name,
+    String? fullName,
   }) async {
     // Ensure AuthService is initialized before proceeding
     await ensureInitialized();
@@ -442,12 +443,27 @@ class AuthService {
     try {
       AppLogger.info('Signing up user with email', data: {'email': email});
 
+      // 1. Determine Device Type
+      String deviceType = 'other';
+      if (Platform.isAndroid) {
+        deviceType = 'android';
+      } else if (Platform.isIOS) {
+        deviceType = 'ios';
+      }
+
+      // 2. Construct Metadata
+      final userData = <String, dynamic>{
+        'device_type': deviceType, // Key matching the trigger
+      };
+      if (fullName != null && fullName.isNotEmpty) {
+        userData['full_name'] = fullName; // Key matching the trigger
+      }
+
+      // 3. Call Supabase with metadata
       final response = await supabase.auth.signUp(
         email: email,
         password: password,
-        data: name != null && name.isNotEmpty
-            ? {'name': name, 'full_name': name}
-            : null,
+        data: userData,
       );
 
       if (response.user == null) {

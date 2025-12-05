@@ -133,7 +133,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
       final requiresEmailConfirmation = await authController.signUpWithEmail(
         _emailCtrl.text.trim(),
         _passCtrl.text,
-        name: _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim() : null,
+        fullName: _nameCtrl.text.trim().isNotEmpty ? _nameCtrl.text.trim() : null,
       );
 
       if (!mounted) return;

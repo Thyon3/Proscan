@@ -93,7 +93,7 @@ class AuthController extends _$AuthController {
   Future<bool> signUpWithEmail(
     String email,
     String password, {
-    String? name,
+    String? fullName,
   }) async {
     state = state.copyWith(isLoading: true, error: null);
 
@@ -101,7 +101,7 @@ class AuthController extends _$AuthController {
       final requiresEmailConfirmation = await AuthService.instance.signUpWithEmail(
         email,
         password,
-        name: name,
+        fullName: fullName,
       );
 
       if (requiresEmailConfirmation) {
