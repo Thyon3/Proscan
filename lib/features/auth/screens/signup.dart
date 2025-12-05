@@ -140,31 +140,32 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
       if (requiresEmailConfirmation) {
         // Email confirmation is required
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Account created! Please check your email to confirm your account.',
-              style: GoogleFonts.inter(),
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Account created! Please check your email to confirm your account.',
+                style: GoogleFonts.inter(),
+              ),
+              backgroundColor: Colors.orange,
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 5),
             ),
-            backgroundColor: Colors.orange,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-        // Navigate to login screen
-        context.go('/login');
+          );
+          // Navigate to login screen
+          context.go('/login');
+        }
         return;
       }
 
-      // Wait for auth state to update via stream
-      await Future.delayed(const Duration(milliseconds: 300));
-
+      // Auth state should update immediately via stream (we emit directly in AuthService)
+      // Check state right away - should be authenticated by now
+      final authState = ref.read(authControllerProvider);
+      
       if (!mounted) return;
 
-      // Check if authentication was successful
-      final authState = ref.read(authControllerProvider);
       if (authState.isAuthenticated) {
-        // Show success message
+        // Show success message and navigate immediately
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -173,23 +174,20 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
           ),
         );
-
-        // Navigate to home screen
         context.go('/appmainscreen');
-      } else {
-        // Authentication failed
-        if (authState.error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(authState.error!, style: GoogleFonts.inter()),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
+      } else if (authState.error != null) {
+        // Show error if authentication failed
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authState.error!, style: GoogleFonts.inter()),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -240,35 +238,32 @@ class _SignupScreenState extends ConsumerState<SignupScreen>
 
       if (!mounted) return;
 
-      // Wait for auth state to update via stream
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      if (!mounted) return;
-
-      // Check if authentication was successful
+      // Auth state should update immediately via stream (we emit directly in AuthService)
+      // Check state right away - should be authenticated by now
       final authState = ref.read(authControllerProvider);
+      
       if (authState.isAuthenticated) {
-        // Navigate to home screen on success
+        // Navigate immediately when authenticated
         context.go('/appmainscreen');
-      } else {
-        // Error is already handled in the controller (cancellation is silent)
-        if (authState.error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(authState.error!, style: GoogleFonts.inter()),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
+      } else if (authState.error != null && 
+                 !authState.error!.toLowerCase().contains('cancelled')) {
+        // Show error if authentication failed (but not for cancellation)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authState.error!, style: GoogleFonts.inter()),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
 
       // Error is already handled in the controller (cancellation is silent)
       final authState = ref.read(authControllerProvider);
-      if (authState.error != null) {
+      if (authState.error != null && 
+          !authState.error!.toLowerCase().contains('cancelled')) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(authState.error!, style: GoogleFonts.inter()),

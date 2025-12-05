@@ -106,31 +106,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
       if (!mounted) return;
 
-      // Wait for auth state to update via stream
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      if (!mounted) return;
-
-      // Check if authentication was successful
+      // Auth state should update immediately via stream (we emit directly in AuthService)
+      // Check state right away - should be authenticated by now
       final authState = ref.read(authControllerProvider);
+      
       if (authState.isAuthenticated) {
-        // Navigate to home screen on success
+        // Navigate immediately when authenticated
         context.go('/appmainscreen');
-      } else {
-        // Authentication failed, show error
-        if (authState.error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                authState.error!,
-                style: GoogleFonts.inter(),
-              ),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
+      } else if (authState.error != null) {
+        // Show error if authentication failed
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authState.error!,
+              style: GoogleFonts.inter(),
             ),
-          );
-        }
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -163,38 +158,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
       if (!mounted) return;
 
-      // Wait for auth state to update via stream
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      if (!mounted) return;
-
-      // Check if authentication was successful
+      // Auth state should update immediately via stream (we emit directly in AuthService)
+      // Check state right away - should be authenticated by now
       final authState = ref.read(authControllerProvider);
+      
       if (authState.isAuthenticated) {
-        // Navigate to home screen on success
+        // Navigate immediately when authenticated
         context.go('/appmainscreen');
-      } else {
-        // Error is already handled in the controller (cancellation is silent)
-        if (authState.error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                authState.error!,
-                style: GoogleFonts.inter(),
-              ),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
+      } else if (authState.error != null && 
+                 !authState.error!.toLowerCase().contains('cancelled')) {
+        // Show error if authentication failed (but not for cancellation)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authState.error!,
+              style: GoogleFonts.inter(),
             ),
-          );
-        }
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
 
       // Error is already handled in the controller (cancellation is silent)
       final authState = ref.read(authControllerProvider);
-      if (authState.error != null) {
+      if (authState.error != null && 
+          !authState.error!.toLowerCase().contains('cancelled')) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

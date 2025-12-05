@@ -33,6 +33,7 @@ class AuthService {
   /// Returns immediately if already initialized.
   /// Starts initialization if not already started.
   /// Throws [AuthFailure] if initialization fails.
+  /// OPTIMIZED: Uses shorter timeout for faster failure detection.
   Future<void> ensureInitialized() async {
     if (_isInitialized) {
       return;
@@ -47,10 +48,10 @@ class AuthService {
       });
     }
 
-    // Wait for initialization to complete (with timeout)
+    // Wait for initialization to complete (with shorter timeout for faster UX)
     try {
       await _initCompleter.future.timeout(
-        const Duration(seconds: 15), // Increased from 10 to 15 seconds
+        const Duration(seconds: 5), // Reduced from 15s to 5s for faster failure
         onTimeout: () {
           // Check if init is still running
           if (_isInitializing) {
@@ -58,25 +59,24 @@ class AuthService {
               'Init still running after timeout - likely network issue or Supabase.initialize() hanging',
             );
           }
-          throw AuthFailure(
-            'Authentication service is taking too long to initialize. Please check your internet connection and try again.',
+          // Don't throw - allow app to continue in guest mode
+          // Just log and return (offline-first approach)
+          AppLogger.warning(
+            'AuthService initialization timed out - continuing in guest mode',
           );
         },
       );
     } catch (e) {
       if (e is AuthFailure) {
+        // For auth failures, still throw
         rethrow;
       }
-      // If completer completed with error, extract the message
-      if (e is AuthFailure || e.toString().contains('AuthFailure')) {
-        final message = e is AuthFailure
-            ? e.message
-            : e.toString().replaceFirst('AuthFailure: ', '');
-        throw AuthFailure(message);
-      }
-      throw AuthFailure(
-        'Failed to initialize authentication service. Please restart the app.',
+      // For other errors, log but don't block (offline-first)
+      AppLogger.warning(
+        'AuthService initialization had an issue - continuing in guest mode',
+        error: e,
       );
+      // Don't throw - allow app to continue
     }
   }
 
@@ -463,6 +463,10 @@ class AuthService {
           data: {'userId': response.user!.id},
         );
       } else {
+        // User is immediately signed in - emit to stream right away
+        final appUser = AppUser.fromSupabase(response.user!);
+        _userController.add(appUser);
+        
         AppLogger.info(
           'User signed up successfully - immediately signed in',
           data: {'userId': response.user!.id},
@@ -500,6 +504,11 @@ class AuthService {
       if (response.user == null) {
         throw AuthFailure('Sign in failed: No user returned');
       }
+
+      // Immediately emit user to stream (don't wait for onAuthStateChange)
+      // This makes navigation instant
+      final appUser = AppUser.fromSupabase(response.user!);
+      _userController.add(appUser);
 
       AppLogger.info(
         'User signed in successfully',
@@ -565,6 +574,11 @@ class AuthService {
       if (response.user == null) {
         throw AuthFailure('Google sign-in failed: No user returned');
       }
+
+      // Immediately emit user to stream (don't wait for onAuthStateChange)
+      // This makes navigation instant
+      final appUser = AppUser.fromSupabase(response.user!);
+      _userController.add(appUser);
 
       AppLogger.info(
         'Google Sign-In completed successfully',

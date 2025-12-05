@@ -1,18 +1,21 @@
-import 'dart:math' as math;
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:thyscan/providers/auth_provider.dart';
 
-class ProfileGuestScreen extends StatelessWidget {
+class ProfileGuestScreen extends ConsumerWidget {
   const ProfileGuestScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
     // Responsive scale (keeps sizing consistent across phones)
     final width = MediaQuery.of(context).size.width;
     final scale = (width / 375).clamp(0.9, 1.15);
+    
+    final authController = ref.read(authControllerProvider.notifier);
 
     return Scaffold(
       body: SafeArea(
@@ -60,19 +63,22 @@ class ProfileGuestScreen extends StatelessWidget {
                     SizedBox(height: 16 * scale),
 
                     // Buttons
-                    _AuthButton.filled(
-                      label: 'Continue with Apple',
-                      onPressed: () {
-                        /* TODO: Apple Sign-in */
-                      },
-                      leading: Icon(Icons.apple, color: Colors.white),
-                      height: 48 * scale,
-                    ),
-                    SizedBox(height: 10 * scale),
                     _AuthButton.tonal(
                       label: 'Continue with Google',
-                      onPressed: () {
-                        /* TODO: Google Sign-in */
+                      onPressed: () async {
+                        try {
+                          await authController.signInWithGoogle();
+                          // Navigation handled automatically via auth state change
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Sign in failed: ${e.toString()}'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
                       },
                       leading: Icon(
                         Icons.g_mobiledata_rounded,
@@ -86,7 +92,7 @@ class ProfileGuestScreen extends StatelessWidget {
                     _AuthButton.tonal(
                       label: 'Continue with Email',
                       onPressed: () {
-                        /* TODO: Email Sign-in */
+                        context.push('/login');
                       },
                       leading: Icon(
                         Icons.mail_outline_rounded,
@@ -95,20 +101,6 @@ class ProfileGuestScreen extends StatelessWidget {
                       ),
                       height: 48 * scale,
                       tone: cs.primary.withValues(alpha: 0.1),
-                    ),
-
-                    SizedBox(height: 12 * scale),
-                    TextButton(
-                      onPressed: () {
-                        /* TODO: Continue as guest */
-                      },
-                      child: Text(
-                        'Continue free without account',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
                     ),
                     SizedBox(height: 4 * scale),
                   ],
@@ -139,11 +131,11 @@ class ProfileGuestScreen extends StatelessWidget {
                         iconBg: theme.colorScheme.surfaceVariant.withOpacity(
                           0.6,
                         ),
-                        icon: Icons.info_outline,
+                        icon: Icons.palette_outlined,
                         title: 'Theme',
                         trailingText: 'System',
                         onTap: () {
-                          /* TODO: Theme */
+                          // TODO: Theme settings
                         },
                       ),
                       SizedBox(height: scale * 4),
@@ -154,7 +146,7 @@ class ProfileGuestScreen extends StatelessWidget {
                         icon: Icons.apps_rounded,
                         title: 'App Icon',
                         onTap: () {
-                          /* TODO: App Icon */
+                          // TODO: App Icon settings
                         },
                       ),
                       SizedBox(height: scale * 4),
@@ -190,7 +182,7 @@ class ProfileGuestScreen extends StatelessWidget {
                         icon: Icons.help_outline_rounded,
                         title: 'Help Center',
                         onTap: () {
-                          /* TODO: Help */
+                          context.push('/helpandsupport');
                         },
                       ),
 
@@ -202,7 +194,7 @@ class ProfileGuestScreen extends StatelessWidget {
                         icon: Icons.mail_outline_rounded,
                         title: 'Contact Us',
                         onTap: () {
-                          /* TODO: Contact */
+                          context.push('/helpandsupport');
                         },
                       ),
                       SizedBox(height: 8 * scale),
@@ -213,7 +205,7 @@ class ProfileGuestScreen extends StatelessWidget {
                         icon: Icons.privacy_tip_outlined,
                         title: 'Privacy Policy',
                         onTap: () {
-                          /* TODO: Privacy */
+                          // TODO: Open privacy policy
                         },
                       ),
                       SizedBox(height: 8 * scale),
@@ -224,7 +216,7 @@ class ProfileGuestScreen extends StatelessWidget {
                         icon: Icons.description_outlined,
                         title: 'Terms of Service',
                         onTap: () {
-                          /* TODO: Terms */
+                          // TODO: Open terms of service
                         },
                       ),
                       SizedBox(height: 20 * scale),
@@ -253,15 +245,10 @@ class _CardContainer extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(
-              theme.brightness == Brightness.dark ? 0.25 : 0.06,
-            ),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        border: Border.all(
+          color: cs.outline.withValues(alpha: 0.12),
+          width: 1,
+        ),
       ),
       child: child,
     );

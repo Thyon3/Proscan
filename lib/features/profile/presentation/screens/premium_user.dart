@@ -8,6 +8,7 @@ import 'package:thyscan/features/help_and_support/presentation/screens/how_to_sc
 import 'package:thyscan/features/settings/presentation/view/settings.dart';
 import 'package:thyscan/features/profile/presentation/screens/edit_profile.dart';
 import 'package:thyscan/providers/auth_provider.dart';
+import 'package:thyscan/core/models/app_user.dart';
 
 class ProUserProfileScreen extends ConsumerStatefulWidget {
   const ProUserProfileScreen({super.key});
@@ -17,8 +18,7 @@ class ProUserProfileScreen extends ConsumerStatefulWidget {
       _ProUserProfileScreenState();
 }
 
-class _ProUserProfileScreenState
-    extends ConsumerState<ProUserProfileScreen> {
+class _ProUserProfileScreenState extends ConsumerState<ProUserProfileScreen> {
   bool appLock = false;
   bool cloudBackup = true;
   bool wifiOnly = true;
@@ -81,6 +81,10 @@ class _ProUserProfileScreenState
     final w = MediaQuery.of(context).size.width;
     final scale = (w / 375).clamp(0.9, 1.15);
 
+    // Get actual user data from auth state
+    final authState = ref.watch(authControllerProvider);
+    final user = authState.user;
+
     return Scaffold(
       backgroundColor: cs.background,
       body: SafeArea(
@@ -93,6 +97,7 @@ class _ProUserProfileScreenState
                 scale: scale,
                 backupProgress: _backupProgress,
                 backupLabel: _backupLabel,
+                user: user,
               ),
               SizedBox(height: 40 * scale),
 
@@ -291,58 +296,32 @@ class _ProUserProfileScreenState
                   vertical: 16 * scale,
                 ),
                 child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: cs.error.withValues(alpha: 0.2),
-                        blurRadius: 15,
-                        offset: const Offset(0, 4),
+                  child: FilledButton(
+                    onPressed: () => _handleSignOut(context),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: cs.error,
+                      foregroundColor: cs.onError,
+                      padding: EdgeInsets.symmetric(
+                        vertical: 16 * scale,
+                        horizontal: 24 * scale,
                       ),
-                    ],
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      onTap: () => _handleSignOut(context),
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          vertical: 16 * scale,
-                          horizontal: 24 * scale,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                            colors: [
-                              cs.error,
-                              Color.lerp(cs.error, Colors.orange, 0.3)!,
-                            ],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Iconsax.logout_1, size: 20 * scale),
+                        SizedBox(width: 12 * scale),
+                        Text(
+                          'Sign Out',
+                          style: GoogleFonts.inter(
+                            fontSize: 16 * scale,
+                            fontWeight: FontWeight.w700,
                           ),
-                          borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Iconsax.logout_1,
-                              color: cs.onError,
-                              size: 20 * scale,
-                            ),
-                            SizedBox(width: 12 * scale),
-                            Text(
-                              'Sign Out',
-                              style: GoogleFonts.inter(
-                                fontSize: 16 * scale,
-                                fontWeight: FontWeight.w700,
-                                color: cs.onError,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
@@ -363,11 +342,13 @@ class _PremiumHeaderSection extends StatelessWidget {
   final double scale;
   final double backupProgress;
   final String backupLabel;
+  final AppUser? user;
 
   const _PremiumHeaderSection({
     required this.scale,
     required this.backupProgress,
     required this.backupLabel,
+    required this.user,
   });
 
   @override
@@ -379,23 +360,9 @@ class _PremiumHeaderSection extends StatelessWidget {
       margin: EdgeInsets.all(16 * scale),
       padding: EdgeInsets.all(24 * scale),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            cs.primary.withValues(alpha: 0.1),
-            cs.primaryContainer.withValues(alpha: 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: cs.outline.withValues(alpha: 0.1)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cs.outline.withValues(alpha: 0.12), width: 1),
       ),
       child: Column(
         children: [
@@ -418,27 +385,27 @@ class _PremiumHeaderSection extends StatelessWidget {
               ),
             ),
           ),
-          // Avatar with premium border
+          // Avatar
           Container(
             width: 80 * scale,
             height: 80 * scale,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: cs.primary, width: 3),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [cs.surface, cs.surfaceVariant],
-              ),
+              color: cs.surfaceVariant,
             ),
-            child: ClipOval(
-              child: Image.asset(
-                'assets/icons/google.png',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    Icon(Iconsax.user, size: 32 * scale, color: cs.primary),
-              ),
-            ),
+            child: user?.photoUrl != null
+                ? ClipOval(
+                    child: Image.network(
+                      user!.photoUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Iconsax.user,
+                        size: 32 * scale,
+                        color: cs.primary,
+                      ),
+                    ),
+                  )
+                : Icon(Iconsax.user, size: 32 * scale, color: cs.primary),
           ),
           SizedBox(height: 16 * scale),
 
@@ -447,7 +414,7 @@ class _PremiumHeaderSection extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Jessica Miller',
+                user?.name ?? 'User',
                 style: GoogleFonts.inter(
                   fontSize: 20 * scale,
                   fontWeight: FontWeight.w700,
@@ -462,7 +429,7 @@ class _PremiumHeaderSection extends StatelessWidget {
 
           // Email
           Text(
-            'asnakemengesha80@gmail.com',
+            user?.email ?? '',
             style: GoogleFonts.inter(
               fontSize: 14 * scale,
               color: cs.onSurface.withValues(alpha: 0.7),
@@ -575,15 +542,11 @@ class _PremiumSection extends StatelessWidget {
           margin: EdgeInsets.symmetric(horizontal: 16 * scale),
           decoration: BoxDecoration(
             color: cs.surface,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-            border: Border.all(color: cs.outline.withValues(alpha: 0.1)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: cs.outline.withValues(alpha: 0.12),
+              width: 1,
+            ),
           ),
           child: Column(children: children),
         ),
@@ -625,17 +588,10 @@ class _PremiumTile extends StatelessWidget {
             children: [
               // Icon Container
               Container(
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      cs.primary.withValues(alpha: 0.1),
-                      cs.primaryContainer.withValues(alpha: 0.1),
-                    ],
-                  ),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 20, color: cs.primary),
@@ -724,17 +680,10 @@ class _PremiumToggleTile extends StatelessWidget {
             children: [
               // Icon Container
               Container(
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      cs.primary.withValues(alpha: 0.1),
-                      cs.primaryContainer.withValues(alpha: 0.1),
-                    ],
-                  ),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 20, color: cs.primary),
@@ -753,55 +702,11 @@ class _PremiumToggleTile extends StatelessWidget {
                 ),
               ),
 
-              // Premium Switch
-              Container(
-                width: 50,
-                height: 30,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(15),
-                  gradient: value
-                      ? LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [cs.primary, cs.primaryContainer],
-                        )
-                      : LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [cs.surfaceVariant, cs.surfaceVariant],
-                        ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 200),
-                      left: value ? 22 : 2,
-                      top: 2,
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              // Switch
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: cs.primary,
               ),
             ],
           ),
@@ -878,30 +783,15 @@ class _PremiumProgressBar extends StatelessWidget {
         color: cs.surfaceVariant.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(radius),
       ),
-      child: Stack(
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 500),
-            width: double.infinity,
-            height: height,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [cs.primary, cs.primaryContainer],
-              ),
-              borderRadius: BorderRadius.circular(radius),
-            ),
-            child: FractionallySizedBox(
-              widthFactor: progress.clamp(0.0, 1.0),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(radius),
-                ),
-              ),
-            ),
+      child: FractionallySizedBox(
+        alignment: Alignment.centerLeft,
+        widthFactor: progress.clamp(0.0, 1.0),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cs.primary,
+            borderRadius: BorderRadius.circular(radius),
           ),
-        ],
+        ),
       ),
     );
   }

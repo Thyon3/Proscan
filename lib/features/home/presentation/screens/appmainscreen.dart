@@ -49,7 +49,7 @@ class AppMainScreen extends ConsumerWidget {
       const ToolsScreen(),
       const Placeholder(),
       const LibraryScreen(),
-      const ProUserProfileScreen(),
+      const ProfileScreen(), // Uses conditional rendering (guest/pro)
     ];
 
     return Scaffold(
