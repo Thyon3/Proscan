@@ -21,4 +21,7 @@ abstract class AppEnv {
 
   @EnviedField(varName: 'GOOGLE_WEB_CLIENT_ID', obfuscate: true)
   static String googleWebClientId = _AppEnv.googleWebClientId;
+
+  @EnviedField(varName: 'BACKEND_API_URL', obfuscate: true)
+  static String? backendApiUrl = _AppEnv.backendApiUrl;
 }

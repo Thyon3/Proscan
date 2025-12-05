@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/config/router/router.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -38,6 +39,14 @@ void main() {
         await Hive.initFlutter();
         Hive.registerAdapter(DocumentModelAdapter());
         await Hive.openBox<DocumentModel>(DocumentService.boxName);
+
+        // Initialize document upload service
+        DocumentUploadService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'DocumentUploadService initialization failed',
+            error: error,
+          );
+        });
 
         AppLogger.info('Core services initialized successfully (auth initializing in background)');
       } catch (e, s) {

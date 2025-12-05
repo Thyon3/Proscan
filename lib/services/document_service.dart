@@ -13,6 +13,7 @@ import 'package:thyscan/core/errors/storage_exceptions.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/app_storage_service.dart';
 import 'package:thyscan/core/services/document_operation_queue.dart';
+import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
@@ -198,6 +199,16 @@ class DocumentService {
       final box = Hive.box<DocumentModel>(boxName);
       await box.put(id, doc);
       _markCacheDirty();
+
+      // Upload to cloud in background (non-blocking)
+      DocumentUploadService.instance.uploadDocument(doc).catchError((error) {
+        AppLogger.warning(
+          'Background upload failed for document ${doc.id}',
+          error: error,
+        );
+        // Upload will be retried automatically via queue
+      });
+
       return doc;
     } catch (e) {
       await _deleteIfExists(tempFilePath);
@@ -444,6 +455,16 @@ class DocumentService {
 
       await box.put(documentId, updatedDoc);
       _markCacheDirty();
+
+      // Upload to cloud in background (non-blocking)
+      DocumentUploadService.instance.uploadDocument(updatedDoc).catchError((error) {
+        AppLogger.warning(
+          'Background upload failed for document ${updatedDoc.id}',
+          error: error,
+        );
+        // Upload will be retried automatically via queue
+      });
+
       return updatedDoc;
     } catch (e) {
       await _deleteIfExists(tempFilePath);
@@ -548,6 +569,16 @@ class DocumentService {
     final box = Hive.box<DocumentModel>(boxName);
     await box.put(id, doc);
     _markCacheDirty();
+
+    // Upload to cloud in background (non-blocking)
+    DocumentUploadService.instance.uploadDocument(doc).catchError((error) {
+      AppLogger.warning(
+        'Background upload failed for document ${doc.id}',
+        error: error,
+      );
+      // Upload will be retried automatically via queue
+    });
+
     return doc;
   }
 
