@@ -103,9 +103,12 @@ class AuthService {
       },
     );
     // Also print to stdout for logcat visibility
-    print('DEBUG: AppEnv urlLength=$urlLength, keyLength=$keyLength, urlSample=$urlSample');
+    print(
+      'DEBUG: AppEnv urlLength=$urlLength, keyLength=$keyLength, urlSample=$urlSample',
+    );
 
     if (_isInitialized) {
+      print('DEBUG: Already initialized, returning early');
       AppLogger.warning('AuthService already initialized');
       if (!_initCompleter.isCompleted) {
         _initCompleter.complete();
@@ -115,6 +118,7 @@ class AuthService {
 
     // Prevent multiple concurrent initialization calls
     if (_isInitializing) {
+      print('DEBUG: Already initializing, waiting...');
       AppLogger.info(
         'AuthService initialization already in progress, waiting...',
       );
@@ -122,40 +126,75 @@ class AuthService {
       return;
     }
 
+    print('DEBUG: Setting _isInitializing = true');
     _isInitializing = true;
 
     try {
+      print(
+        'DEBUG: Entered try block, checking if Supabase is already initialized',
+      );
+      // Check if Supabase is already initialized (using try-catch since accessing
+      // Supabase.instance throws if not initialized)
+      bool isAlreadyInitialized = false;
+      SupabaseClient? existingClient;
+      try {
+        existingClient = Supabase.instance.client;
+        isAlreadyInitialized = true;
+        print(
+          'DEBUG: Supabase.instance.isInitialized = true (existing instance found)',
+        );
+      } catch (e) {
+        // Supabase.instance throws if not initialized - this is expected on first init
+        print(
+          'DEBUG: Supabase.instance not initialized yet (expected on first init)',
+        );
+        isAlreadyInitialized = false;
+      }
 
-      // Check if Supabase is already initialized
-      if (Supabase.instance.isInitialized) {
-        _supabase = Supabase.instance.client;
+      if (isAlreadyInitialized && existingClient != null) {
+        print('DEBUG: Using existing Supabase instance');
+        _supabase = existingClient;
         AppLogger.info('Using existing Supabase instance');
       } else {
+        print('DEBUG: Supabase not initialized, starting new initialization');
         // Initialize with PKCE flow for deep linking support
         // Credentials are loaded from .env file via envied (compile-time obfuscated)
         String supabaseUrl;
         String supabaseAnonKey;
 
         try {
+          print('DEBUG: Loading credentials from AppEnv');
           supabaseUrl = AppEnv.supabaseUrl.trim(); // Trim whitespace
           supabaseAnonKey = AppEnv.supabaseAnonKey.trim();
+          print(
+            'DEBUG: Credentials loaded - urlLength=${supabaseUrl.length}, keyLength=${supabaseAnonKey.length}',
+          );
 
           // Remove trailing slash if present
           if (supabaseUrl.endsWith('/')) {
+            print('DEBUG: Removing trailing slash from URL');
             supabaseUrl = supabaseUrl.substring(0, supabaseUrl.length - 1);
           }
 
+          print(
+            'DEBUG: Validating URL format - startsWith https://: ${supabaseUrl.startsWith('https://')}, endsWith .supabase.co: ${supabaseUrl.endsWith('.supabase.co')}',
+          );
           // Validate URL format
           if (!supabaseUrl.startsWith('https://') ||
               !supabaseUrl.endsWith('.supabase.co')) {
+            final urlSample = supabaseUrl.length > 50
+                ? '${supabaseUrl.substring(0, 25)}...${supabaseUrl.substring(supabaseUrl.length - 25)}'
+                : supabaseUrl;
+            print('DEBUG: URL validation failed - urlSample=$urlSample');
             AppLogger.error(
               'Invalid Supabase URL format',
-              data: {'url': supabaseUrl},
+              data: {'url': urlSample},
             );
             throw AuthFailure(
               'Invalid Supabase URL format. URL must start with https:// and end with .supabase.co',
             );
           }
+          print('DEBUG: URL validation passed');
 
           AppLogger.info(
             'Loaded Supabase credentials from AppEnv',
@@ -166,6 +205,9 @@ class AuthService {
             },
           );
         } catch (e, stack) {
+          print(
+            'DEBUG: Exception in credential loading - type: ${e.runtimeType}, message: ${e.toString()}',
+          );
           if (e is AuthFailure) {
             rethrow;
           }
@@ -174,12 +216,17 @@ class AuthService {
             error: e,
             stack: stack,
           );
+          print('DEBUG: Stack trace: $stack');
           throw AuthFailure(
             'Failed to load Supabase credentials. Please ensure .env file exists and run: flutter pub run build_runner build --delete-conflicting-outputs',
           );
         }
 
+        print('DEBUG: Checking if credentials are empty');
         if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+          print(
+            'DEBUG: Credentials are empty - urlEmpty=${supabaseUrl.isEmpty}, keyEmpty=${supabaseAnonKey.isEmpty}',
+          );
           AppLogger.error(
             'Supabase credentials are empty',
             data: {
@@ -191,8 +238,10 @@ class AuthService {
             'Supabase credentials are empty. Please ensure .env file has valid SUPABASE_URL and SUPABASE_ANON_KEY, then run: flutter pub run build_runner build --delete-conflicting-outputs',
           );
         }
+        print('DEBUG: Credentials are not empty, proceeding to initialize');
 
         AppLogger.info('Initializing Supabase with PKCE flow...');
+        print('DEBUG: About to call Supabase.initialize()');
         try {
           // DEBUG: Log before initialize with sanitized URL sample
           final sanitizedUrlSample = supabaseUrl.length > 12
@@ -206,7 +255,9 @@ class AuthService {
               'keyLength': supabaseAnonKey.length,
             },
           );
-          print('DEBUG: Calling Supabase.initialize() with urlSample=$sanitizedUrlSample, urlLength=${supabaseUrl.length}, keyLength=${supabaseAnonKey.length}');
+          print(
+            'DEBUG: Calling Supabase.initialize() with urlSample=$sanitizedUrlSample, urlLength=${supabaseUrl.length}, keyLength=${supabaseAnonKey.length}',
+          );
 
           await Supabase.initialize(
             url: supabaseUrl,
