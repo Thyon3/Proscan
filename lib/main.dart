@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/config/router/router.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/services/document_sync_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
@@ -28,7 +29,7 @@ void main() {
       try {
         // OFFLINE-FIRST: Start AuthService.init() in background (non-blocking)
         // App opens instantly, auth initializes silently in background
-        AuthService.instance.init().catchError((error) {
+        final authInitFuture = AuthService.instance.init().catchError((error) {
           AppLogger.error(
             'AuthService initialization failed (continuing in guest mode)',
             error: error,
@@ -46,6 +47,29 @@ void main() {
             'DocumentUploadService initialization failed',
             error: error,
           );
+        });
+
+        // Initialize document sync service
+        DocumentSyncService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'DocumentSyncService initialization failed',
+            error: error,
+          );
+        });
+
+        // Trigger initial sync after auth is ready (non-blocking)
+        authInitFuture.then((_) async {
+          // Wait a bit for auth to fully initialize
+          await Future.delayed(const Duration(seconds: 2));
+          final user = AuthService.instance.currentUser;
+          if (user != null) {
+            AppLogger.info('User authenticated, triggering initial document sync');
+            DocumentSyncService.instance.syncDocuments().catchError((error) {
+              AppLogger.warning('Initial sync failed', error: error);
+            });
+          }
+        }).catchError((error) {
+          AppLogger.warning('Auth initialization failed, skipping initial sync', error: error);
         });
 
         AppLogger.info('Core services initialized successfully (auth initializing in background)');
