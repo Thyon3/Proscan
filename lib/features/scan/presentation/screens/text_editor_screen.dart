@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:iconsax/iconsax.dart';
 
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
@@ -33,7 +34,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
   late TextEditingController _textController;
   late FocusNode _focusNode;
   final FileExportService _fileExportService = FileExportService();
-  
+
   bool _isExporting = false;
   bool _isProcessing = false;
   bool _hasUnsavedChanges = false;
@@ -53,9 +54,9 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     _textController = TextEditingController(text: widget.extractedText);
     _focusNode = FocusNode();
     _lastSavedText = widget.extractedText;
-    
+
     _textController.addListener(_onTextChanged);
-    
+
     // If imagePath is provided but no extractedText, process OCR
     if (widget.imagePath != null && widget.extractedText.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _processOcr());
@@ -79,10 +80,15 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     setState(() => _isProcessing = true);
 
     try {
-      AppLogger.info('Starting OCR extraction', data: {'path': widget.imagePath});
+      AppLogger.info(
+        'Starting OCR extraction',
+        data: {'path': widget.imagePath},
+      );
       // Use singleton OcrService - only processes file paths, never camera streams
-      final extractedText = await OcrService.instance.extractTextFromFile(widget.imagePath!);
-      
+      final extractedText = await OcrService.instance.extractTextFromFile(
+        widget.imagePath!,
+      );
+
       if (mounted) {
         if (extractedText == null || extractedText.isEmpty) {
           _showSnackBar(
@@ -96,7 +102,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
           _hasUnsavedChanges = false;
           _showSnackBar('Text extracted successfully!');
         }
-        
+
         // Auto-focus after processing
         _focusNode.requestFocus();
       }
@@ -155,7 +161,8 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     try {
       final doc = await DocumentService.instance.saveTextDocument(
         text: text,
-        title: 'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
+        title:
+            'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
       );
 
       if (mounted) {
@@ -163,13 +170,13 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
           'Document saved successfully!',
           duration: const Duration(seconds: 2),
         );
-        
+
         // Update saved state
         setState(() {
           _lastSavedText = text;
           _hasUnsavedChanges = false;
         });
-        
+
         // Navigate to home screen after short delay
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
@@ -179,7 +186,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     } catch (e, stackTrace) {
       AppLogger.error('Save failed', error: e, stack: stackTrace);
       if (mounted) {
-        _showSnackBar('Failed to save: ${e.toString().split(':').last.trim()}', isError: true);
+        _showSnackBar(
+          'Failed to save: ${e.toString().split(':').last.trim()}',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) {
@@ -202,13 +212,15 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
       // Save document first
       await DocumentService.instance.saveTextDocument(
         text: text,
-        title: 'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
+        title:
+            'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
       );
 
       // Export to Word document
       final docxPath = await DocxGeneratorService.instance.generateDocxFromText(
         text: text,
-        title: 'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
+        title:
+            'Extracted Text ${DateFormat('MMM dd, yyyy HH:mm').format(DateTime.now())}',
       );
 
       if (mounted) {
@@ -216,7 +228,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
           'Exported to Word successfully!',
           duration: const Duration(seconds: 2),
         );
-        
+
         // Navigate to home screen after short delay
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
@@ -226,7 +238,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     } catch (e, stackTrace) {
       AppLogger.error('Export failed', error: e, stack: stackTrace);
       if (mounted) {
-        _showSnackBar('Failed to export: ${e.toString().split(':').last.trim()}', isError: true);
+        _showSnackBar(
+          'Failed to export: ${e.toString().split(':').last.trim()}',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) {
@@ -235,14 +250,18 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     }
   }
 
-  void _showSnackBar(String message, {bool isError = false, Duration? duration}) {
+  void _showSnackBar(
+    String message, {
+    bool isError = false,
+    Duration? duration,
+  }) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
+              isError ? Iconsax.close_circle : Iconsax.tick_circle,
               color: Colors.white,
               size: 20,
             ),
@@ -250,7 +269,10 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
             Expanded(
               child: Text(
                 message,
-                style: GoogleFonts.inter(fontSize: 14),
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
@@ -266,31 +288,37 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return PopScope(
       canPop: !_hasUnsavedChanges,
       onPopInvoked: (didPop) async {
         if (didPop || !_hasUnsavedChanges) return;
-        
-        final shouldDiscard = await showDialog<bool>(
-          context: context,
-          builder: (context) => _buildUnsavedChangesDialog(cs),
-        ) ?? false;
+
+        final shouldDiscard =
+            await showDialog<bool>(
+              context: context,
+              builder: (context) => _buildUnsavedChangesDialog(cs),
+            ) ??
+            false;
 
         if (shouldDiscard && mounted) {
           Navigator.of(context).pop();
         }
       },
       child: Scaffold(
-        backgroundColor: cs.surface,
-        resizeToAvoidBottomInset: false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
+        backgroundColor: cs.background,
+        resizeToAvoidBottomInset: false,
         appBar: AppBar(
-          backgroundColor: Colors.transparent,
+          backgroundColor: cs.surface,
           elevation: 0,
+          surfaceTintColor: Colors.transparent,
           leading: IconButton(
-            icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
-            onPressed: () => context.pop(),
+            icon: Icon(Iconsax.arrow_left, color: cs.onSurface),
+            onPressed: () =>
+                _showExitConfirmation(context, Theme.of(context).colorScheme),
           ),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +326,7 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
               Text(
                 'Text Editor',
                 style: GoogleFonts.inter(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: cs.onSurface,
                 ),
@@ -315,61 +343,90 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
             ],
           ),
           actions: [
-            // Word/Character count indicator
-            if (!_isProcessing)
+            if (!_isProcessing) ...[
+              // Stats indicator
               Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                margin: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
+                  color: cs.surfaceVariant.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: cs.outline.withOpacity(0.1)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.text_fields, size: 14, color: cs.primary),
+                    Icon(Iconsax.text_block, size: 14, color: cs.primary),
                     const SizedBox(width: 6),
                     Text(
-                      '$_wordCount words',
+                      '$_wordCount',
                       style: GoogleFonts.inter(
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: cs.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'words',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: cs.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
-            IconButton(
-              icon: Icon(Icons.content_copy_rounded, color: cs.primary),
-              tooltip: 'Copy',
-              onPressed: _copyToClipboard,
-            ),
-            PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert_rounded, color: cs.onSurface),
-              onSelected: (value) {
-                if (value == 'export') {
-                  _exportToWord();
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'export',
-                  child: Row(
-                    children: [
-                      Icon(Icons.file_download, size: 20),
-                      const SizedBox(width: 12),
-                      Text('Export to Word'),
-                    ],
-                  ),
+              IconButton(
+                icon: Icon(Iconsax.copy, color: cs.primary, size: 22),
+                tooltip: 'Copy to clipboard',
+                onPressed: _copyToClipboard,
+              ),
+              PopupMenuButton<String>(
+                icon: Icon(Iconsax.more, color: cs.onSurface),
+                surfaceTintColor: cs.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              ],
-            ),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'export',
+                    child: Row(
+                      children: [
+                        Icon(
+                          Iconsax.document_download,
+                          color: cs.onSurface,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Export to Word',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                onSelected: (value) {
+                  if (value == 'export') {
+                    _exportToWord();
+                  }
+                },
+              ),
+              const SizedBox(width: 8),
+            ],
           ],
         ),
         body: _isProcessing
             ? _buildProcessingView(cs)
-            : _buildEditorView(cs),
+            : _buildEditorView(cs, isDark),
       ),
     );
   }
@@ -380,31 +437,50 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
+            width: 80,
+            height: 80,
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withValues(alpha: 0.1),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  cs.primary.withOpacity(0.1),
+                  cs.primaryContainer.withOpacity(0.05),
+                ],
+              ),
               shape: BoxShape.circle,
             ),
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(cs.primary),
+                ),
+                Icon(Iconsax.scan_barcode, size: 32, color: cs.primary),
+              ],
             ),
           ),
           const SizedBox(height: 24),
           Text(
-            'Extracting text from image...',
+            'Extracting text from image',
             style: GoogleFonts.inter(
               fontSize: 18,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
               color: cs.onSurface,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            'This may take a few seconds',
+            'Processing image with OCR...',
+            style: GoogleFonts.inter(fontSize: 14, color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Please wait a moment',
             style: GoogleFonts.inter(
-              fontSize: 14,
-              color: cs.onSurfaceVariant,
+              fontSize: 13,
+              color: cs.onSurfaceVariant.withOpacity(0.7),
             ),
           ),
         ],
@@ -412,51 +488,50 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     );
   }
 
-  Widget _buildEditorView(ColorScheme cs) {
+  Widget _buildEditorView(ColorScheme cs, bool isDark) {
     return Column(
       children: [
-        // Stats bar
+        // Stats header
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: 0.3),
+            color: cs.surface,
             border: Border(
-              bottom: BorderSide(
-                color: cs.outline.withValues(alpha: 0.1),
-                width: 1,
-              ),
+              bottom: BorderSide(color: cs.outline.withOpacity(0.08), width: 1),
             ),
           ),
           child: Row(
             children: [
-              _buildStatChip(
+              _buildStatItem(cs, Iconsax.text_block, 'Words', '$_wordCount'),
+              const SizedBox(width: 16),
+              _buildStatItem(
                 cs,
-                Icons.text_fields,
-                '$_wordCount words',
-              ),
-              const SizedBox(width: 12),
-              _buildStatChip(
-                cs,
-                Icons.format_size,
-                '$_characterCount chars',
+                Iconsax.chart_square,
+                'Characters',
+                '$_characterCount',
               ),
               const Spacer(),
               if (_hasUnsavedChanges)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha: 0.15),
+                    color: Colors.orange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.withOpacity(0.2)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.circle, size: 8, color: Colors.orange),
+                      Icon(Iconsax.info_circle, size: 14, color: Colors.orange),
                       const SizedBox(width: 6),
                       Text(
                         'Unsaved',
                         style: GoogleFonts.inter(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.orange.shade700,
                         ),
@@ -468,31 +543,30 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
           ),
         ),
 
-        // Text editor area
+        // Text editor
         Expanded(
           child: Container(
-            margin: const EdgeInsets.all(16),
+            margin: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(20),
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: _focusNode.hasFocus
-                    ? cs.primary.withValues(alpha: 0.3)
-                    : cs.outline.withValues(alpha: 0.1),
-                width: _focusNode.hasFocus ? 2 : 1,
+                    ? cs.primary.withOpacity(0.3)
+                    : cs.outline.withOpacity(0.1),
+                width: _focusNode.hasFocus ? 1.5 : 1,
               ),
-              boxShadow: _focusNode.hasFocus
-                  ? [
-                      BoxShadow(
-                        color: cs.primary.withValues(alpha: 0.1),
-                        blurRadius: 12,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
+              boxShadow: [
+                if (!isDark)
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 20,
+                    offset: const Offset(0, 4),
+                  ),
+              ],
             ),
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(24),
               child: TextField(
                 controller: _textController,
                 focusNode: _focusNode,
@@ -501,102 +575,138 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
                 textAlignVertical: TextAlignVertical.top,
                 style: GoogleFonts.inter(
                   fontSize: 16,
-                  height: 1.6,
+                  height: 1.7,
                   letterSpacing: 0.2,
                   color: cs.onSurface,
+                  fontWeight: FontWeight.w400,
                 ),
+                cursorColor: cs.primary,
                 decoration: InputDecoration(
                   hintText: _textController.text.isEmpty
-                      ? 'Edit extracted text here...\n\nTip: You can paste or type directly in this field.'
+                      ? 'Edit your extracted text here...\n\nYou can paste, type, or modify the text as needed.'
                       : null,
                   hintStyle: GoogleFonts.inter(
                     fontSize: 16,
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.5),
-                    height: 1.6,
+                    color: cs.onSurfaceVariant.withOpacity(0.5),
+                    height: 1.7,
+                    fontWeight: FontWeight.w400,
                   ),
                   border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
                 ),
                 onTap: () {
-                  setState(() {}); // Update focus state
+                  setState(() {});
                 },
               ),
             ),
           ),
         ),
 
-        // Bottom action bar
+        // Action buttons
         Container(
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: cs.surface,
+            border: Border(
+              top: BorderSide(color: cs.outline.withOpacity(0.08), width: 1),
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 20,
                 offset: const Offset(0, -4),
               ),
             ],
           ),
           child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  // Copy button
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _copyToClipboard,
-                      icon: const Icon(Icons.content_copy_rounded, size: 20),
-                      label: Text(
-                        'Copy',
-                        style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        side: BorderSide(
-                          color: cs.outline.withValues(alpha: 0.3),
-                        ),
+            child: Row(
+              children: [
+                // Copy button
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _copyToClipboard,
+                    icon: Icon(Iconsax.copy, size: 20),
+                    label: Text(
+                      'Copy',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
                       ),
                     ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      side: BorderSide(color: cs.outline.withOpacity(0.3)),
+                    ),
                   ),
-                  const SizedBox(width: 12),
-                  // Save button
-                  Expanded(
-                    flex: 2,
-                    child: FilledButton.icon(
-                      onPressed: _isExporting ? null : _saveDocument,
-                      icon: _isExporting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+                const SizedBox(width: 16),
+                // Save button
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                        colors: [cs.primary, cs.primaryContainer],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: cs.primary.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        onTap: _isExporting ? null : _saveDocument,
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isExporting)
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      cs.onPrimary,
+                                    ),
+                                  ),
+                                )
+                              else
+                                Icon(
+                                  Iconsax.save_2,
+                                  size: 20,
+                                  color: cs.onPrimary,
+                                ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _isExporting ? 'Saving...' : 'Save Document',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                  color: cs.onPrimary,
+                                ),
                               ),
-                            )
-                          : const Icon(Icons.save_rounded, size: 20),
-                      label: Text(
-                        _isExporting ? 'Saving...' : 'Save',
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
+                            ],
+                          ),
                         ),
-                      ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: cs.primary,
-                        foregroundColor: cs.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 2,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -604,69 +714,159 @@ class _TextEditorScreenState extends State<TextEditorScreen> {
     );
   }
 
-  Widget _buildStatChip(ColorScheme cs, IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: cs.primary),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurface,
-            ),
+  Widget _buildStatItem(
+    ColorScheme cs,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: cs.surfaceVariant.withOpacity(0.5),
+            shape: BoxShape.circle,
           ),
-        ],
-      ),
+          child: Icon(icon, size: 18, color: cs.primary),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: cs.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildUnsavedChangesDialog(ColorScheme cs) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Row(
-        children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Unsaved Changes',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+    return Dialog(
+      backgroundColor: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Iconsax.warning_2, size: 28, color: Colors.orange),
             ),
-          ),
-        ],
-      ),
-      content: Text(
-        'You have unsaved changes. Are you sure you want to leave?',
-        style: GoogleFonts.inter(fontSize: 14),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: Text(
-            'Cancel',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-          ),
+            const SizedBox(height: 20),
+            // Title
+            Text(
+              'Unsaved Changes',
+              style: GoogleFonts.inter(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: cs.onSurface,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Message
+            Text(
+              'You have unsaved changes in your text. Are you sure you want to leave?',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: cs.onSurfaceVariant,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      side: BorderSide(color: cs.outline.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      'Continue Editing',
+                      style: GoogleFonts.inter(
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.red.shade600,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: Text(
+                      'Discard',
+                      style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.red.shade600,
-          ),
-          child: Text(
-            'Discard',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-          ),
-        ),
-      ],
+      ),
     );
+  }
+
+  Future<void> _showExitConfirmation(
+    BuildContext context,
+    ColorScheme cs,
+  ) async {
+    if (!_hasUnsavedChanges) {
+      if (mounted) context.pop();
+      return;
+    }
+
+    final shouldDiscard =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => _buildUnsavedChangesDialog(cs),
+        ) ??
+        false;
+
+    if (shouldDiscard && mounted) {
+      context.pop();
+    }
   }
 }
