@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 
 /// Upload status for a document
@@ -69,10 +70,7 @@ class PendingUpload {
     this.lastAttempt,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  PendingUpload copyWith({
-    int? attempts,
-    DateTime? lastAttempt,
-  }) {
+  PendingUpload copyWith({int? attempts, DateTime? lastAttempt}) {
     return PendingUpload(
       documentId: documentId,
       document: document,
@@ -83,12 +81,31 @@ class PendingUpload {
   }
 }
 
-/// Production-ready document upload service with:
-/// - Supabase Storage integration
-/// - Backend API sync
-/// - Offline queue with retry logic
-/// - Progress tracking
-/// - Conflict resolution
+/// Production-ready document upload service.
+///
+/// Handles uploading documents to Supabase Storage and synchronizing metadata
+/// with the backend API. Features include:
+///
+/// - **Supabase Storage Integration**: Uploads PDF/DOCX files and thumbnails
+/// - **Backend API Sync**: Synchronizes document metadata to PostgreSQL
+/// - **Offline Queue**: Queues uploads when offline, processes when online
+/// - **Retry Logic**: Exponential backoff retry mechanism (max 3 attempts)
+/// - **Progress Tracking**: Real-time upload progress via stream
+/// - **Error Handling**: Comprehensive error handling with detailed logging
+///
+/// **Usage:**
+/// ```dart
+/// // Initialize service (typically in main.dart)
+/// await DocumentUploadService.instance.initialize();
+///
+/// // Upload a document
+/// final url = await DocumentUploadService.instance.uploadDocument(document);
+///
+/// // Listen to progress
+/// DocumentUploadService.instance.progressStream.listen((progress) {
+///   print('Upload ${progress.status}: ${progress.progress * 100}%');
+/// });
+/// ```
 class DocumentUploadService {
   DocumentUploadService._();
   static final DocumentUploadService instance = DocumentUploadService._();
@@ -116,20 +133,22 @@ class DocumentUploadService {
     AppLogger.info('Initializing DocumentUploadService');
 
     // Listen to connectivity changes to process queue when online
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      (results) {
-        final isOnline = results.any(
-          (result) =>
-              result != ConnectivityResult.none &&
-              result != ConnectivityResult.bluetooth,
-        );
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
+      results,
+    ) {
+      final isOnline = results.any(
+        (result) =>
+            result != ConnectivityResult.none &&
+            result != ConnectivityResult.bluetooth,
+      );
 
-        if (isOnline) {
-          AppLogger.info('Network connectivity restored, processing upload queue');
-          _processQueue();
-        }
-      },
-    );
+      if (isOnline) {
+        AppLogger.info(
+          'Network connectivity restored, processing upload queue',
+        );
+        _processQueue();
+      }
+    });
 
     _isInitialized = true;
     AppLogger.info('DocumentUploadService initialized');
@@ -145,15 +164,40 @@ class DocumentUploadService {
     _isInitialized = false;
   }
 
-  /// Uploads a document to Supabase Storage and syncs metadata to backend
-  /// Returns the public URL of the uploaded file
+  /// Uploads a document to Supabase Storage and syncs metadata to backend.
+  ///
+  /// **Process:**
+  /// 1. Validates user authentication and network connectivity
+  /// 2. Uploads document file to Supabase Storage
+  /// 3. Uploads thumbnail (if available)
+  /// 4. Syncs metadata to backend API
+  ///
+  /// **Returns:**
+  /// - Public URL of uploaded file on success
+  /// - `null` if queued for later (offline/unauthenticated) or failed
+  ///
+  /// **Throws:**
+  /// - Exception if critical error occurs (logged automatically)
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final url = await DocumentUploadService.instance.uploadDocument(document);
+  /// if (url != null) {
+  ///   print('Uploaded to: $url');
+  /// } else {
+  ///   print('Queued for later upload');
+  /// }
+  /// ```
   Future<String?> uploadDocument(DocumentModel document) async {
     try {
       await AuthService.instance.ensureInitialized();
       final user = AuthService.instance.currentUser;
 
       if (user == null) {
-        AppLogger.warning('Cannot upload document: user not authenticated');
+        AppLogger.warning(
+          'Cannot upload document: user not authenticated',
+          error: null,
+        );
         // Queue for later when user logs in
         _addToQueue(document);
         return null;
@@ -168,7 +212,9 @@ class DocumentUploadService {
       );
 
       if (!isOnline) {
-        AppLogger.info('No internet connection, queuing document for later upload');
+        AppLogger.info(
+          'No internet connection, queuing document for later upload',
+        );
         _addToQueue(document);
         return null;
       }
@@ -185,7 +231,23 @@ class DocumentUploadService {
     }
   }
 
-  /// Internal upload implementation with retry logic
+  /// Internal upload implementation with retry logic and exponential backoff.
+  ///
+  /// **Retry Strategy:**
+  /// - Attempt 1: Immediate
+  /// - Attempt 2: 5 seconds delay
+  /// - Attempt 3: 10 seconds delay
+  /// - Attempt 4: 20 seconds delay (max)
+  ///
+  /// After max attempts, document is queued for manual retry.
+  ///
+  /// **Parameters:**
+  /// - `document`: Document to upload
+  /// - `attempt`: Current retry attempt (0-indexed)
+  ///
+  /// **Returns:**
+  /// - Public URL on success
+  /// - `null` if max attempts reached (queued for later)
   Future<String?> _uploadDocumentInternal(
     DocumentModel document, {
     int attempt = 0,
@@ -194,11 +256,7 @@ class DocumentUploadService {
     final userId = AuthService.instance.currentUser!.id;
 
     try {
-      _emitProgress(
-        documentId,
-        UploadStatus.uploading,
-        progress: 0.0,
-      );
+      _emitProgress(documentId, UploadStatus.uploading, progress: 0.0);
 
       // 1. Upload PDF/DOCX to Supabase Storage
       final file = File(document.filePath);
@@ -206,24 +264,25 @@ class DocumentUploadService {
         throw Exception('Document file not found: ${document.filePath}');
       }
 
-      final fileBytes = await file.readAsBytes();
       final fileName = '$userId/$documentId.${document.format}';
-      final storagePath = '$_storageBucket/$fileName';
+      final fileSize = await file.length();
 
       AppLogger.info(
         'Uploading document to Supabase Storage',
         data: {
           'documentId': documentId,
           'fileName': fileName,
-          'size': fileBytes.length,
+          'size': fileSize,
         },
       );
 
       final supabase = AuthService.instance.supabase;
-      await supabase.storage.from(_storageBucket).upload(
+      await supabase.storage
+          .from(_storageBucket)
+          .upload(
             fileName,
-            fileBytes,
-            fileOptions: const FileOptions(
+            file,
+            fileOptions: FileOptions(
               upsert: true,
               contentType: document.format == 'pdf'
                   ? 'application/pdf'
@@ -236,11 +295,7 @@ class DocumentUploadService {
           .from(_storageBucket)
           .getPublicUrl(fileName);
 
-      _emitProgress(
-        documentId,
-        UploadStatus.uploadingThumbnail,
-        progress: 0.5,
-      );
+      _emitProgress(documentId, UploadStatus.uploadingThumbnail, progress: 0.5);
 
       // 2. Upload thumbnail if exists
       String? thumbnailUrl;
@@ -248,11 +303,12 @@ class DocumentUploadService {
         try {
           final thumbFile = File(document.thumbnailPath);
           if (await thumbFile.exists()) {
-            final thumbBytes = await thumbFile.readAsBytes();
             final thumbFileName = '$userId/${documentId}_thumb.jpg';
-            await supabase.storage.from(_storageBucket).upload(
+            await supabase.storage
+                .from(_storageBucket)
+                .upload(
                   thumbFileName,
-                  thumbBytes,
+                  thumbFile,
                   fileOptions: const FileOptions(
                     upsert: true,
                     contentType: 'image/jpeg',
@@ -270,11 +326,7 @@ class DocumentUploadService {
         }
       }
 
-      _emitProgress(
-        documentId,
-        UploadStatus.syncingMetadata,
-        progress: 0.75,
-      );
+      _emitProgress(documentId, UploadStatus.syncingMetadata, progress: 0.75);
 
       // 3. Sync metadata to backend API
       await _syncMetadataToBackend(
@@ -283,13 +335,12 @@ class DocumentUploadService {
         thumbnailUrl: thumbnailUrl,
       );
 
-      _emitProgress(
-        documentId,
-        UploadStatus.completed,
-        progress: 1.0,
-      );
+      _emitProgress(documentId, UploadStatus.completed, progress: 1.0);
 
-      AppLogger.info('Document uploaded successfully', data: {'documentId': documentId});
+      AppLogger.info(
+        'Document uploaded successfully',
+        data: {'documentId': documentId},
+      );
       return publicUrl;
     } catch (e, stack) {
       AppLogger.error(
@@ -323,7 +374,24 @@ class DocumentUploadService {
     }
   }
 
-  /// Syncs document metadata to backend API
+  /// Syncs document metadata to backend API.
+  ///
+  /// Sends document metadata (title, format, tags, etc.) to the NestJS backend
+  /// for storage in PostgreSQL. The backend associates the metadata with the
+  /// Supabase Storage URL.
+  ///
+  /// **Parameters:**
+  /// - `document`: Document model with all metadata
+  /// - `fileUrl`: Public URL from Supabase Storage
+  /// - `thumbnailUrl`: Optional thumbnail URL from Supabase Storage
+  ///
+  /// **Throws:**
+  /// - `Exception` if backend API call fails
+  /// - `TimeoutException` if request times out (30s)
+  ///
+  /// **Error Handling:**
+  /// - Logs detailed error information
+  /// - Throws exception to trigger retry logic
   Future<void> _syncMetadataToBackend({
     required DocumentModel document,
     required String fileUrl,
@@ -341,11 +409,28 @@ class DocumentUploadService {
 
     final backendUrl = AppEnv.backendApiUrl;
     if (backendUrl == null || backendUrl.isEmpty) {
-      AppLogger.warning('Backend API URL not configured, skipping metadata sync');
+      AppLogger.warning(
+        error: null,
+        'Backend API URL not configured, skipping metadata sync',
+      );
       return;
     }
 
-    final url = Uri.parse('$backendUrl/api/documents');
+    // Validate and normalize URL
+    if (!UrlValidator.isValidUrl(backendUrl)) {
+      AppLogger.error(
+        'Invalid backend API URL format',
+        data: {'url': backendUrl},
+      );
+      throw Exception('Invalid backend API URL format: $backendUrl');
+    }
+
+    final apiUrl = UrlValidator.buildApiUrl(backendUrl, 'api/documents');
+    if (apiUrl == null) {
+      throw Exception('Failed to build API URL from: $backendUrl');
+    }
+
+    final url = Uri.parse(apiUrl);
     final headers = {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer ${session.accessToken}',
@@ -363,51 +448,85 @@ class DocumentUploadService {
       'textContent': document.textContent,
       'tags': document.tags,
       'metadata': document.metadata,
+      // Note: createdAt and updatedAt are handled by backend automatically
+      // but we can include them for explicit control if needed
     });
 
-    AppLogger.info('Syncing metadata to backend', data: {'documentId': document.id});
-
-    final response = await http.post(
-      url,
-      headers: headers,
-      body: body,
-    ).timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        throw TimeoutException('Backend API request timed out');
+    AppLogger.info(
+      'Syncing metadata to backend',
+      data: {
+        'documentId': document.id,
+        'url': url.toString(),
+        'title': document.title,
       },
     );
 
-    if (response.statusCode != 201 && response.statusCode != 200) {
+    final response = await http
+        .post(url, headers: headers, body: body)
+        .timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('Backend API request timed out');
+          },
+        );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      try {
+        final responseData = jsonDecode(response.body);
+        AppLogger.info(
+          'Metadata synced successfully',
+          data: {
+            'documentId': document.id,
+            'backendDocumentId': responseData['id'],
+          },
+        );
+      } catch (e) {
+        AppLogger.info(
+          'Metadata synced successfully',
+          data: {'documentId': document.id},
+        );
+      }
+    } else {
+      // Log detailed error for debugging
+      AppLogger.error(
+        'Backend API error',
+        data: {
+          'documentId': document.id,
+          'statusCode': response.statusCode,
+          'responseBody': response.body,
+          'url': url.toString(),
+        },
+      );
       throw Exception(
         'Backend API error: ${response.statusCode} - ${response.body}',
       );
     }
 
-    AppLogger.info('Metadata synced successfully', data: {'documentId': document.id});
+    AppLogger.info(
+      'Metadata synced successfully',
+      data: {'documentId': document.id},
+    );
   }
 
   /// Adds document to upload queue
   void _addToQueue(DocumentModel document) {
-    final existing = _uploadQueue.indexWhere((u) => u.documentId == document.id);
+    final existing = _uploadQueue.indexWhere(
+      (u) => u.documentId == document.id,
+    );
     if (existing >= 0) {
       // Update existing entry
       _uploadQueue[existing] = _uploadQueue[existing].copyWith(
         lastAttempt: DateTime.now(),
       );
     } else {
-      _uploadQueue.add(PendingUpload(
-        documentId: document.id,
-        document: document,
-      ));
+      _uploadQueue.add(
+        PendingUpload(documentId: document.id, document: document),
+      );
     }
 
     AppLogger.info(
       'Document added to upload queue',
-      data: {
-        'documentId': document.id,
-        'queueSize': _uploadQueue.length,
-      },
+      data: {'documentId': document.id, 'queueSize': _uploadQueue.length},
     );
   }
 
@@ -424,7 +543,10 @@ class DocumentUploadService {
         return;
       }
     } catch (e) {
-      AppLogger.warning('AuthService not ready, skipping queue processing');
+      AppLogger.warning(
+        error: null,
+        'AuthService not ready, skipping queue processing',
+      );
       return;
     }
 
@@ -453,6 +575,7 @@ class DocumentUploadService {
       // Skip if max attempts reached
       if (upload.attempts >= _maxRetryAttempts) {
         AppLogger.warning(
+          error: null,
           'Max retry attempts reached for document ${upload.documentId}',
         );
         continue;
@@ -466,10 +589,12 @@ class DocumentUploadService {
       } catch (e) {
         _isProcessing.remove(upload.documentId);
         // Re-add to queue with incremented attempts
-        _uploadQueue.add(upload.copyWith(
-          attempts: upload.attempts + 1,
-          lastAttempt: DateTime.now(),
-        ));
+        _uploadQueue.add(
+          upload.copyWith(
+            attempts: upload.attempts + 1,
+            lastAttempt: DateTime.now(),
+          ),
+        );
       }
 
       // Small delay between uploads
@@ -480,7 +605,8 @@ class DocumentUploadService {
   /// Calculates retry delay with exponential backoff
   Duration _calculateRetryDelay(int attempt) {
     final baseDelay = _retryDelay.inSeconds;
-    final delaySeconds = baseDelay * (1 << attempt); // Exponential: 5s, 10s, 20s
+    final delaySeconds =
+        baseDelay * (1 << attempt); // Exponential: 5s, 10s, 20s
     final delay = Duration(seconds: delaySeconds);
     return delay > _maxRetryBackoff ? _maxRetryBackoff : delay;
   }
@@ -493,13 +619,15 @@ class DocumentUploadService {
     String? error,
     DateTime? lastAttempt,
   }) {
-    _progressController.add(UploadProgress(
-      documentId: documentId,
-      status: status,
-      progress: progress,
-      error: error,
-      lastAttempt: lastAttempt ?? DateTime.now(),
-    ));
+    _progressController.add(
+      UploadProgress(
+        documentId: documentId,
+        status: status,
+        progress: progress,
+        error: error,
+        lastAttempt: lastAttempt ?? DateTime.now(),
+      ),
+    );
   }
 
   /// Gets current upload progress for a document
@@ -516,4 +644,3 @@ class DocumentUploadService {
     _uploadQueue.removeWhere((u) => u.attempts >= _maxRetryAttempts);
   }
 }
-

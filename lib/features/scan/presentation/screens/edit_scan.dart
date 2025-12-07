@@ -120,15 +120,18 @@ class _EditScanScreenState extends State<EditScanScreen> {
               .getOrCreatePreviewPath(originalPath);
           return MapEntry(originalPath, previewPath);
         } catch (e) {
-          AppLogger.warning('Failed to generate preview, using original',
-              data: {'path': originalPath, 'error': e.toString()});
+          AppLogger.warning(
+            'Failed to generate preview, using original',
+            data: {'path': originalPath, 'error': e.toString()},
+            error: null,
+          );
           // Fallback to original if preview generation fails
           return MapEntry(originalPath, originalPath);
         }
       });
 
       final previewEntries = await Future.wait(previewFutures);
-      
+
       if (!mounted) return;
 
       setState(() {
@@ -138,7 +141,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
     } catch (e, stack) {
       AppLogger.error('Failed to load preview images', error: e, stack: stack);
       if (!mounted) return;
-      
+
       // Fallback: use original paths if preview loading fails
       setState(() {
         for (final path in _pages) {
@@ -171,8 +174,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
         });
       }
     } catch (e) {
-      AppLogger.warning('Failed to generate preview, using original',
-          data: {'path': originalPath, 'error': e.toString()});
+      AppLogger.warning(
+        'Failed to generate preview, using original',
+        data: {'path': originalPath, 'error': e.toString()},
+        error: null,
+      );
       if (mounted) {
         setState(() {
           _previewPaths[originalPath] = originalPath;
@@ -272,7 +278,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
         // Remove old preview mapping
         _previewPaths.remove(oldPath);
       });
-      
+
       // Load preview for cropped image
       await _loadPreviewForPath(cropped.path);
     } catch (e) {
@@ -303,7 +309,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
         _currentPath = result.imagePath;
         _colorProfile = result.colorProfile;
       });
-      
+
       // Load preview for the newly added page
       await _loadPreviewForPath(result.imagePath);
 
@@ -368,7 +374,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
         // Remove old preview mapping
         _previewPaths.remove(oldPath);
       });
-      
+
       // Load preview for retaken image
       await _loadPreviewForPath(result.imagePath);
     } catch (e) {
@@ -399,7 +405,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
         _previewPaths.remove(oldPath);
         _pageRotations[_currentIndex] = newRotation;
       });
-      
+
       // Load preview for rotated image
       await _loadPreviewForPath(newPath);
     } catch (e) {
@@ -435,7 +441,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
             _colorProfile = mappedProfile;
           }
         });
-        
+
         // Load preview for filtered image
         await _loadPreviewForPath(newPath);
         // Regenerate filter previews after applying filter
@@ -448,11 +454,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
       }
     } catch (e, stackTrace) {
       if (!mounted) return;
-      AppLogger.error(
-        'Filter application failed',
-        error: e,
-        stack: stackTrace,
-      );
+      AppLogger.error('Filter application failed', error: e, stack: stackTrace);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Filter application failed: $e')));
@@ -597,7 +599,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
     // Use preview path for UI display to reduce memory pressure
     // Original path is still stored for processing operations
     final previewPath = _getPreviewPath(originalPath);
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: DecoratedBox(
@@ -1193,7 +1195,9 @@ class _EditScanScreenState extends State<EditScanScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.file(
-                  File(_getPreviewPath(_pages[index])), // Use preview for thumbnail
+                  File(
+                    _getPreviewPath(_pages[index]),
+                  ), // Use preview for thumbnail
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
                     color: cs.surfaceContainerHighest,
@@ -1602,7 +1606,8 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
     return Scaffold(
       backgroundColor: cs.surface,
-      resizeToAvoidBottomInset: false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
+      resizeToAvoidBottomInset:
+          false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -1856,7 +1861,10 @@ class _EditScanScreenState extends State<EditScanScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.file(File(_getPreviewPath(_pages[index])), fit: BoxFit.cover), // Use preview for grid view
+            Image.file(
+              File(_getPreviewPath(_pages[index])),
+              fit: BoxFit.cover,
+            ), // Use preview for grid view
             Positioned(
               bottom: 0,
               left: 0,

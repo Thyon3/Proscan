@@ -64,6 +64,7 @@ class AuthService {
           // Just log and return (offline-first approach)
           AppLogger.warning(
             'AuthService initialization timed out - continuing in guest mode',
+            error: null,
           );
         },
       );
@@ -110,7 +111,7 @@ class AuthService {
 
     if (_isInitialized) {
       print('DEBUG: Already initialized, returning early');
-      AppLogger.warning('AuthService already initialized');
+      AppLogger.warning('AuthService already initialized', error: null);
       if (!_initCompleter.isCompleted) {
         _initCompleter.complete();
       }
@@ -297,7 +298,8 @@ class AuthService {
 
           // OFFLINE-FIRST: If network error, continue in guest mode (don't throw)
           // Only throw for invalid credentials, not network issues
-          final isNetworkError = e is TimeoutException ||
+          final isNetworkError =
+              e is TimeoutException ||
               e.toString().contains('SocketException') ||
               e.toString().contains('Network') ||
               e.toString().contains('connection') ||
@@ -307,13 +309,15 @@ class AuthService {
             // Network error - continue in guest mode (offline-first)
             AppLogger.warning(
               'Supabase initialization failed due to network error. Continuing in guest mode.',
+              error: null,
             );
             print('DEBUG: Network error detected - continuing in guest mode');
             // Don't throw - allow app to continue in guest mode
             // _isInitialized will remain false, but app won't crash
             _isInitializing = false;
             if (!_initCompleter.isCompleted) {
-              _initCompleter.complete(); // Complete without error to allow app to continue
+              _initCompleter
+                  .complete(); // Complete without error to allow app to continue
             }
             return; // Exit gracefully - app continues in guest mode
           }
@@ -482,7 +486,7 @@ class AuthService {
         // User is immediately signed in - emit to stream right away
         final appUser = AppUser.fromSupabase(response.user!);
         _userController.add(appUser);
-        
+
         AppLogger.info(
           'User signed up successfully - immediately signed in',
           data: {'userId': response.user!.id},

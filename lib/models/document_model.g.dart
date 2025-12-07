@@ -1,12 +1,11 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
-// This is a manually created Hive adapter to avoid dependency conflicts
+// This file was generated manually due to dependency conflicts with hive_generator
 
 part of 'document_model.dart';
 
-// ignore_for_file: type=lint
-// ignore_for_file: avoid_equals_and_hash_code_on_mutable_classes
-// ignore_for_file: avoid_renaming_method_parameters
-// ignore_for_file: prefer_const_constructors
+// **************************************************************************
+// TypeAdapterGenerator
+// **************************************************************************
 
 class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
   @override
@@ -26,13 +25,13 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       createdAt: fields[4] as DateTime,
       pageCount: fields[5] as int,
       thumbnailPath: fields[6] as String,
-      pageImagePaths: (fields[7] as List?)?.cast<String>(),
-      scanMode: fields[8] as String? ?? 'document',
-      textContent: fields[9] as String?,
+      scanMode: fields[8] == null ? 'document' : fields[8] as String,
+      textContent: fields[9] == null ? '' : fields[9] as String?,
       updatedAt: fields[10] as DateTime,
-      colorProfile: fields[11] as String? ?? 'color',
-      tags: (fields[12] as List?)?.cast<String>(),
-      metadata: (fields[13] as Map?)?.cast<String, String>(),
+      colorProfile: fields[11] == null ? 'color' : fields[11] as String,
+      pageImagePaths: fields[7] == null ? <String>[] : (fields[7] as List?)?.cast<String>(),
+      tags: fields[12] == null ? <String>[] : (fields[12] as List?)?.cast<String>(),
+      metadata: fields[13] == null ? <String, String>{} : (fields[13] as Map?)?.cast<String, String>(),
     );
   }
 
@@ -55,7 +54,7 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       ..writeByte(6)
       ..write(obj.thumbnailPath)
       ..writeByte(7)
-      ..write(obj.pageImagePaths)
+      ..write(obj._pageImagePaths)
       ..writeByte(8)
       ..write(obj.scanMode)
       ..writeByte(9)
@@ -65,9 +64,9 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       ..writeByte(11)
       ..write(obj.colorProfile)
       ..writeByte(12)
-      ..write(obj.tags)
+      ..write(obj._tags)
       ..writeByte(13)
-      ..write(obj.metadata);
+      ..write(obj._metadata);
   }
 
   @override

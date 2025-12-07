@@ -9,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 
 /// Service for generating and caching downscaled preview images from originals.
-/// 
+///
 /// Previews are used for UI display to reduce memory pressure, while keeping
 /// original full-resolution images for OCR, export, and image processing.
 class PreviewImageService {
@@ -22,12 +22,12 @@ class PreviewImageService {
   static final PreviewImageService instance = PreviewImageService._();
 
   /// Gets or creates a preview image path for the given original image path.
-  /// 
+  ///
   /// If a preview already exists and is up-to-date, returns its path immediately.
   /// Otherwise, generates a new downscaled preview, saves it to disk, and returns the path.
-  /// 
+  ///
   /// The preview is generated in an isolate to avoid blocking the UI thread.
-  /// 
+  ///
   /// Throws [Exception] if the original file doesn't exist or preview generation fails.
   Future<String> getOrCreatePreviewPath(String originalPath) async {
     try {
@@ -43,7 +43,11 @@ class PreviewImageService {
       final dir = await getTemporaryDirectory();
       final baseName = p.basenameWithoutExtension(originalPath);
       final ext = p.extension(originalPath).toLowerCase();
-      final previewPath = p.join(dir.path, 'previews', '${baseName}_preview$ext');
+      final previewPath = p.join(
+        dir.path,
+        'previews',
+        '${baseName}_preview$ext',
+      );
 
       // Create previews directory if it doesn't exist
       final previewDir = Directory(p.dirname(previewPath));
@@ -60,13 +64,19 @@ class PreviewImageService {
           // If preview is newer than or equal to original, use it
           if (previewModified.isAfter(originalModified) ||
               previewModified.isAtSameMomentAs(originalModified)) {
-            AppLogger.info('Using existing preview', data: {'path': previewPath});
+            AppLogger.info(
+              'Using existing preview',
+              data: {'path': previewPath},
+            );
             return previewPath;
           }
         } catch (e) {
           // If we can't check modification time, regenerate preview
-          AppLogger.warning('Could not check preview modification time, regenerating', 
-              data: {'error': e.toString()});
+          AppLogger.warning(
+            error: null,
+            'Could not check preview modification time, regenerating',
+            data: {'error': e.toString()},
+          );
         }
       }
 
@@ -80,7 +90,7 @@ class PreviewImageService {
       );
 
       await previewFile.writeAsBytes(resizedBytes, flush: true);
-      
+
       // Set modification time to match original for future checks
       try {
         await previewFile.setLastModified(originalModified);
@@ -88,18 +98,24 @@ class PreviewImageService {
         // Ignore errors setting modification time - not critical
       }
 
-      AppLogger.info('Preview generated successfully', 
-          data: {'path': previewPath, 'size': resizedBytes.length});
+      AppLogger.info(
+        'Preview generated successfully',
+        data: {'path': previewPath, 'size': resizedBytes.length},
+      );
       return previewPath;
     } catch (e, stack) {
-      AppLogger.error('Failed to get or create preview', 
-          error: e, stack: stack, data: {'originalPath': originalPath});
+      AppLogger.error(
+        'Failed to get or create preview',
+        error: e,
+        stack: stack,
+        data: {'originalPath': originalPath},
+      );
       rethrow;
     }
   }
 
   /// Clears all cached preview images.
-  /// 
+  ///
   /// Useful for freeing disk space or forcing regeneration of previews.
   Future<void> clearCache() async {
     try {
@@ -115,14 +131,18 @@ class PreviewImageService {
   }
 
   /// Gets the cached preview path without generating if it doesn't exist.
-  /// 
+  ///
   /// Returns the preview path if it exists, null otherwise.
   Future<String?> getCachedPreviewPath(String originalPath) async {
     try {
       final dir = await getTemporaryDirectory();
       final baseName = p.basenameWithoutExtension(originalPath);
       final ext = p.extension(originalPath).toLowerCase();
-      final previewPath = p.join(dir.path, 'previews', '${baseName}_preview$ext');
+      final previewPath = p.join(
+        dir.path,
+        'previews',
+        '${baseName}_preview$ext',
+      );
 
       final previewFile = File(previewPath);
       if (await previewFile.exists()) {
@@ -144,7 +164,7 @@ class _ResizeParams {
 }
 
 /// Isolate entry point for resizing images.
-/// 
+///
 /// This runs in a separate isolate to avoid blocking the UI thread.
 Uint8List _resizeImageIsolate(_ResizeParams params) {
   try {
@@ -183,4 +203,3 @@ Uint8List _resizeImageIsolate(_ResizeParams params) {
     throw Exception('Failed to resize image: $e');
   }
 }
-

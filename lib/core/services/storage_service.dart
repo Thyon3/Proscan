@@ -38,6 +38,7 @@ class StorageService {
       // If calculation seems unreasonable, use a fallback estimate
       if (total < freeBytes || total < 1024 * 1024) {
         AppLogger.warning(
+          error: null,
           'Storage calculation seems invalid, using fallback',
           data: {'calculatedTotal': total, 'free': freeBytes},
         );
@@ -73,6 +74,7 @@ class StorageService {
       AppLogger.error('Failed to get free storage', error: e, stack: stack);
       // Return a conservative fallback to avoid breaking the app
       AppLogger.warning(
+        error: null,
         'Using fallback free storage value',
         data: {'error': e.toString()},
       );
@@ -132,6 +134,7 @@ class StorageService {
       return await _getDirectoryFreeSpace(directory.path);
     } catch (e) {
       AppLogger.warning(
+        error: null,
         'Mobile free storage check failed, using fallback',
         data: {'error': e.toString()},
       );
@@ -147,6 +150,7 @@ class StorageService {
       return await _getDirectoryFreeSpace(directory.path);
     } catch (e) {
       AppLogger.warning(
+        error: null,
         'Unix free storage check failed, using fallback',
         data: {'error': e.toString()},
       );
@@ -161,6 +165,7 @@ class StorageService {
       return await _getWindowsDirectoryFreeSpace(directory.path);
     } catch (e) {
       AppLogger.warning(
+        error: null,
         'Windows free storage check failed, using fallback',
         data: {'error': e.toString()},
       );
@@ -199,6 +204,7 @@ class StorageService {
       throw Exception('df command failed or returned unexpected output');
     } catch (e) {
       AppLogger.warning(
+        error: null,
         'df command failed for path: $path',
         data: {'error': e.toString()},
       );
@@ -242,6 +248,7 @@ class StorageService {
       throw Exception('wmic command failed or returned unexpected output');
     } catch (e) {
       AppLogger.warning(
+        error: null,
         'Windows free space check failed for path: $path',
         data: {'error': e.toString()},
       );
@@ -257,6 +264,7 @@ class StorageService {
       return await _getDirectorySize(directory);
     } catch (e) {
       AppLogger.warning(
+        error: null,
         'Could not calculate used storage, returning 0',
         data: {'error': e.toString()},
       );
@@ -284,6 +292,7 @@ class StorageService {
       return totalSize;
     } catch (e) {
       AppLogger.warning(
+        error: null,
         'Error calculating directory size',
         data: {'path': directory.path, 'error': e.toString()},
       );

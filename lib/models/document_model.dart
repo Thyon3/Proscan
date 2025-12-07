@@ -4,6 +4,21 @@ import 'package:thyscan/models/document_color_profile.dart';
 
 part 'document_model.g.dart';
 
+/// Document model representing a scanned or created document.
+///
+/// This model is used for both local storage (Hive) and cloud synchronization.
+/// It supports PDF and DOCX formats with metadata, tags, and thumbnails.
+///
+/// **Fields:**
+/// - `id`: Unique document identifier (UUID)
+/// - `title`: Document title/name
+/// - `filePath`: Local file path or Supabase Storage URL
+/// - `format`: Document format ('pdf' or 'docx')
+/// - `pageCount`: Number of pages in the document
+/// - `scanMode`: Type of scan ('document', 'idCard', 'book', etc.)
+/// - `colorProfile`: Color processing mode ('color', 'grayscale', 'blackwhite')
+/// - `tags`: List of tags for categorization
+/// - `metadata`: Additional metadata as key-value pairs
 @HiveType(typeId: 0)
 class DocumentModel extends HiveObject {
   @HiveField(0)
@@ -48,11 +63,18 @@ class DocumentModel extends HiveObject {
   @HiveField(13, defaultValue: <String, String>{})
   final Map<String, String>? _metadata;
 
-  // Public getter that guarantees non-null list
+  /// Public getter that guarantees non-null list of page image paths.
+  /// Returns empty list if null.
   List<String> get pageImagePaths => _pageImagePaths ?? [];
+
+  /// Gets the color profile as an enum for type-safe operations.
   DocumentColorProfile get colorProfileEnum =>
       DocumentColorProfile.fromKey(colorProfile);
+
+  /// Gets tags list, returns empty list if null.
   List<String> get tags => _tags ?? const [];
+
+  /// Gets metadata map, returns empty map if null.
   Map<String, String> get metadata => _metadata ?? const {};
 
   DocumentModel({
@@ -73,6 +95,17 @@ class DocumentModel extends HiveObject {
   }) : _pageImagePaths = pageImagePaths,
        _tags = tags,
        _metadata = metadata;
+  /// Creates a copy of this document with the given fields replaced with new values.
+  ///
+  /// All fields are optional. If a field is not provided, the original value is used.
+  ///
+  /// **Example:**
+  /// ```dart
+  /// final updated = document.copyWith(
+  ///   title: 'New Title',
+  ///   updatedAt: DateTime.now(),
+  /// );
+  /// ```
   DocumentModel copyWith({
     String? id,
     String? title,
@@ -106,4 +139,19 @@ class DocumentModel extends HiveObject {
       metadata: metadata ?? this.metadata,
     );
   }
+
+  /// Checks if this document has a valid file path.
+  bool get hasValidFilePath => filePath.isNotEmpty;
+
+  /// Checks if this document has a thumbnail.
+  bool get hasThumbnail => thumbnailPath.isNotEmpty;
+
+  /// Gets a display-friendly file size (if available from metadata).
+  String? get displayFileSize => metadata['fileSize'];
+
+  /// Gets the document author (if available from metadata).
+  String? get author => metadata['author'];
+
+  /// Gets the document subject (if available from metadata).
+  String? get subject => metadata['subject'];
 }

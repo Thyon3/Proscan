@@ -20,10 +20,7 @@ import 'package:thyscan/services/document_service.dart';
 class TranslationEditorScreen extends ConsumerStatefulWidget {
   final String? documentId;
 
-  const TranslationEditorScreen({
-    super.key,
-    this.documentId,
-  });
+  const TranslationEditorScreen({super.key, this.documentId});
 
   @override
   ConsumerState<TranslationEditorScreen> createState() =>
@@ -53,7 +50,7 @@ class _TranslationEditorScreenState
     super.initState();
     _controller = TextEditingController();
     _focusNode = FocusNode();
-    
+
     if (widget.documentId != null) {
       _loadDocument();
     } else {
@@ -72,11 +69,13 @@ class _TranslationEditorScreenState
     if (isNowModified != _isModified) {
       setState(() => _isModified = isNowModified);
     }
-    
+
     // Debounce provider updates to improve performance
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 300), () {
-      ref.read(translationProvider.notifier).updateTranslatedText(_controller.text);
+      ref
+          .read(translationProvider.notifier)
+          .updateTranslatedText(_controller.text);
     });
   }
 
@@ -101,7 +100,9 @@ class _TranslationEditorScreenState
           _originalText = doc.textContent ?? '';
           _isModified = false;
           // Update provider with loaded text
-          ref.read(translationProvider.notifier).updateTranslatedText(doc.textContent ?? '');
+          ref
+              .read(translationProvider.notifier)
+              .updateTranslatedText(doc.textContent ?? '');
         });
       }
     } catch (e, stackTrace) {
@@ -128,10 +129,10 @@ class _TranslationEditorScreenState
           textContent: text,
           updatedAt: DateTime.now(),
         );
-        
+
         final box = Hive.box<DocumentModel>(DocumentService.boxName);
         await box.put(_document!.id, savedDoc);
-        
+
         // Update text file
         final file = File(_document!.filePath);
         await file.writeAsString(text);
@@ -152,7 +153,7 @@ class _TranslationEditorScreenState
         });
 
         _showSnackBar('Document saved successfully!');
-        
+
         // Navigate to home screen after short delay
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
@@ -162,7 +163,10 @@ class _TranslationEditorScreenState
     } catch (e, stackTrace) {
       AppLogger.error('Save failed', error: e, stack: stackTrace);
       if (mounted) {
-        _showSnackBar('Failed to save: ${e.toString().split(':').last.trim()}', isError: true);
+        _showSnackBar(
+          'Failed to save: ${e.toString().split(':').last.trim()}',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) {
@@ -201,13 +205,13 @@ class _TranslationEditorScreenState
             textContent: text,
             updatedAt: DateTime.now(),
           );
-          
+
           final box = Hive.box<DocumentModel>(DocumentService.boxName);
           await box.put(_document!.id, updatedDoc);
-          
+
           final file = File(_document!.filePath);
           await file.writeAsString(text);
-          
+
           if (mounted) {
             setState(() {
               _document = updatedDoc;
@@ -216,7 +220,11 @@ class _TranslationEditorScreenState
             });
           }
         } catch (e) {
-          AppLogger.warning('Failed to save before export', data: {'error': e});
+          AppLogger.warning(
+            'Failed to save before export',
+            data: {'error': e},
+            error: null,
+          );
         }
       } else if (_document == null && _isModified) {
         // Save new document
@@ -226,7 +234,7 @@ class _TranslationEditorScreenState
             title: 'Translation ${DateTime.now().toString()}',
             scanMode: 'translate',
           );
-          
+
           if (mounted) {
             setState(() {
               _document = savedDoc;
@@ -235,7 +243,11 @@ class _TranslationEditorScreenState
             });
           }
         } catch (e) {
-          AppLogger.warning('Failed to save before export', data: {'error': e});
+          AppLogger.warning(
+            'Failed to save before export',
+            data: {'error': e},
+            error: null,
+          );
         }
       }
 
@@ -250,7 +262,7 @@ class _TranslationEditorScreenState
           'Exported to Word successfully!',
           duration: const Duration(seconds: 2),
         );
-        
+
         // Navigate to home screen after short delay
         await Future.delayed(const Duration(milliseconds: 800));
         if (mounted) {
@@ -260,7 +272,10 @@ class _TranslationEditorScreenState
     } catch (e, stackTrace) {
       AppLogger.error('Export failed', error: e, stack: stackTrace);
       if (mounted) {
-        _showSnackBar('Export failed: ${e.toString().split(':').last.trim()}', isError: true);
+        _showSnackBar(
+          'Export failed: ${e.toString().split(':').last.trim()}',
+          isError: true,
+        );
       }
     } finally {
       if (mounted) {
@@ -284,12 +299,20 @@ class _TranslationEditorScreenState
     } catch (e) {
       AppLogger.error('Share failed', error: e);
       if (mounted) {
-        _showSnackBar('Share failed: ${e.toString().split(':').last.trim()}', isError: true);
+        _showSnackBar(
+          'Share failed: ${e.toString().split(':').last.trim()}',
+          isError: true,
+        );
       }
     }
   }
 
-  void _showSnackBar(String message, {bool isError = false, Duration? duration, SnackBarAction? action}) {
+  void _showSnackBar(
+    String message, {
+    bool isError = false,
+    Duration? duration,
+    SnackBarAction? action,
+  }) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -339,19 +362,24 @@ class _TranslationEditorScreenState
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.3),
+                  color: Theme.of(
+                    ctx,
+                  ).colorScheme.onSurface.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'Translate to',
                     style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -386,7 +414,7 @@ class _TranslationEditorScreenState
       message: 'Translating…',
       action: () => controller.changeTargetLanguage(selected),
     );
-    
+
     // Update controller with new translation
     if (mounted) {
       _controller.text = ref.read(translationProvider).translatedText;
@@ -439,7 +467,10 @@ class _TranslationEditorScreenState
 
     if (newTitle != null && newTitle != _document!.title && mounted) {
       try {
-        await DocumentService.instance.renameDocument(widget.documentId!, newTitle);
+        await DocumentService.instance.renameDocument(
+          widget.documentId!,
+          newTitle,
+        );
         setState(() {
           _document = _document!.copyWith(title: newTitle);
         });
@@ -450,9 +481,9 @@ class _TranslationEditorScreenState
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Rename failed: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Rename failed: $e')));
         }
       }
     }
@@ -472,10 +503,16 @@ class _TranslationEditorScreenState
           final shouldSave = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
               title: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange,
+                    size: 28,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -492,11 +529,17 @@ class _TranslationEditorScreenState
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, false),
-                  child: Text('Discard', style: GoogleFonts.inter(fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'Discard',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                  ),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(context, true),
-                  child: Text('Save', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+                  child: Text(
+                    'Save',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+                  ),
                 ),
               ],
             ),
@@ -512,7 +555,8 @@ class _TranslationEditorScreenState
         }
       },
       child: Scaffold(
-        resizeToAvoidBottomInset: false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
+        resizeToAvoidBottomInset:
+            false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -531,7 +575,11 @@ class _TranslationEditorScreenState
               ),
               if (_document != null)
                 IconButton(
-                  icon: Icon(Icons.edit_rounded, size: 18, color: theme.colorScheme.primary),
+                  icon: Icon(
+                    Icons.edit_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
                   onPressed: _showRenameDialog,
                   tooltip: 'Rename',
                 ),
@@ -542,7 +590,10 @@ class _TranslationEditorScreenState
             if (_isModified && !_isSaving)
               Container(
                 margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.orange.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
@@ -565,11 +616,17 @@ class _TranslationEditorScreenState
               ),
             IconButton(
               tooltip: 'Change language',
-              icon: Icon(Icons.translate_rounded, color: theme.colorScheme.primary),
+              icon: Icon(
+                Icons.translate_rounded,
+                color: theme.colorScheme.primary,
+              ),
               onPressed: _onChangeLanguagePressed,
             ),
             PopupMenuButton<String>(
-              icon: Icon(Icons.more_vert_rounded, color: theme.colorScheme.onSurface),
+              icon: Icon(
+                Icons.more_vert_rounded,
+                color: theme.colorScheme.onSurface,
+              ),
               onSelected: (value) {
                 if (value == 'export') {
                   _onExportDocxPressed();
@@ -596,7 +653,9 @@ class _TranslationEditorScreenState
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.3,
+                ),
                 border: Border(
                   bottom: BorderSide(
                     color: theme.dividerColor.withValues(alpha: 0.1),
@@ -621,9 +680,17 @@ class _TranslationEditorScreenState
                     ),
                   ),
                   const SizedBox(width: 16),
-                  _buildStatChip(theme.colorScheme, Icons.text_fields, '$_wordCount words'),
+                  _buildStatChip(
+                    theme.colorScheme,
+                    Icons.text_fields,
+                    '$_wordCount words',
+                  ),
                   const SizedBox(width: 12),
-                  _buildStatChip(theme.colorScheme, Icons.format_size, '$_characterCount chars'),
+                  _buildStatChip(
+                    theme.colorScheme,
+                    Icons.format_size,
+                    '$_characterCount chars',
+                  ),
                 ],
               ),
             ),
@@ -633,7 +700,9 @@ class _TranslationEditorScreenState
               child: Container(
                 margin: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: _focusNode.hasFocus
@@ -644,7 +713,9 @@ class _TranslationEditorScreenState
                   boxShadow: _focusNode.hasFocus
                       ? [
                           BoxShadow(
-                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.1,
+                            ),
                             blurRadius: 12,
                             spreadRadius: 1,
                           ),
@@ -671,7 +742,9 @@ class _TranslationEditorScreenState
                           : 'Translation will appear here...',
                       hintStyle: GoogleFonts.inter(
                         fontSize: 16,
-                        color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.5),
+                        color: theme.textTheme.bodySmall?.color?.withValues(
+                          alpha: 0.5,
+                        ),
                         height: 1.6,
                       ),
                       border: InputBorder.none,
@@ -707,7 +780,9 @@ class _TranslationEditorScreenState
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
                                   ),
                                 )
                               : Icon(Icons.save_rounded, size: 20),
@@ -736,7 +811,9 @@ class _TranslationEditorScreenState
                           icon: Icon(Icons.share, size: 20),
                           label: Text(
                             'Share',
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+                            style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
@@ -744,7 +821,9 @@ class _TranslationEditorScreenState
                               borderRadius: BorderRadius.circular(16),
                             ),
                             side: BorderSide(
-                              color: theme.colorScheme.outline.withValues(alpha: 0.3),
+                              color: theme.colorScheme.outline.withValues(
+                                alpha: 0.3,
+                              ),
                             ),
                           ),
                         ),

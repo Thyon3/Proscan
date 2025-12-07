@@ -7,7 +7,11 @@ class AppLogger {
     developer.log(message, level: 800, name: 'ThyScan', error: data);
   }
 
-  static void warning(String message, {Map<String, dynamic>? data}) {
+  static void warning(
+    String message, {
+    Map<String, dynamic>? data,
+    required error,
+  }) {
     developer.log(message, level: 900, name: 'ThyScan', error: data);
   }
 

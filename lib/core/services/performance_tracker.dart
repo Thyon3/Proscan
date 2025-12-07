@@ -20,6 +20,7 @@ class PerformanceTracker {
             'operation': operation,
             'durationMs': sw.elapsed.inMilliseconds,
           },
+          error: null,
         );
       }
     }

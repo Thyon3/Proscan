@@ -161,7 +161,7 @@ class DocumentService {
       if (!await tempFile.exists()) {
         throw StorageFailure('Temporary PDF file missing after generation');
       }
-      
+
       // Move PDF from temp location to organized folder structure
       final savedPdfPath = await AppStorageService.instance.moveToAppFolder(
         tempFilePath: tempFilePath,
@@ -383,7 +383,7 @@ class DocumentService {
       if (!await tempFile.exists()) {
         throw StorageFailure('Temporary PDF file missing after generation');
       }
-      
+
       // Delete old file if it exists in a different location or if scan mode changed
       final oldFilePath = existingDoc.filePath;
       if (oldFilePath.isNotEmpty) {
@@ -394,17 +394,22 @@ class DocumentService {
             final isOldLocation = oldFilePath.contains('scanned_documents');
             if (newScanMode != existingDoc.scanMode || isOldLocation) {
               await oldFile.delete();
-              AppLogger.info('Deleted old document file',
-                  data: {'oldPath': oldFilePath, 'documentId': documentId});
+              AppLogger.info(
+                'Deleted old document file',
+                data: {'oldPath': oldFilePath, 'documentId': documentId},
+              );
             }
           }
         } catch (e) {
-          AppLogger.warning('Failed to delete old document file',
-              data: {'oldPath': oldFilePath, 'error': e.toString()});
+          AppLogger.warning(
+            'Failed to delete old document file',
+            data: {'oldPath': oldFilePath, 'error': e.toString()},
+            error: null,
+          );
           // Continue even if deletion fails
         }
       }
-      
+
       // Move PDF from temp location to organized folder structure
       final savedPdfPath = await AppStorageService.instance.moveToAppFolder(
         tempFilePath: tempFilePath,
@@ -457,7 +462,9 @@ class DocumentService {
       _markCacheDirty();
 
       // Upload to cloud in background (non-blocking)
-      DocumentUploadService.instance.uploadDocument(updatedDoc).catchError((error) {
+      DocumentUploadService.instance.uploadDocument(updatedDoc).catchError((
+        error,
+      ) {
         AppLogger.warning(
           'Background upload failed for document ${updatedDoc.id}',
           error: error,
@@ -880,6 +887,7 @@ class DocumentService {
           'missingThumbnails': report.missingThumbnails.length,
           'orphanedFiles': report.orphanedFiles.length,
         },
+        error: null,
       );
     }
 
