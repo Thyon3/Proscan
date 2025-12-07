@@ -4,13 +4,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/utils/filename_sanitizer.dart';
-import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 
 /// Upload status for a document
@@ -340,8 +338,8 @@ class DocumentUploadService {
 
       _emitProgress(documentId, UploadStatus.syncingMetadata, progress: 0.75);
 
-      // 3. Sync metadata to backend API
-      await _syncMetadataToBackend(
+      // 3. Sync metadata to backend API (create or update)
+      await DocumentBackendSyncService.instance.syncDocumentMetadata(
         document: document,
         fileUrl: publicUrl,
         thumbnailUrl: thumbnailUrl,
@@ -384,140 +382,6 @@ class DocumentUploadService {
       _addToQueue(document);
       return null;
     }
-  }
-
-  /// Syncs document metadata to backend API.
-  ///
-  /// Sends document metadata (title, format, tags, etc.) to the NestJS backend
-  /// for storage in PostgreSQL. The backend associates the metadata with the
-  /// Supabase Storage URL.
-  ///
-  /// **Parameters:**
-  /// - `document`: Document model with all metadata
-  /// - `fileUrl`: Public URL from Supabase Storage
-  /// - `thumbnailUrl`: Optional thumbnail URL from Supabase Storage
-  ///
-  /// **Throws:**
-  /// - `Exception` if backend API call fails
-  /// - `TimeoutException` if request times out (30s)
-  ///
-  /// **Error Handling:**
-  /// - Logs detailed error information
-  /// - Throws exception to trigger retry logic
-  Future<void> _syncMetadataToBackend({
-    required DocumentModel document,
-    required String fileUrl,
-    String? thumbnailUrl,
-  }) async {
-    final user = AuthService.instance.currentUser;
-    if (user == null) {
-      throw Exception('User not authenticated');
-    }
-
-    final session = AuthService.instance.supabase.auth.currentSession;
-    if (session == null) {
-      throw Exception('No active session');
-    }
-
-    final backendUrl = AppEnv.backendApiUrl;
-    if (backendUrl == null || backendUrl.isEmpty) {
-      AppLogger.warning(
-        error: null,
-        'Backend API URL not configured, skipping metadata sync',
-      );
-      return;
-    }
-
-    // Validate and normalize URL
-    if (!UrlValidator.isValidUrl(backendUrl)) {
-      AppLogger.error(
-        'Invalid backend API URL format',
-        data: {'url': backendUrl},
-      );
-      throw Exception('Invalid backend API URL format: $backendUrl');
-    }
-
-    final apiUrl = UrlValidator.buildApiUrl(backendUrl, 'api/documents');
-    if (apiUrl == null) {
-      throw Exception('Failed to build API URL from: $backendUrl');
-    }
-
-    final url = Uri.parse(apiUrl);
-    final headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ${session.accessToken}',
-    };
-
-    final body = jsonEncode({
-      'id': document.id,
-      'title': document.title,
-      'fileUrl': fileUrl,
-      'thumbnailUrl': thumbnailUrl,
-      'format': document.format,
-      'pageCount': document.pageCount,
-      'scanMode': document.scanMode,
-      'colorProfile': document.colorProfile,
-      'textContent': document.textContent,
-      'tags': document.tags,
-      'metadata': document.metadata,
-      // Note: createdAt and updatedAt are handled by backend automatically
-      // but we can include them for explicit control if needed
-    });
-
-    AppLogger.info(
-      'Syncing metadata to backend',
-      data: {
-        'documentId': document.id,
-        'url': url.toString(),
-        'title': document.title,
-      },
-    );
-
-    final response = await http
-        .post(url, headers: headers, body: body)
-        .timeout(
-          const Duration(seconds: 30),
-          onTimeout: () {
-            throw TimeoutException('Backend API request timed out');
-          },
-        );
-
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      try {
-        final responseData = jsonDecode(response.body);
-        AppLogger.info(
-          'Metadata synced successfully',
-          data: {
-            'documentId': document.id,
-            'backendDocumentId': responseData['id'],
-          },
-        );
-      } catch (e) {
-        AppLogger.info(
-          'Metadata synced successfully',
-          data: {'documentId': document.id},
-        );
-      }
-    } else {
-      // Log detailed error for debugging
-      AppLogger.error(
-        'Backend API error',
-        data: {
-          'documentId': document.id,
-          'statusCode': response.statusCode,
-          'responseBody': response.body,
-          'url': url.toString(),
-        },
-      );
-      throw Exception(
-        'Backend API error: ${response.statusCode} - ${response.body}',
-      );
-    }
-
-    AppLogger.info(
-      'Metadata synced successfully',
-      data: {'documentId': document.id},
-    );
   }
 
   /// Adds document to upload queue

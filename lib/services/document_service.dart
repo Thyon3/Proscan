@@ -12,6 +12,7 @@ import 'package:thyscan/core/errors/pdf_exceptions.dart';
 import 'package:thyscan/core/errors/storage_exceptions.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/app_storage_service.dart';
+import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_operation_queue.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
@@ -461,7 +462,7 @@ class DocumentService {
       await box.put(documentId, updatedDoc);
       _markCacheDirty();
 
-      // Upload to cloud in background (non-blocking)
+      // Upload updated file to cloud and sync metadata to backend (non-blocking)
       DocumentUploadService.instance.uploadDocument(updatedDoc).catchError((
         error,
       ) {
@@ -471,6 +472,20 @@ class DocumentService {
         );
         // Upload will be retried automatically via queue
       });
+
+      // Also update metadata in backend if file URLs are already known (for metadata-only updates)
+      // This handles cases where only title/tags/metadata changed but file wasn't re-uploaded
+      if (updatedDoc.filePath.startsWith('http://') ||
+          updatedDoc.filePath.startsWith('https://')) {
+        DocumentBackendSyncService.instance
+            .updateDocumentMetadata(updatedDoc)
+            .catchError((error) {
+          AppLogger.warning(
+            'Background metadata update failed for document ${updatedDoc.id}',
+            error: error,
+          );
+        });
+      }
 
       return updatedDoc;
     } catch (e) {
