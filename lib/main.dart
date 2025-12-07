@@ -58,18 +58,43 @@ void main() {
         });
 
         // Trigger initial sync after auth is ready (non-blocking)
+        // This replaces local documents with backend data when online
         authInitFuture.then((_) async {
           // Wait a bit for auth to fully initialize
           await Future.delayed(const Duration(seconds: 2));
           final user = AuthService.instance.currentUser;
           if (user != null) {
-            AppLogger.info('User authenticated, triggering initial document sync');
-            DocumentSyncService.instance.syncDocuments().catchError((error) {
-              AppLogger.warning('Initial sync failed', error: error);
+            AppLogger.info(
+              'User authenticated, triggering initial document sync (replacing local with backend)',
+            );
+            // Replace local documents with backend data on app startup
+            DocumentSyncService.instance
+                .syncDocuments(
+                  forceFullSync: true,
+                  replaceLocal: true, // Replace local with backend data
+                )
+                .then((result) {
+              AppLogger.info(
+                'Initial sync completed',
+                data: {
+                  'success': result.success,
+                  'added': result.documentsAdded,
+                  'updated': result.documentsUpdated,
+                  'replaced': result.documentsReplaced,
+                },
+              );
+            }).catchError((error) {
+              AppLogger.warning(
+                'Initial sync failed (app will use local documents)',
+                error: error,
+              );
             });
           }
         }).catchError((error) {
-          AppLogger.warning('Auth initialization failed, skipping initial sync', error: error);
+          AppLogger.warning(
+            'Auth initialization failed, skipping initial sync',
+            error: error,
+          );
         });
 
         AppLogger.info('Core services initialized successfully (auth initializing in background)');

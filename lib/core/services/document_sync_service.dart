@@ -65,22 +65,23 @@ class DocumentSyncService {
             result != ConnectivityResult.bluetooth,
       );
 
-        if (isOnline) {
-          AppLogger.info('Network connectivity restored, triggering sync');
-          syncDocuments().catchError((error) {
-            AppLogger.error(
-              'Auto-sync failed after connectivity change',
-              error: error,
-            );
-            return SyncResult(
-              success: false,
-              message: 'Auto-sync failed',
-              documentsAdded: 0,
-              documentsUpdated: 0,
-              documentsSkipped: 0,
-            );
-          });
-        }
+      if (isOnline) {
+        AppLogger.info('Network connectivity restored, triggering sync');
+        syncDocuments().catchError((error) {
+          AppLogger.error(
+            'Auto-sync failed after connectivity change',
+            error: error,
+          );
+          return SyncResult(
+            success: false,
+            message: 'Auto-sync failed',
+            documentsAdded: 0,
+            documentsUpdated: 0,
+            documentsSkipped: 0,
+            documentsReplaced: 0,
+          );
+        });
+      }
     });
 
     AppLogger.info('DocumentSyncService initialized');
@@ -96,30 +97,41 @@ class DocumentSyncService {
   /// **Process:**
   /// 1. Validates authentication and network connectivity
   /// 2. Fetches documents from backend (incremental or full)
-  /// 3. Merges with local Hive storage
-  /// 4. Resolves conflicts by `updatedAt` timestamp
+  /// 3. Replaces local documents (if `replaceLocal: true`) OR merges with local Hive storage (if `replaceLocal: false`)
+  /// 4. Resolves conflicts by `updatedAt` timestamp when merging
   ///
-  /// **Conflict Resolution:**
-  /// - If backend `updatedAt` > local: Update local from backend
-  /// - If local `updatedAt` > backend: Keep local (will be uploaded)
-  /// - If equal: Keep local (assumed already synced)
+  /// **Sync Modes:**
+  /// - **Replace Mode** (`replaceLocal: true`): Clears local storage and replaces with backend data
+  ///   - Use on app startup to ensure backend is source of truth
+  ///   - All local documents are replaced with backend versions
+  /// - **Merge Mode** (`replaceLocal: false`): Merges backend documents with local storage
+  ///   - Conflict resolution by `updatedAt` timestamp
+  ///   - If backend `updatedAt` > local: Update local from backend
+  ///   - If local `updatedAt` > backend: Keep local (will be uploaded)
+  ///   - If equal: Keep local (assumed already synced)
   ///
   /// **Parameters:**
   /// - `forceFullSync`: If `true`, fetches all documents regardless of `_lastSyncTime`
+  /// - `replaceLocal`: If `true`, replaces all local documents with backend data (default: `false`)
   ///
   /// **Returns:**
-  /// - `SyncResult` with counts of added, updated, and skipped documents
+  /// - `SyncResult` with counts of added, updated, skipped, and replaced documents
   ///
-  /// **Example:**
+  /// **Examples:**
   /// ```dart
+  /// // Merge mode (default) - for background sync
   /// final result = await DocumentSyncService.instance.syncDocuments();
-  /// if (result.success) {
-  ///   print('Sync successful: ${result.documentsAdded} added');
-  /// } else {
-  ///   print('Sync failed: ${result.message}');
-  /// }
+  ///
+  /// // Replace mode - for app startup
+  /// final result = await DocumentSyncService.instance.syncDocuments(
+  ///   forceFullSync: true,
+  ///   replaceLocal: true,
+  /// );
   /// ```
-  Future<SyncResult> syncDocuments({bool forceFullSync = false}) async {
+  Future<SyncResult> syncDocuments({
+    bool forceFullSync = false,
+    bool replaceLocal = false,
+  }) async {
     if (_isSyncing) {
       AppLogger.info('Sync already in progress, skipping');
       return SyncResult(
@@ -128,6 +140,7 @@ class DocumentSyncService {
         documentsAdded: 0,
         documentsUpdated: 0,
         documentsSkipped: 0,
+        documentsReplaced: 0,
       );
     }
 
@@ -149,6 +162,7 @@ class DocumentSyncService {
           documentsAdded: 0,
           documentsUpdated: 0,
           documentsSkipped: 0,
+          documentsReplaced: 0,
         );
       }
 
@@ -168,6 +182,7 @@ class DocumentSyncService {
           documentsAdded: 0,
           documentsUpdated: 0,
           documentsSkipped: 0,
+          documentsReplaced: 0,
         );
       }
 
@@ -184,6 +199,7 @@ class DocumentSyncService {
           documentsAdded: 0,
           documentsUpdated: 0,
           documentsSkipped: 0,
+          documentsReplaced: 0,
         );
       }
 
@@ -199,6 +215,7 @@ class DocumentSyncService {
           documentsAdded: 0,
           documentsUpdated: 0,
           documentsSkipped: 0,
+          documentsReplaced: 0,
         );
       }
 
@@ -212,6 +229,7 @@ class DocumentSyncService {
           documentsAdded: 0,
           documentsUpdated: 0,
           documentsSkipped: 0,
+          documentsReplaced: 0,
         );
       }
 
@@ -228,6 +246,7 @@ class DocumentSyncService {
           documentsAdded: 0,
           documentsUpdated: 0,
           documentsSkipped: 0,
+          documentsReplaced: 0,
         );
       }
 
@@ -293,12 +312,26 @@ class DocumentSyncService {
 
       AppLogger.info('Received ${documentsJson.length} documents from backend');
 
-      // Merge documents into local storage
       final box = Hive.box<DocumentModel>(DocumentService.boxName);
       int added = 0;
       int updated = 0;
       int skipped = 0;
+      int replaced = 0;
 
+      // If replaceLocal is true, clear all local documents first
+      if (replaceLocal) {
+        AppLogger.info(
+          'Replacing local documents with backend data',
+          data: {
+            'localCount': box.length,
+            'backendCount': documentsJson.length,
+          },
+        );
+        await box.clear();
+        replaced = box.length; // Store count before clear
+      }
+
+      // Process backend documents
       for (final docJson in documentsJson) {
         try {
           final remoteDoc = _parseBackendDocument(docJson);
@@ -310,31 +343,41 @@ class DocumentSyncService {
             added++;
             AppLogger.info(
               'Added new document from backend',
-              data: {'id': remoteDoc.id},
+              data: {'id': remoteDoc.id, 'title': remoteDoc.title},
             );
           } else {
-            // Conflict resolution: use the one with newer updatedAt
-            final localUpdatedAt = localDoc.updatedAt;
-            final remoteUpdatedAt = remoteDoc.updatedAt;
-
-            if (remoteUpdatedAt.isAfter(localUpdatedAt)) {
-              // Backend version is newer, update local
+            if (replaceLocal) {
+              // Replace mode: always use backend version
               await box.put(remoteDoc.id, remoteDoc);
               updated++;
               AppLogger.info(
-                'Updated local document with newer backend version',
-                data: {'id': remoteDoc.id},
-              );
-            } else if (remoteUpdatedAt.isBefore(localUpdatedAt)) {
-              // Local version is newer, skip (will be uploaded by upload service)
-              skipped++;
-              AppLogger.info(
-                'Skipped backend document (local is newer)',
-                data: {'id': remoteDoc.id},
+                'Replaced local document with backend version',
+                data: {'id': remoteDoc.id, 'title': remoteDoc.title},
               );
             } else {
-              // Same timestamp, skip
-              skipped++;
+              // Merge mode: conflict resolution by updatedAt timestamp
+              final localUpdatedAt = localDoc.updatedAt;
+              final remoteUpdatedAt = remoteDoc.updatedAt;
+
+              if (remoteUpdatedAt.isAfter(localUpdatedAt)) {
+                // Backend version is newer, update local
+                await box.put(remoteDoc.id, remoteDoc);
+                updated++;
+                AppLogger.info(
+                  'Updated local document with newer backend version',
+                  data: {'id': remoteDoc.id, 'title': remoteDoc.title},
+                );
+              } else if (remoteUpdatedAt.isBefore(localUpdatedAt)) {
+                // Local version is newer, skip (will be uploaded by upload service)
+                skipped++;
+                AppLogger.info(
+                  'Skipped backend document (local is newer)',
+                  data: {'id': remoteDoc.id, 'title': remoteDoc.title},
+                );
+              } else {
+                // Same timestamp, skip
+                skipped++;
+              }
             }
           }
         } catch (e, stack) {
@@ -354,16 +397,21 @@ class DocumentSyncService {
           'added': added,
           'updated': updated,
           'skipped': skipped,
+          'replaced': replaced,
           'total': documentsJson.length,
+          'replaceLocal': replaceLocal,
         },
       );
 
       return SyncResult(
         success: true,
-        message: 'Sync completed successfully',
+        message: replaceLocal
+            ? 'Local documents replaced with backend data'
+            : 'Sync completed successfully',
         documentsAdded: added,
         documentsUpdated: updated,
         documentsSkipped: skipped,
+        documentsReplaced: replaced,
       );
     } catch (e, stack) {
       AppLogger.error('Document sync failed', error: e, stack: stack);
@@ -373,6 +421,7 @@ class DocumentSyncService {
         documentsAdded: 0,
         documentsUpdated: 0,
         documentsSkipped: 0,
+        documentsReplaced: 0,
       );
     } finally {
       _isSyncing = false;
@@ -414,7 +463,6 @@ class DocumentSyncService {
   /// **Throws:**
   /// - `FormatException` if JSON structure is invalid
   DocumentModel _parseBackendDocument(Map<String, dynamic> json) {
-
     return DocumentModel(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -454,21 +502,74 @@ class DocumentSyncService {
 ///   print('Error: ${result.message}');
 /// }
 /// ```
+/// Result of a document sync operation.
+///
+/// Contains information about the sync operation including success status,
+/// counts of documents added/updated/skipped/replaced, and any error messages.
+///
+/// **Example:**
+/// ```dart
+/// final result = await DocumentSyncService.instance.syncDocuments();
+/// if (result.success) {
+///   print('Added: ${result.documentsAdded}');
+///   print('Updated: ${result.documentsUpdated}');
+///   print('Skipped: ${result.documentsSkipped}');
+///   print('Replaced: ${result.documentsReplaced}');
+/// } else {
+///   print('Error: ${result.message}');
+/// }
+/// ```
 class SyncResult {
+  /// Whether the sync operation completed successfully
   final bool success;
+
+  /// Human-readable message describing the sync result
   final String message;
+
+  /// Number of new documents added from backend
   final int documentsAdded;
+
+  /// Number of existing documents updated from backend
   final int documentsUpdated;
+
+  /// Number of documents skipped (local version was newer or same)
   final int documentsSkipped;
 
+  /// Number of documents replaced (when replaceLocal is true)
+  final int documentsReplaced;
+
+  /// Creates a new [SyncResult] instance.
+  ///
+  /// **Parameters:**
+  /// - `success`: Whether the sync operation completed successfully
+  /// - `message`: Human-readable message describing the result
+  /// - `documentsAdded`: Number of new documents added
+  /// - `documentsUpdated`: Number of documents updated
+  /// - `documentsSkipped`: Number of documents skipped
+  /// - `documentsReplaced`: Number of documents replaced (default: 0)
   SyncResult({
     required this.success,
     required this.message,
     required this.documentsAdded,
     required this.documentsUpdated,
     required this.documentsSkipped,
+    this.documentsReplaced = 0,
   });
 
+  /// Total number of documents processed (added + updated + skipped + replaced)
   int get totalProcessed =>
-      documentsAdded + documentsUpdated + documentsSkipped;
+      documentsAdded + documentsUpdated + documentsSkipped + documentsReplaced;
+
+  @override
+  String toString() {
+    return 'SyncResult('
+        'success: $success, '
+        'message: $message, '
+        'added: $documentsAdded, '
+        'updated: $documentsUpdated, '
+        'skipped: $documentsSkipped, '
+        'replaced: $documentsReplaced, '
+        'total: $totalProcessed'
+        ')';
+  }
 }

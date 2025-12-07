@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/utils/filename_sanitizer.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 
@@ -264,7 +265,13 @@ class DocumentUploadService {
         throw Exception('Document file not found: ${document.filePath}');
       }
 
-      final fileName = '$userId/$documentId.${document.format}';
+      // Use document title as filename (sanitized for storage compatibility)
+      final fileName = FilenameSanitizer.createStoragePath(
+        userId,
+        document.title,
+        document.format,
+        replaceSpaces: false, // Keep spaces for readability
+      );
       final fileSize = await file.length();
 
       AppLogger.info(
@@ -303,7 +310,12 @@ class DocumentUploadService {
         try {
           final thumbFile = File(document.thumbnailPath);
           if (await thumbFile.exists()) {
-            final thumbFileName = '$userId/${documentId}_thumb.jpg';
+            // Use document title for thumbnail filename (sanitized)
+            final thumbFileName = FilenameSanitizer.createThumbnailStoragePath(
+              userId,
+              document.title,
+              replaceSpaces: false,
+            );
             await supabase.storage
                 .from(_storageBucket)
                 .upload(
