@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
@@ -64,8 +65,12 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     _activeScanMode = widget.scanMode ?? ScanMode.document;
     _colorProfile = widget.initialColorProfile ?? DocumentColorProfile.color;
 
-    // Load preview images for all pages (for UI display)
-    _loadPreviewImages();
+    // Download URLs if needed, then load preview images
+    _downloadAndPreparePages().then((_) {
+      if (mounted) {
+        _loadPreviewImages();
+      }
+    });
 
     // Only auto-save if this is a new document (no documentId provided)
     if (widget.documentId == null) {
@@ -73,6 +78,42 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     } else {
       // Load existing document data
       _loadExistingDocument();
+    }
+  }
+
+  /// Downloads any URLs in imagePaths to local files
+  Future<void> _downloadAndPreparePages() async {
+    if (_pages.isEmpty) return;
+
+    final downloadedPages = <String>[];
+    for (final path in _pages) {
+      // Check if path is a URL
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        // Download the file
+        final documentId = widget.documentId ?? 'temp_${path.hashCode}';
+        final downloadedPath = await DocumentDownloadService.instance
+            .downloadFile(
+          url: path,
+          documentId: documentId,
+          fileName: path.split('/').last.split('?').first,
+        );
+
+        if (downloadedPath != null) {
+          downloadedPages.add(downloadedPath);
+        } else {
+          // Download failed, keep original URL (will show error later)
+          downloadedPages.add(path);
+        }
+      } else {
+        // Local path, use as-is
+        downloadedPages.add(path);
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _pages = downloadedPages;
+      });
     }
   }
 
@@ -131,8 +172,24 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       final doc = box.get(widget.documentId);
 
       if (doc != null && mounted) {
+        String filePath = doc.filePath;
+
+        // If filePath is a URL, download it first
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+          final downloadedPath = await DocumentDownloadService.instance
+              .downloadFile(
+            url: filePath,
+            documentId: doc.id,
+            fileName: '${doc.id}.${doc.format}',
+          );
+
+          if (downloadedPath != null) {
+            filePath = downloadedPath;
+          }
+        }
+
         setState(() {
-          _savedPdfPath = doc.filePath;
+          _savedPdfPath = filePath;
           _colorProfile = DocumentColorProfile.fromKey(doc.colorProfile);
           _documentId = doc.id;
         });

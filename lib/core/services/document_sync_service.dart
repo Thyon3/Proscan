@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -428,9 +429,108 @@ class DocumentSyncService {
           final remoteDoc = _parseBackendDocument(docJson);
           final localDoc = box.get(remoteDoc.id);
 
+          // Check if document files need to be downloaded (if filePath is a URL)
+          final needsDownload = remoteDoc.filePath.startsWith('http://') ||
+              remoteDoc.filePath.startsWith('https://');
+
+          // If local document exists and has local files, keep showing it until download completes
+          final hasLocalFiles = localDoc != null &&
+              !localDoc.filePath.startsWith('http://') &&
+              !localDoc.filePath.startsWith('https://');
+
+          DocumentModel finalDoc = remoteDoc;
+
+          // If we have a local version with local files, use it temporarily
+          // (will be updated when download completes)
+          if (hasLocalFiles && needsDownload) {
+            AppLogger.info(
+              '📱 Keeping local document visible, downloading updated version in background',
+              data: {
+                'id': remoteDoc.id,
+                'title': remoteDoc.title,
+              },
+            );
+            // Use local version for now
+            finalDoc = localDoc!;
+          }
+
+          // Download files if needed (in background, don't block sync)
+          if (needsDownload) {
+            AppLogger.info(
+              '📥 Document needs download, starting background download',
+              data: {
+                'id': remoteDoc.id,
+                'title': remoteDoc.title,
+                'fileUrl': remoteDoc.filePath.substring(
+                  0,
+                  remoteDoc.filePath.length > 100
+                      ? 100
+                      : remoteDoc.filePath.length,
+                ) + '...',
+              },
+            );
+
+            // Download files in background
+            DocumentDownloadService.instance
+                .downloadDocumentFiles(
+                  fileUrl: remoteDoc.filePath,
+                  thumbnailUrl: remoteDoc.thumbnailPath.isNotEmpty
+                      ? remoteDoc.thumbnailPath
+                      : null,
+                  documentId: remoteDoc.id,
+                  format: remoteDoc.format,
+                )
+                .then((downloadedFiles) {
+              // Update document with local paths after download
+              final downloadedFilePath = downloadedFiles['filePath'];
+              final downloadedThumbnailPath = downloadedFiles['thumbnailPath'];
+
+              if (downloadedFilePath != null) {
+                final updatedDoc = DocumentModel(
+                  id: remoteDoc.id,
+                  title: remoteDoc.title,
+                  filePath: downloadedFilePath,
+                  thumbnailPath: downloadedThumbnailPath ?? '',
+                  format: remoteDoc.format,
+                  pageCount: remoteDoc.pageCount,
+                  createdAt: remoteDoc.createdAt,
+                  updatedAt: remoteDoc.updatedAt,
+                  pageImagePaths: remoteDoc.pageImagePaths,
+                  scanMode: remoteDoc.scanMode,
+                  textContent: remoteDoc.textContent,
+                  colorProfile: remoteDoc.colorProfile,
+                  tags: remoteDoc.tags,
+                  metadata: remoteDoc.metadata,
+                );
+
+                box.put(remoteDoc.id, updatedDoc);
+                AppLogger.info(
+                  '✅ Document files downloaded and updated - user will now see online version',
+                  data: {
+                    'id': remoteDoc.id,
+                    'filePath': downloadedFilePath,
+                    'thumbnailPath': downloadedThumbnailPath ?? 'none',
+                  },
+                );
+              } else {
+                AppLogger.warning(
+                  '⚠️ Failed to download document files, keeping URL',
+                  error: null,
+                  data: {'id': remoteDoc.id},
+                );
+              }
+            }).catchError((error) {
+              AppLogger.error(
+                'Failed to download document files',
+                error: error,
+                data: {'id': remoteDoc.id},
+              );
+            });
+          }
+
           if (localDoc == null) {
             // New document from backend
-            await box.put(remoteDoc.id, remoteDoc);
+            await box.put(remoteDoc.id, finalDoc);
             added++;
             AppLogger.info(
               'Added new document from backend',
@@ -439,7 +539,7 @@ class DocumentSyncService {
           } else {
             if (replaceLocal) {
               // Replace mode: always use backend version
-              await box.put(remoteDoc.id, remoteDoc);
+              await box.put(remoteDoc.id, finalDoc);
               updated++;
               AppLogger.info(
                 'Replaced local document with backend version',
@@ -452,7 +552,7 @@ class DocumentSyncService {
 
               if (remoteUpdatedAt.isAfter(localUpdatedAt)) {
                 // Backend version is newer, update local
-                await box.put(remoteDoc.id, remoteDoc);
+                await box.put(remoteDoc.id, finalDoc);
                 updated++;
                 AppLogger.info(
                   'Updated local document with newer backend version',

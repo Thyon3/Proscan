@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
 
 /// A widget that displays a downscaled preview image from an original image path.
@@ -43,13 +44,40 @@ class _DocumentThumbnailState extends State<DocumentThumbnail> {
 
   Future<String> _loadPreview() async {
     try {
-      // Check if file exists first
-      if (!File(widget.imagePath).existsSync()) {
-        return widget.imagePath; // Fallback to original if file doesn't exist
+      String localPath = widget.imagePath;
+
+      // If path is a URL, download it first
+      if (widget.imagePath.startsWith('http://') ||
+          widget.imagePath.startsWith('https://')) {
+        // Extract document ID from URL or use a hash
+        final uri = Uri.parse(widget.imagePath);
+        final pathSegments = uri.pathSegments;
+        final documentId = pathSegments.isNotEmpty
+            ? pathSegments.last.split('.').first
+            : 'temp_${widget.imagePath.hashCode}';
+
+        // Download thumbnail
+        final downloadedPath = await DocumentDownloadService.instance
+            .downloadThumbnail(
+          url: widget.imagePath,
+          documentId: documentId,
+        );
+
+        if (downloadedPath != null) {
+          localPath = downloadedPath;
+        } else {
+          // Download failed, return original URL (will show placeholder)
+          return widget.imagePath;
+        }
+      }
+
+      // Check if file exists
+      if (!File(localPath).existsSync()) {
+        return localPath; // Fallback to original if file doesn't exist
       }
 
       final previewPath = await PreviewImageService.instance
-          .getOrCreatePreviewPath(widget.imagePath);
+          .getOrCreatePreviewPath(localPath);
       
       if (mounted) {
         setState(() => _previewPath = previewPath);
