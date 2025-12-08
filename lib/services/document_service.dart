@@ -660,28 +660,142 @@ class DocumentService {
     final box = Hive.box<DocumentModel>(boxName);
     final doc = box.get(id);
 
-    if (doc != null) {
-      try {
-        final file = File(doc.filePath);
-        if (await file.exists()) await file.delete();
-      } catch (_) {}
-
-      try {
-        final thumb = File(doc.thumbnailPath);
-        if (await thumb.exists()) await thumb.delete();
-      } catch (_) {}
-
-      // Delete all page images
-      for (final pagePath in doc.pageImagePaths) {
-        try {
-          final pageFile = File(pagePath);
-          if (await pageFile.exists()) await pageFile.delete();
-        } catch (_) {}
-      }
-
-      await box.delete(id);
-      _markCacheDirty();
+    if (doc == null) {
+      AppLogger.warning(
+        'Document not found for deletion',
+        error: null,
+        data: {'documentId': id},
+      );
+      return;
     }
+
+    AppLogger.info(
+      '🗑️ Starting document deletion',
+      data: {
+        'documentId': id,
+        'title': doc.title,
+        'filePath': doc.filePath,
+      },
+    );
+
+    // Check if document is uploaded to Supabase Storage
+    // If filePath is a URL (starts with http/https), it's in Supabase Storage
+    final isUploaded = doc.filePath.startsWith('http://') ||
+        doc.filePath.startsWith('https://');
+
+    // 1. Delete from Supabase Storage and PostgreSQL (if uploaded)
+    if (isUploaded) {
+      try {
+        AppLogger.info(
+          '📤 Document is uploaded, deleting from Supabase Storage and PostgreSQL',
+          data: {'documentId': id},
+        );
+
+        // Extract fileUrl and thumbnailUrl from filePath and thumbnailPath
+        final fileUrl = doc.filePath;
+        final thumbnailUrl = doc.thumbnailPath.isNotEmpty &&
+                (doc.thumbnailPath.startsWith('http://') ||
+                    doc.thumbnailPath.startsWith('https://'))
+            ? doc.thumbnailPath
+            : null;
+
+        await DocumentBackendSyncService.instance.deleteDocument(
+          documentId: id,
+          fileUrl: fileUrl,
+          thumbnailUrl: thumbnailUrl,
+        );
+
+        AppLogger.info(
+          '✅ Document deleted from Supabase Storage and PostgreSQL',
+          data: {'documentId': id},
+        );
+      } catch (e, stack) {
+        // Log error but continue with local deletion
+        // This ensures local cleanup happens even if backend deletion fails
+        AppLogger.error(
+          '⚠️ Failed to delete document from backend (continuing with local deletion)',
+          error: e,
+          stack: stack,
+          data: {'documentId': id},
+        );
+      }
+    } else {
+      AppLogger.info(
+        '📱 Document is local only, skipping backend deletion',
+        data: {'documentId': id},
+      );
+    }
+
+    // 2. Delete local files (if they exist)
+    try {
+      // Only try to delete if it's a local file path (not a URL)
+      if (!isUploaded) {
+        final file = File(doc.filePath);
+        if (await file.exists()) {
+          await file.delete();
+          AppLogger.info(
+            '🗑️ Deleted local document file',
+            data: {'path': doc.filePath},
+          );
+        }
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to delete local document file (may not exist)',
+        error: e,
+        data: {'path': doc.filePath},
+      );
+    }
+
+    try {
+      // Delete thumbnail if it's a local file
+      if (doc.thumbnailPath.isNotEmpty &&
+          !doc.thumbnailPath.startsWith('http://') &&
+          !doc.thumbnailPath.startsWith('https://')) {
+        final thumb = File(doc.thumbnailPath);
+        if (await thumb.exists()) {
+          await thumb.delete();
+          AppLogger.info(
+            '🗑️ Deleted local thumbnail file',
+            data: {'path': doc.thumbnailPath},
+          );
+        }
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to delete local thumbnail file (may not exist)',
+        error: e,
+        data: {'path': doc.thumbnailPath},
+      );
+    }
+
+    // 3. Delete all page images (always local files)
+    for (final pagePath in doc.pageImagePaths) {
+      try {
+        final pageFile = File(pagePath);
+        if (await pageFile.exists()) {
+          await pageFile.delete();
+        }
+      } catch (e) {
+        AppLogger.warning(
+          'Failed to delete page image (may not exist)',
+          error: e,
+          data: {'path': pagePath},
+        );
+      }
+    }
+
+    // 4. Delete from local Hive storage
+    await box.delete(id);
+    _markCacheDirty();
+
+    AppLogger.info(
+      '✅ Document deletion completed',
+      data: {
+        'documentId': id,
+        'wasUploaded': isUploaded,
+      },
+    );
   }
 
   Future<void> renameDocument(String id, String newTitle) {

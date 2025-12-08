@@ -186,8 +186,22 @@ class DocumentSyncService {
         );
       }
 
-      // Get backend URL
-      final backendUrl = AppEnv.backendApiUrl;
+      // Get backend URL and fix for Android emulator
+      var backendUrl = AppEnv.backendApiUrl;
+      
+      // Fix for Android emulator: replace localhost with 10.0.2.2
+      if (backendUrl != null && backendUrl.contains('localhost')) {
+        AppLogger.info(
+          'Detected localhost in backend URL, fixing for Android emulator',
+          data: {'originalUrl': backendUrl},
+        );
+        backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
+        AppLogger.info(
+          'Fixed URL for Android emulator',
+          data: {'fixedUrl': backendUrl},
+        );
+      }
+      
       if (backendUrl == null || backendUrl.isEmpty) {
         AppLogger.warning(
           'Backend API URL not configured, cannot sync',
@@ -233,7 +247,7 @@ class DocumentSyncService {
         );
       }
 
-      // Build sync URL
+      // Build sync URL - use sync endpoint for incremental, documents endpoint for full sync
       final syncPath = forceFullSync || _lastSyncTime == null
           ? 'api/documents'
           : 'api/documents/sync';
@@ -250,67 +264,143 @@ class DocumentSyncService {
         );
       }
 
-      final syncUrl = forceFullSync || _lastSyncTime == null
-          ? Uri.parse(baseApiUrl)
-          : Uri.parse(baseApiUrl).replace(
-              queryParameters: {'since': _lastSyncTime!.toIso8601String()},
-            );
+      // Fetch all documents from backend (handle pagination for full sync)
+      final List<dynamic> allDocumentsJson = [];
+      
+      if (forceFullSync || _lastSyncTime == null) {
+        // Full sync: fetch all pages
+        int page = 0;
+        const int pageSize = 100; // Large page size to minimize requests
+        bool hasMore = true;
 
-      AppLogger.info(
-        'Fetching documents from backend',
-        data: {
-          'url': syncUrl.toString(),
-          'forceFullSync': forceFullSync,
-          'since': _lastSyncTime?.toIso8601String(),
-        },
-      );
+        AppLogger.info(
+          'Starting full sync - fetching all documents from backend',
+          data: {'pageSize': pageSize},
+        );
 
-      // Fetch documents from backend
-      final response = await http
-          .get(
-            syncUrl,
-            headers: {
-              'Authorization': 'Bearer ${session.accessToken}',
-              'Content-Type': 'application/json',
-            },
-          )
-          .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              throw TimeoutException('Backend API request timed out');
+        while (hasMore) {
+          final syncUrl = Uri.parse(baseApiUrl).replace(
+            queryParameters: {
+              'page': page.toString(),
+              'pageSize': pageSize.toString(),
             },
           );
 
-      if (response.statusCode != 200) {
-        AppLogger.error(
-          'Backend API error during sync',
-          data: {
-            'statusCode': response.statusCode,
-            'responseBody': response.body,
-            'url': syncUrl.toString(),
-          },
-        );
-        throw Exception(
-          'Backend API error: ${response.statusCode} - ${response.body}',
-        );
-      }
+          AppLogger.info(
+            'Fetching documents page $page',
+            data: {'url': syncUrl.toString()},
+          );
 
-      final responseBody = jsonDecode(response.body);
+          final response = await http
+              .get(
+                syncUrl,
+                headers: {
+                  'Authorization': 'Bearer ${session.accessToken}',
+                  'Content-Type': 'application/json',
+                },
+              )
+              .timeout(
+                const Duration(seconds: 30),
+                onTimeout: () {
+                  throw TimeoutException('Backend API request timed out');
+                },
+              );
 
-      // Handle paginated response (from GET /api/documents) or array response (from GET /api/documents/sync)
-      final List<dynamic> documentsJson;
-      if (responseBody is Map<String, dynamic> &&
-          responseBody.containsKey('documents')) {
-        // Paginated response
-        documentsJson = responseBody['documents'] as List<dynamic>;
-      } else if (responseBody is List) {
-        // Array response (from sync endpoint)
-        documentsJson = responseBody;
+          if (response.statusCode != 200) {
+            AppLogger.error(
+              'Backend API error during sync',
+              data: {
+                'statusCode': response.statusCode,
+                'responseBody': response.body,
+                'url': syncUrl.toString(),
+              },
+            );
+            throw Exception(
+              'Backend API error: ${response.statusCode} - ${response.body}',
+            );
+          }
+
+          final responseBody = jsonDecode(response.body);
+          
+          if (responseBody is Map<String, dynamic> &&
+              responseBody.containsKey('documents')) {
+            // Paginated response
+            final documentsJson = responseBody['documents'] as List<dynamic>;
+            allDocumentsJson.addAll(documentsJson);
+            
+            final pagination = responseBody['pagination'] as Map<String, dynamic>?;
+            hasMore = pagination?['hasMore'] as bool? ?? false;
+            
+            AppLogger.info(
+              'Fetched page $page: ${documentsJson.length} documents',
+              data: {
+                'totalSoFar': allDocumentsJson.length,
+                'hasMore': hasMore,
+              },
+            );
+          } else {
+            throw Exception('Unexpected response format from backend');
+          }
+
+          page++;
+        }
       } else {
-        throw Exception('Unexpected response format from backend');
+        // Incremental sync: use sync endpoint
+        final syncUrl = Uri.parse(baseApiUrl).replace(
+          queryParameters: {'since': _lastSyncTime!.toIso8601String()},
+        );
+
+        AppLogger.info(
+          'Fetching documents updated since ${_lastSyncTime!.toIso8601String()}',
+          data: {'url': syncUrl.toString()},
+        );
+
+        final response = await http
+            .get(
+              syncUrl,
+              headers: {
+                'Authorization': 'Bearer ${session.accessToken}',
+                'Content-Type': 'application/json',
+              },
+            )
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () {
+                throw TimeoutException('Backend API request timed out');
+              },
+            );
+
+        if (response.statusCode != 200) {
+          AppLogger.error(
+            'Backend API error during sync',
+            data: {
+              'statusCode': response.statusCode,
+              'responseBody': response.body,
+              'url': syncUrl.toString(),
+            },
+          );
+          throw Exception(
+            'Backend API error: ${response.statusCode} - ${response.body}',
+          );
+        }
+
+        final responseBody = jsonDecode(response.body);
+        
+        if (responseBody is List) {
+          // Array response (from sync endpoint)
+          allDocumentsJson.addAll(responseBody);
+        } else {
+          throw Exception('Unexpected response format from backend');
+        }
       }
 
-      AppLogger.info('Received ${documentsJson.length} documents from backend');
+      AppLogger.info(
+        'Received ${allDocumentsJson.length} documents from backend',
+        data: {
+          'forceFullSync': forceFullSync,
+          'replaceLocal': replaceLocal,
+        },
+      );
 
       final box = Hive.box<DocumentModel>(DocumentService.boxName);
       int added = 0;
@@ -320,19 +410,20 @@ class DocumentSyncService {
 
       // If replaceLocal is true, clear all local documents first
       if (replaceLocal) {
+        final localCountBeforeClear = box.length;
         AppLogger.info(
           'Replacing local documents with backend data',
           data: {
-            'localCount': box.length,
-            'backendCount': documentsJson.length,
+            'localCount': localCountBeforeClear,
+            'backendCount': allDocumentsJson.length,
           },
         );
         await box.clear();
-        replaced = box.length; // Store count before clear
+        replaced = localCountBeforeClear; // Store count before clear
       }
 
       // Process backend documents
-      for (final docJson in documentsJson) {
+      for (final docJson in allDocumentsJson) {
         try {
           final remoteDoc = _parseBackendDocument(docJson);
           final localDoc = box.get(remoteDoc.id);
@@ -398,7 +489,7 @@ class DocumentSyncService {
           'updated': updated,
           'skipped': skipped,
           'replaced': replaced,
-          'total': documentsJson.length,
+          'total': allDocumentsJson.length,
           'replaceLocal': replaceLocal,
         },
       );
