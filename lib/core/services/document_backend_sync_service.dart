@@ -63,14 +63,43 @@ class DocumentBackendSyncService {
         throw Exception('No active session');
       }
 
-      final backendUrl = AppEnv.backendApiUrl;
-      if (backendUrl == null || backendUrl.isEmpty) {
-        AppLogger.warning(
-          'Backend API URL not configured, skipping metadata sync',
-          error: null,
-        );
-        return;
+      var backendUrl = AppEnv.backendApiUrl;
+      
+      // Fix for Android emulator: replace localhost with 10.0.2.2
+      if (backendUrl != null && backendUrl.contains('localhost')) {
+        print('⚠️ [BACKEND SYNC] Detected localhost in backend URL');
+        print('   Original URL: $backendUrl');
+        backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
+        print('   Fixed URL for Android emulator: $backendUrl');
       }
+      
+      print('🔗 [BACKEND SYNC] Backend URL check: ${backendUrl ?? "NULL"}');
+      
+      if (backendUrl == null || backendUrl.isEmpty) {
+        print('═══════════════════════════════════════════════════════════');
+        print('❌ [BACKEND SYNC] CRITICAL ERROR: Backend API URL NOT CONFIGURED!');
+        print('   Document ID: ${document.id}');
+        print('   Fix: Add BACKEND_API_URL=http://10.0.2.2:3000 to .env');
+        print('   Then run: flutter pub run build_runner build');
+        print('═══════════════════════════════════════════════════════════');
+        AppLogger.error(
+          '❌ CRITICAL: Backend API URL not configured!',
+          error: null,
+          data: {
+            'documentId': document.id,
+            'hint': 'Add BACKEND_API_URL=http://localhost:3000 to your .env file and run: flutter pub run build_runner build',
+          },
+        );
+        throw Exception(
+          'Backend API URL not configured. Please set BACKEND_API_URL in .env file.',
+        );
+      }
+
+      print('✅ [BACKEND SYNC] Backend URL configured: $backendUrl');
+      AppLogger.info(
+        '🔗 Backend API URL configured: $backendUrl',
+        data: {'documentId': document.id},
+      );
 
       // Validate and normalize URL
       if (!UrlValidator.isValidUrl(backendUrl)) {
@@ -115,7 +144,8 @@ class DocumentBackendSyncService {
 
       final bool documentExists = getResponse.statusCode == 200;
 
-      // Prepare request body
+      // Prepare request body with all document metadata
+      // Ensure all fields are included, even if empty/null
       final body = jsonEncode({
         'id': document.id,
         'title': document.title,
@@ -125,10 +155,26 @@ class DocumentBackendSyncService {
         'pageCount': document.pageCount,
         'scanMode': document.scanMode,
         'colorProfile': document.colorProfile,
-        'textContent': document.textContent,
-        'tags': document.tags,
-        'metadata': document.metadata,
+        'textContent': document.textContent ?? null,
+        'tags': document.tags.isNotEmpty ? document.tags : [],
+        'metadata': document.metadata.isNotEmpty ? document.metadata : {},
       });
+
+      AppLogger.info(
+        'Preparing to sync document metadata',
+        data: {
+          'documentId': document.id,
+          'title': document.title,
+          'format': document.format,
+          'pageCount': document.pageCount,
+          'scanMode': document.scanMode,
+          'colorProfile': document.colorProfile,
+          'hasTextContent': document.textContent != null,
+          'tagsCount': document.tags.length,
+          'metadataCount': document.metadata.length,
+          'fileUrl': fileUrl.substring(0, fileUrl.length > 50 ? 50 : fileUrl.length) + '...',
+        },
+      );
 
       final headers = {
         'Content-Type': 'application/json',
@@ -171,9 +217,33 @@ class DocumentBackendSyncService {
           throw Exception('Failed to build create URL');
         }
 
+        print('═══════════════════════════════════════════════════════════');
+        print('📝 [BACKEND SYNC] Creating NEW document in PostgreSQL');
+        print('   Document ID: ${document.id}');
+        print('   Title: ${document.title}');
+        print('   Backend URL: $createUrl');
+        print('   Format: ${document.format}');
+        print('   Page Count: ${document.pageCount}');
+        print('═══════════════════════════════════════════════════════════');
+        
         AppLogger.info(
-          'Creating document metadata in backend',
-          data: {'documentId': document.id, 'title': document.title},
+          '📝 Creating NEW document in backend PostgreSQL',
+          data: {
+            'documentId': document.id,
+            'title': document.title,
+            'url': createUrl,
+            'format': document.format,
+            'pageCount': document.pageCount,
+          },
+        );
+
+        AppLogger.info(
+          'Request body preview',
+          data: {
+            'documentId': document.id,
+            'bodyLength': body.length,
+            'bodyPreview': body.length > 200 ? body.substring(0, 200) + '...' : body,
+          },
         );
 
         response = await http
@@ -185,40 +255,120 @@ class DocumentBackendSyncService {
             .timeout(
               const Duration(seconds: 30),
               onTimeout: () {
+                AppLogger.error(
+                  '⏱️ Backend API request timed out',
+                  error: null,
+                  data: {'documentId': document.id, 'url': createUrl},
+                );
                 throw TimeoutException('Backend API request timed out');
               },
             );
+
+        print('📡 [BACKEND SYNC] API Response received');
+        print('   Status Code: ${response.statusCode}');
+        print('   Response Length: ${response.body.length} bytes');
+        
+        AppLogger.info(
+          '📡 Backend API response received',
+          data: {
+            'documentId': document.id,
+            'statusCode': response.statusCode,
+            'responseLength': response.body.length,
+          },
+        );
       }
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        print('═══════════════════════════════════════════════════════════');
+        print('✅ [BACKEND SYNC] SUCCESS! Document saved to PostgreSQL');
+        print('   Status: ${response.statusCode}');
+        print('   Action: ${documentExists ? "UPDATED" : "CREATED"}');
+        print('═══════════════════════════════════════════════════════════');
+        
         try {
-          final responseData = jsonDecode(response.body);
+          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          print('   Backend ID: ${responseData['id']}');
+          print('   Title: ${responseData['title']}');
+          print('   File URL: ${(responseData['fileUrl'] as String?)?.substring(0, 60) ?? "null"}...');
+          print('   Format: ${responseData['format']}');
+          print('   Page Count: ${responseData['pageCount']}');
+          
           AppLogger.info(
-            'Document metadata synced successfully',
+            '✅ Document metadata synced successfully to PostgreSQL',
             data: {
               'documentId': document.id,
               'action': documentExists ? 'updated' : 'created',
-              'response': responseData,
+              'backendId': responseData['id'],
+              'title': responseData['title'],
+              'fileUrl': responseData['fileUrl'],
+              'format': responseData['format'],
+              'pageCount': responseData['pageCount'],
+              'scanMode': responseData['scanMode'],
+              'colorProfile': responseData['colorProfile'],
+              'hasTextContent': responseData['textContent'] != null,
+              'tagsCount': (responseData['tags'] as List?)?.length ?? 0,
+              'metadataCount': (responseData['metadata'] as Map?)?.length ?? 0,
             },
           );
         } catch (e) {
           AppLogger.info(
-            'Metadata synced successfully (no parsable response)',
-            data: {'documentId': document.id},
+            '✅ Metadata synced successfully (response not parsable)',
+            data: {
+              'documentId': document.id,
+              'statusCode': response.statusCode,
+              'responseLength': response.body.length,
+            },
           );
         }
       } else {
+        // Enhanced error logging with full details
+        final errorDetails = {
+          'documentId': document.id,
+          'statusCode': response.statusCode,
+          'responseBody': response.body.length > 500
+              ? response.body.substring(0, 500) + '...'
+              : response.body,
+          'action': documentExists ? 'update' : 'create',
+          'url': documentExists
+              ? 'PUT /api/documents/${document.id}'
+              : 'POST /api/documents',
+          'requestBodyPreview': body.length > 300
+              ? body.substring(0, 300) + '...'
+              : body,
+        };
+
+        print('═══════════════════════════════════════════════════════════');
+        print('❌ [BACKEND SYNC] FAILED to save to PostgreSQL');
+        print('   Status Code: ${response.statusCode}');
+        print('   Response: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
+        print('═══════════════════════════════════════════════════════════');
+        
         AppLogger.error(
-          'Failed to sync document metadata to backend',
-          data: {
-            'documentId': document.id,
-            'statusCode': response.statusCode,
-            'responseBody': response.body,
-            'action': documentExists ? 'update' : 'create',
-          },
+          '❌ FAILED to sync document metadata to backend',
+          error: Exception('HTTP ${response.statusCode}: ${response.body}'),
+          data: errorDetails,
         );
+
+        // Log validation errors if present
+        try {
+          final errorJson = jsonDecode(response.body) as Map<String, dynamic>;
+          if (errorJson.containsKey('message')) {
+            AppLogger.error(
+              'Backend validation error details',
+              error: null,
+              data: {
+                'documentId': document.id,
+                'message': errorJson['message'],
+                'errors': errorJson['errors'],
+              },
+            );
+          }
+        } catch (_) {
+          // Not JSON, ignore
+        }
+
         throw Exception(
-          'Failed to sync document metadata: ${response.statusCode} - ${response.body}',
+          'Failed to sync document metadata: HTTP ${response.statusCode} - ${response.body}',
         );
       }
     } catch (e, stack) {
@@ -263,7 +413,13 @@ class DocumentBackendSyncService {
         throw Exception('No active session');
       }
 
-      final backendUrl = AppEnv.backendApiUrl;
+      var backendUrl = AppEnv.backendApiUrl;
+      
+      // Fix for Android emulator: replace localhost with 10.0.2.2
+      if (backendUrl != null && backendUrl.contains('localhost')) {
+        backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
+      }
+      
       if (backendUrl == null || backendUrl.isEmpty) {
       AppLogger.warning(
         'Backend API URL not configured, skipping backend deletion',
@@ -467,7 +623,13 @@ class DocumentBackendSyncService {
         throw Exception('No active session');
       }
 
-      final backendUrl = AppEnv.backendApiUrl;
+      var backendUrl = AppEnv.backendApiUrl;
+      
+      // Fix for Android emulator: replace localhost with 10.0.2.2
+      if (backendUrl != null && backendUrl.contains('localhost')) {
+        backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
+      }
+      
       if (backendUrl == null || backendUrl.isEmpty) {
         AppLogger.warning(
           'Backend API URL not configured, skipping metadata update',

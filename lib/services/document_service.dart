@@ -202,10 +202,53 @@ class DocumentService {
       _markCacheDirty();
 
       // Upload to cloud in background (non-blocking)
-      DocumentUploadService.instance.uploadDocument(doc).catchError((error) {
-        AppLogger.warning(
-          'Background upload failed for document ${doc.id}',
+      print('═══════════════════════════════════════════════════════════');
+      print('🚀 [DOCUMENT SERVICE] Starting background upload');
+      print('   Document ID: ${doc.id}');
+      print('   Title: ${doc.title}');
+      print('   Format: ${doc.format}');
+      print('   Page Count: ${doc.pageCount}');
+      print('   File Path: ${doc.filePath}');
+      print('═══════════════════════════════════════════════════════════');
+      
+      AppLogger.info(
+        '🚀 Starting background upload for document ${doc.id}',
+        data: {
+          'documentId': doc.id,
+          'title': doc.title,
+          'format': doc.format,
+          'pageCount': doc.pageCount,
+        },
+      );
+      
+      DocumentUploadService.instance.uploadDocument(doc).then((url) {
+        print('═══════════════════════════════════════════════════════════');
+        print('✅ [DOCUMENT SERVICE] Upload completed');
+        print('   Document ID: ${doc.id}');
+        print('   URL: ${url != null ? url.substring(0, url.length > 60 ? 60 : url.length) + "..." : "NULL (queued)"}');
+        print('═══════════════════════════════════════════════════════════');
+        if (url != null) {
+          AppLogger.info(
+            '✅ Document uploaded successfully: ${doc.id}',
+            data: {'url': url.substring(0, 50) + '...'},
+          );
+        } else {
+          AppLogger.warning(
+            '⚠️ Document upload queued for later: ${doc.id}',
+            error: null,
+          );
+        }
+      }).catchError((error, stack) {
+        print('═══════════════════════════════════════════════════════════');
+        print('❌ [DOCUMENT SERVICE] Upload FAILED');
+        print('   Document ID: ${doc.id}');
+        print('   Error: $error');
+        print('   Stack: ${stack.toString().substring(0, stack.toString().length > 200 ? 200 : stack.toString().length)}');
+        print('═══════════════════════════════════════════════════════════');
+        AppLogger.error(
+          '❌ Background upload failed for document ${doc.id}',
           error: error,
+          stack: stack,
         );
         // Upload will be retried automatically via queue
       });

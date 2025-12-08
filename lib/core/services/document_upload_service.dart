@@ -188,19 +188,44 @@ class DocumentUploadService {
   /// }
   /// ```
   Future<String?> uploadDocument(DocumentModel document) async {
+    print('═══════════════════════════════════════════════════════════');
+    print('📤 [UPLOAD SERVICE] uploadDocument() CALLED');
+    print('   Document ID: ${document.id}');
+    print('   Title: ${document.title}');
+    print('   Format: ${document.format}');
+    print('═══════════════════════════════════════════════════════════');
+    
+    AppLogger.info(
+      '📤 DocumentUploadService.uploadDocument() called',
+      data: {
+        'documentId': document.id,
+        'title': document.title,
+        'format': document.format,
+      },
+    );
     try {
       await AuthService.instance.ensureInitialized();
       final user = AuthService.instance.currentUser;
+      
+      print('🔐 [UPLOAD SERVICE] Auth check: ${user != null ? "AUTHENTICATED (${user.id})" : "NOT AUTHENTICATED"}');
 
       if (user == null) {
+        print('❌ [UPLOAD SERVICE] User NOT authenticated - QUEUING');
         AppLogger.warning(
-          'Cannot upload document: user not authenticated',
+          '❌ Cannot upload document: user not authenticated',
           error: null,
+          data: {'documentId': document.id},
         );
         // Queue for later when user logs in
         _addToQueue(document);
         return null;
       }
+
+      print('✅ [UPLOAD SERVICE] User authenticated: ${user.id}');
+      AppLogger.info(
+        '✅ User authenticated: ${user.id}',
+        data: {'documentId': document.id},
+      );
 
       // Check network connectivity
       final connectivityResults = await _connectivity.checkConnectivity();
@@ -210,13 +235,25 @@ class DocumentUploadService {
             result != ConnectivityResult.bluetooth,
       );
 
+      print('🌐 [UPLOAD SERVICE] Network check: ${isOnline ? "ONLINE" : "OFFLINE"}');
+      print('   Connectivity results: $connectivityResults');
+
       if (!isOnline) {
-        AppLogger.info(
-          'No internet connection, queuing document for later upload',
+        print('⚠️ [UPLOAD SERVICE] No internet - QUEUING');
+        AppLogger.warning(
+          '⚠️ No internet connection, queuing document for later upload',
+          error: null,
+          data: {'documentId': document.id},
         );
         _addToQueue(document);
         return null;
       }
+
+      print('🌐 [UPLOAD SERVICE] Network OK - Proceeding with upload');
+      AppLogger.info(
+        '🌐 Network connectivity OK, proceeding with upload',
+        data: {'documentId': document.id},
+      );
 
       return await _uploadDocumentInternal(document);
     } catch (e, stack) {
@@ -253,6 +290,17 @@ class DocumentUploadService {
   }) async {
     final documentId = document.id;
     final userId = AuthService.instance.currentUser!.id;
+
+    AppLogger.info(
+      '📤 Starting document upload (attempt ${attempt + 1})',
+      data: {
+        'documentId': documentId,
+        'userId': userId,
+        'title': document.title,
+        'format': document.format,
+        'filePath': document.filePath,
+      },
+    );
 
     try {
       _emitProgress(documentId, UploadStatus.uploading, progress: 0.0);
@@ -339,11 +387,46 @@ class DocumentUploadService {
       _emitProgress(documentId, UploadStatus.syncingMetadata, progress: 0.75);
 
       // 3. Sync metadata to backend API (create or update)
-      await DocumentBackendSyncService.instance.syncDocumentMetadata(
-        document: document,
-        fileUrl: publicUrl,
-        thumbnailUrl: thumbnailUrl,
+      print('═══════════════════════════════════════════════════════════');
+      print('🔄 [UPLOAD SERVICE] Starting metadata sync to backend');
+      print('   Document ID: $documentId');
+      print('   File URL: ${publicUrl.substring(0, publicUrl.length > 60 ? 60 : publicUrl.length)}...');
+      print('   Has Thumbnail: ${thumbnailUrl != null}');
+      print('═══════════════════════════════════════════════════════════');
+      
+      AppLogger.info(
+        '🔄 Starting metadata sync to backend',
+        data: {
+          'documentId': documentId,
+          'fileUrl': publicUrl.substring(0, 50) + '...',
+          'hasThumbnail': thumbnailUrl != null,
+        },
       );
+      try {
+        await DocumentBackendSyncService.instance.syncDocumentMetadata(
+          document: document,
+          fileUrl: publicUrl,
+          thumbnailUrl: thumbnailUrl,
+        );
+        print('✅ [UPLOAD SERVICE] Metadata sync SUCCESS');
+        AppLogger.info(
+          '✅ Metadata sync completed successfully',
+          data: {'documentId': documentId},
+        );
+      } catch (syncError, syncStack) {
+        print('═══════════════════════════════════════════════════════════');
+        print('❌ [UPLOAD SERVICE] Metadata sync FAILED');
+        print('   Error: $syncError');
+        print('═══════════════════════════════════════════════════════════');
+        AppLogger.error(
+          '❌ Metadata sync failed',
+          error: syncError,
+          stack: syncStack,
+          data: {'documentId': documentId},
+        );
+        // Re-throw to trigger retry logic
+        rethrow;
+      }
 
       _emitProgress(documentId, UploadStatus.completed, progress: 1.0);
 
