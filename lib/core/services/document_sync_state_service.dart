@@ -3,6 +3,8 @@ import 'dart:async';
 
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/document_service.dart';
 
 /// Sync status for a document.
 enum DocumentSyncStatus {
@@ -52,7 +54,8 @@ class DocumentSyncStateService {
 
   static const String _boxName = 'document_sync_states';
   Box<Map>? _box;
-  final _statusController = StreamController<DocumentSyncStatusUpdate>.broadcast();
+  final _statusController =
+      StreamController<DocumentSyncStatusUpdate>.broadcast();
   bool _isInitialized = false;
 
   /// Stream of sync status updates
@@ -213,10 +216,7 @@ class DocumentSyncStateService {
 
     try {
       _box!.delete(documentId);
-      AppLogger.info(
-        'Sync status cleared',
-        data: {'documentId': documentId},
-      );
+      AppLogger.info('Sync status cleared', data: {'documentId': documentId});
     } catch (e) {
       AppLogger.warning(
         'Failed to clear sync status',
@@ -253,6 +253,9 @@ class DocumentSyncStateService {
   }
 
   /// Gets sync statistics
+  ///
+  /// This method counts ALL documents in Hive, not just those with sync status.
+  /// Documents without sync status are assumed to be pending upload (local-only).
   SyncStatistics getStatistics() {
     if (!_isInitialized || _box == null) {
       return SyncStatistics(
@@ -267,6 +270,10 @@ class DocumentSyncStateService {
     }
 
     try {
+      // Get all documents from Hive
+      final hiveBox = Hive.box<DocumentModel>(DocumentService.boxName);
+      final allDocumentIds = hiveBox.keys.cast<String>().toSet();
+
       int synced = 0;
       int pendingUpload = 0;
       int pendingDownload = 0;
@@ -274,7 +281,12 @@ class DocumentSyncStateService {
       int error = 0;
       int syncing = 0;
 
+      // Count documents with sync status
+      final documentsWithStatus = <String>{};
       for (final key in _box!.keys) {
+        final documentId = key as String;
+        documentsWithStatus.add(documentId);
+
         final statusData = _box!.get(key);
         if (statusData != null) {
           final statusString = statusData['status'] as String?;
@@ -303,8 +315,14 @@ class DocumentSyncStateService {
         }
       }
 
+      // Documents in Hive but without sync status are assumed to be pending upload
+      final documentsWithoutStatus = allDocumentIds.difference(
+        documentsWithStatus,
+      );
+      pendingUpload += documentsWithoutStatus.length;
+
       return SyncStatistics(
-        total: _box!.length,
+        total: allDocumentIds.length,
         synced: synced,
         pendingUpload: pendingUpload,
         pendingDownload: pendingDownload,
@@ -312,11 +330,8 @@ class DocumentSyncStateService {
         error: error,
         syncing: syncing,
       );
-    } catch (e) {
-      AppLogger.warning(
-        'Failed to get sync statistics',
-        error: e,
-      );
+    } catch (e, stack) {
+      AppLogger.warning('Failed to get sync statistics', error: e);
       return SyncStatistics(
         total: 0,
         synced: 0,
@@ -396,4 +411,3 @@ class SyncStatistics {
         ')';
   }
 }
-

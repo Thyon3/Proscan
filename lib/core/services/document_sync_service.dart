@@ -530,24 +530,33 @@ class DocumentSyncService {
             // Case 1: New document from backend - add it
             DocumentModel finalDoc = remoteDoc;
 
-            // Update sync status
-            DocumentSyncStateService.instance.setSyncStatus(
-              remoteDoc.id,
-              needsDownload
-                  ? DocumentSyncStatus.pendingDownload
-                  : DocumentSyncStatus.synced,
-            );
-
             // If it needs download, start download in background but add metadata now
             if (needsDownload) {
               _startBackgroundDownload(remoteDoc, box);
+              // Mark as pending download - status will be updated when download completes
+              DocumentSyncStateService.instance.setSyncStatus(
+                remoteDoc.id,
+                DocumentSyncStatus.pendingDownload,
+              );
+            } else {
+              // No download needed - document is already synced
+              DocumentSyncStateService.instance.setSyncStatus(
+                remoteDoc.id,
+                DocumentSyncStatus.synced,
+                lastSyncTime: DateTime.now(),
+              );
             }
 
             await box.put(remoteDoc.id, finalDoc);
             added++;
             AppLogger.info(
               '✅ Added new document from backend',
-              data: {'id': remoteDoc.id, 'title': remoteDoc.title},
+              data: {
+                'id': remoteDoc.id,
+                'title': remoteDoc.title,
+                'needsDownload': needsDownload,
+                'status': needsDownload ? 'pendingDownload' : 'synced',
+              },
             );
           } else {
             // Case 2: Document exists locally - apply conflict resolution
@@ -657,7 +666,20 @@ class DocumentSyncService {
                   skipped++;
                 } else {
                   // Identical - already synced
+                  // Mark as synced since local and backend are identical
+                  DocumentSyncStateService.instance.setSyncStatus(
+                    remoteDoc.id,
+                    DocumentSyncStatus.synced,
+                    lastSyncTime: DateTime.now(),
+                  );
                   skipped++;
+                  AppLogger.info(
+                    '✅ Document already synced (identical)',
+                    data: {
+                      'id': remoteDoc.id,
+                      'title': remoteDoc.title,
+                    },
+                  );
                 }
               }
             }
@@ -946,8 +968,16 @@ class DocumentSyncService {
           );
 
           await box.put(remoteDoc.id, updatedDoc);
+          
+          // Update sync status to synced since download completed
+          DocumentSyncStateService.instance.setSyncStatus(
+            remoteDoc.id,
+            DocumentSyncStatus.synced,
+            lastSyncTime: DateTime.now(),
+          );
+          
           AppLogger.info(
-            '✅ Document updated with local file paths after download',
+            '✅ Document updated with local file paths after download and marked as synced',
             data: {
               'id': remoteDoc.id,
               'filePath': localFilePath,
