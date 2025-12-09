@@ -14,6 +14,7 @@ import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/app_storage_service.dart';
 import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_operation_queue.dart';
+import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
@@ -799,7 +800,22 @@ class DocumentService {
       }
     }
 
-    // 4. Delete from local Hive storage
+    // 4. Clear sync status for this document
+    try {
+      DocumentSyncStateService.instance.clearSyncStatus(id);
+      AppLogger.info(
+        'Cleared sync status for deleted document',
+        data: {'documentId': id},
+      );
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to clear sync status (non-critical)',
+        error: e,
+        data: {'documentId': id},
+      );
+    }
+
+    // 5. Delete from local Hive storage
     await box.delete(id);
     _markCacheDirty();
 
