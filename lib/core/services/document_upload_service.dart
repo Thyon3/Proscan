@@ -311,13 +311,10 @@ class DocumentUploadService {
         throw Exception('Document file not found: ${document.filePath}');
       }
 
-      // Use document title as filename (sanitized for storage compatibility)
-      final fileName = FilenameSanitizer.createStoragePath(
-        userId,
-        document.title,
-        document.format,
-        replaceSpaces: false, // Keep spaces for readability
-      );
+      // Use document ID as filename to ensure consistency across updates
+      // This ensures that when a document is updated, it replaces the same file
+      // Format: {userId}/{documentId}.{format}
+      final fileName = '$userId/${document.id}.${document.format}';
       final fileSize = await file.length();
 
       AppLogger.info(
@@ -356,12 +353,9 @@ class DocumentUploadService {
         try {
           final thumbFile = File(document.thumbnailPath);
           if (await thumbFile.exists()) {
-            // Use document title for thumbnail filename (sanitized)
-            final thumbFileName = FilenameSanitizer.createThumbnailStoragePath(
-              userId,
-              document.title,
-              replaceSpaces: false,
-            );
+            // Use document ID for thumbnail filename to ensure consistency
+            // Format: {userId}/{documentId}_thumb.jpg
+            final thumbFileName = '$userId/${document.id}_thumb.jpg';
             await supabase.storage
                 .from(_storageBucket)
                 .upload(

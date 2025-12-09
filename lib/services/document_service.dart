@@ -505,30 +505,44 @@ class DocumentService {
       await box.put(documentId, updatedDoc);
       _markCacheDirty();
 
-      // Upload updated file to cloud and sync metadata to backend (non-blocking)
-      DocumentUploadService.instance.uploadDocument(updatedDoc).catchError((
-        error,
-      ) {
-        AppLogger.warning(
-          'Background upload failed for document ${updatedDoc.id}',
+      // Upload updated file to Supabase Storage and sync metadata to backend
+      // This will replace the old file in storage and update the backend with new metadata
+      AppLogger.info(
+        '🔄 Document updated, uploading new version to Supabase Storage',
+        data: {
+          'documentId': updatedDoc.id,
+          'title': updatedDoc.title,
+          'pageCount': updatedDoc.pageCount,
+          'filePath': updatedDoc.filePath,
+          'format': updatedDoc.format,
+        },
+      );
+
+      DocumentUploadService.instance.uploadDocument(updatedDoc).then((url) {
+        if (url != null) {
+          AppLogger.info(
+            '✅ Updated document uploaded successfully',
+            data: {
+              'documentId': updatedDoc.id,
+              'url': url.substring(0, url.length > 100 ? 100 : url.length) + '...',
+            },
+          );
+        } else {
+          AppLogger.warning(
+            '⚠️ Updated document upload queued for later',
+            error: null,
+            data: {'documentId': updatedDoc.id},
+          );
+        }
+      }).catchError((error, stack) {
+        AppLogger.error(
+          '❌ Failed to upload updated document',
           error: error,
+          stack: stack,
+          data: {'documentId': updatedDoc.id},
         );
         // Upload will be retried automatically via queue
       });
-
-      // Also update metadata in backend if file URLs are already known (for metadata-only updates)
-      // This handles cases where only title/tags/metadata changed but file wasn't re-uploaded
-      if (updatedDoc.filePath.startsWith('http://') ||
-          updatedDoc.filePath.startsWith('https://')) {
-        DocumentBackendSyncService.instance
-            .updateDocumentMetadata(updatedDoc)
-            .catchError((error) {
-          AppLogger.warning(
-            'Background metadata update failed for document ${updatedDoc.id}',
-            error: error,
-          );
-        });
-      }
 
       return updatedDoc;
     } catch (e) {

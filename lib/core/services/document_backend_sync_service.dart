@@ -161,7 +161,9 @@ class DocumentBackendSyncService {
       });
 
       AppLogger.info(
-        'Preparing to sync document metadata',
+        documentExists
+            ? '🔄 Updating existing document in backend'
+            : '📝 Creating new document in backend',
         data: {
           'documentId': document.id,
           'title': document.title,
@@ -173,6 +175,7 @@ class DocumentBackendSyncService {
           'tagsCount': document.tags.length,
           'metadataCount': document.metadata.length,
           'fileUrl': fileUrl.substring(0, fileUrl.length > 50 ? 50 : fileUrl.length) + '...',
+          'isUpdate': documentExists,
         },
       );
 
@@ -193,9 +196,26 @@ class DocumentBackendSyncService {
           throw Exception('Failed to build update URL');
         }
 
+        print('═══════════════════════════════════════════════════════════');
+        print('🔄 [BACKEND SYNC] UPDATING existing document in PostgreSQL');
+        print('   Document ID: ${document.id}');
+        print('   Title: ${document.title}');
+        print('   Backend URL: $updateUrl');
+        print('   Format: ${document.format}');
+        print('   Page Count: ${document.pageCount}');
+        print('   File URL: ${fileUrl.substring(0, fileUrl.length > 60 ? 60 : fileUrl.length)}...');
+        print('═══════════════════════════════════════════════════════════');
+
         AppLogger.info(
-          'Updating document metadata in backend',
-          data: {'documentId': document.id, 'title': document.title},
+          '🔄 UPDATING existing document in backend PostgreSQL',
+          data: {
+            'documentId': document.id,
+            'title': document.title,
+            'url': updateUrl,
+            'format': document.format,
+            'pageCount': document.pageCount,
+            'fileUrl': fileUrl.substring(0, fileUrl.length > 50 ? 50 : fileUrl.length) + '...',
+          },
         );
 
         response = await http
@@ -210,6 +230,10 @@ class DocumentBackendSyncService {
                 throw TimeoutException('Backend API request timed out');
               },
             );
+
+        print('📡 [BACKEND SYNC] Update API Response received');
+        print('   Status Code: ${response.statusCode}');
+        print('   Response Length: ${response.body.length} bytes');
       } else {
         // Create new document
         final createUrl = UrlValidator.buildApiUrl(backendUrl, 'api/documents');
