@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
+import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 
 class ScanListItem extends StatelessWidget {
@@ -247,18 +248,29 @@ class ScanListItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title with professional typography
-                  Text(
-                    scan.title,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
-                      letterSpacing: -0.3,
-                      height: 1.2,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  // Title with sync status indicator
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          scan.title,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: colorScheme.onSurface,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 17,
+                            letterSpacing: -0.3,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SyncStatusIndicator(
+                        documentId: scan.id,
+                        size: 16,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
 

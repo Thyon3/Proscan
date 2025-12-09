@@ -308,5 +308,15 @@ final GoRouter router = GoRouter(
       name: 'searchscreen',
       builder: (context, state) => const SearchScreen(),
     ),
+    GoRoute(
+      path: '/sync-settings',
+      name: 'sync-settings',
+      builder: (context, state) => const SyncSettingsScreen(),
+    ),
+    GoRoute(
+      path: '/conflict-resolution',
+      name: 'conflict-resolution',
+      builder: (context, state) => const ConflictResolutionScreen(),
+    ),
   ],
 );

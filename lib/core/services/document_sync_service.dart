@@ -1,14 +1,18 @@
 // core/services/document_sync_service.dart
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
-import 'package:thyscan/core/services/document_download_service.dart';
+import 'package:thyscan/core/services/document_download_service.dart'
+    show DocumentDownloadService, DownloadPriority, DownloadProgress;
+import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -48,6 +52,15 @@ class DocumentSyncService {
   bool _isSyncing = false;
   DateTime? _lastSyncTime;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  
+  // Track active download subscriptions to prevent memory leaks
+  final Map<String, StreamSubscription<DownloadProgress>> _downloadSubscriptions = {};
+  
+  static const String _lastSyncTimeKey = 'last_sync_time';
+  static const int _maxRetryAttempts = 3;
+  static const Duration _baseRetryDelay = Duration(seconds: 5);
+  static const Duration _maxRetryBackoff = Duration(minutes: 5);
+  Box<dynamic>? _prefsBox;
 
   bool get isSyncing => _isSyncing;
   DateTime? get lastSyncTime => _lastSyncTime;
@@ -55,6 +68,24 @@ class DocumentSyncService {
   /// Initializes the sync service and sets up connectivity listener
   Future<void> initialize() async {
     AppLogger.info('Initializing DocumentSyncService');
+
+    // Load last sync time from persistent storage
+    try {
+      _prefsBox = await Hive.openBox('sync_preferences');
+      final lastSyncTimeString = _prefsBox!.get(_lastSyncTimeKey) as String?;
+      if (lastSyncTimeString != null) {
+        _lastSyncTime = DateTime.parse(lastSyncTimeString);
+        AppLogger.info(
+          'Loaded last sync time from storage',
+          data: {'lastSyncTime': _lastSyncTime!.toIso8601String()},
+        );
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to load last sync time, will perform full sync',
+        error: e,
+      );
+    }
 
     // Listen to connectivity changes to sync when online
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
@@ -67,8 +98,11 @@ class DocumentSyncService {
       );
 
       if (isOnline) {
-        AppLogger.info('Network connectivity restored, triggering sync');
-        syncDocuments().catchError((error) {
+        AppLogger.info(
+          'Network connectivity restored, triggering incremental sync',
+        );
+        // Use incremental sync by default (more efficient)
+        syncDocuments(forceFullSync: false).catchError((error) {
           AppLogger.error(
             'Auto-sync failed after connectivity change',
             error: error,
@@ -91,6 +125,11 @@ class DocumentSyncService {
   /// Disposes the sync service
   void dispose() {
     _connectivitySubscription?.cancel();
+    // Cancel all active download subscriptions
+    for (final subscription in _downloadSubscriptions.values) {
+      subscription.cancel();
+    }
+    _downloadSubscriptions.clear();
   }
 
   /// Syncs documents from backend to local storage.
@@ -100,10 +139,11 @@ class DocumentSyncService {
   /// 2. Fetches documents from backend (incremental or full)
   /// 3. Replaces local documents (if `replaceLocal: true`) OR merges with local Hive storage (if `replaceLocal: false`)
   /// 4. Resolves conflicts by `updatedAt` timestamp when merging
+  /// 5. Retries with exponential backoff on failure
   ///
   /// **Sync Modes:**
   /// - **Replace Mode** (`replaceLocal: true`): Clears local storage and replaces with backend data
-  ///   - Use on app startup to ensure backend is source of truth
+  ///   - ⚠️ NOT RECOMMENDED for production - use merge mode instead
   ///   - All local documents are replaced with backend versions
   /// - **Merge Mode** (`replaceLocal: false`): Merges backend documents with local storage
   ///   - Conflict resolution by `updatedAt` timestamp
@@ -123,15 +163,16 @@ class DocumentSyncService {
   /// // Merge mode (default) - for background sync
   /// final result = await DocumentSyncService.instance.syncDocuments();
   ///
-  /// // Replace mode - for app startup
+  /// // Full sync with merge (recommended for app startup)
   /// final result = await DocumentSyncService.instance.syncDocuments(
   ///   forceFullSync: true,
-  ///   replaceLocal: true,
+  ///   replaceLocal: false, // SAFE: Preserves local documents
   /// );
   /// ```
   Future<SyncResult> syncDocuments({
     bool forceFullSync = false,
     bool replaceLocal = false,
+    int retryAttempt = 0,
   }) async {
     if (_isSyncing) {
       AppLogger.info('Sync already in progress, skipping');
@@ -148,8 +189,12 @@ class DocumentSyncService {
     try {
       _isSyncing = true;
       AppLogger.info(
-        'Starting document sync',
-        data: {'forceFullSync': forceFullSync},
+        '🔄 Starting document sync',
+        data: {
+          'forceFullSync': forceFullSync,
+          'replaceLocal': replaceLocal,
+          'retryAttempt': retryAttempt,
+        },
       );
 
       // Check authentication
@@ -166,6 +211,17 @@ class DocumentSyncService {
           documentsReplaced: 0,
         );
       }
+
+      // CRITICAL: Log userId to ensure we're syncing the correct user's documents
+      AppLogger.info(
+        '🔄 Starting sync for authenticated user',
+        data: {
+          'userId': user.id,
+          'userEmail': user.email ?? 'N/A',
+          'forceFullSync': forceFullSync,
+          'replaceLocal': replaceLocal,
+        },
+      );
 
       // Check connectivity
       final connectivityResults = await _connectivity.checkConnectivity();
@@ -189,7 +245,7 @@ class DocumentSyncService {
 
       // Get backend URL and fix for Android emulator
       var backendUrl = AppEnv.backendApiUrl;
-      
+
       // Fix for Android emulator: replace localhost with 10.0.2.2
       if (backendUrl != null && backendUrl.contains('localhost')) {
         AppLogger.info(
@@ -202,7 +258,7 @@ class DocumentSyncService {
           data: {'fixedUrl': backendUrl},
         );
       }
-      
+
       if (backendUrl == null || backendUrl.isEmpty) {
         AppLogger.warning(
           'Backend API URL not configured, cannot sync',
@@ -249,6 +305,9 @@ class DocumentSyncService {
       }
 
       // Build sync URL - use sync endpoint for incremental, documents endpoint for full sync
+      // CRITICAL: Backend automatically filters by userId from JWT token
+      // The @CurrentUser() decorator extracts userId from the authenticated session
+      // No need to pass userId in query params - backend handles it automatically
       final syncPath = forceFullSync || _lastSyncTime == null
           ? 'api/documents'
           : 'api/documents/sync';
@@ -265,9 +324,19 @@ class DocumentSyncService {
         );
       }
 
+      AppLogger.info(
+        '📡 Backend API endpoint configured',
+        data: {
+          'userId': user.id,
+          'endpoint': syncPath,
+          'fullUrl': baseApiUrl,
+          'note': 'Backend will filter documents by userId from JWT token',
+        },
+      );
+
       // Fetch all documents from backend (handle pagination for full sync)
       final List<dynamic> allDocumentsJson = [];
-      
+
       if (forceFullSync || _lastSyncTime == null) {
         // Full sync: fetch all pages
         int page = 0;
@@ -322,22 +391,20 @@ class DocumentSyncService {
           }
 
           final responseBody = jsonDecode(response.body);
-          
+
           if (responseBody is Map<String, dynamic> &&
               responseBody.containsKey('documents')) {
             // Paginated response
             final documentsJson = responseBody['documents'] as List<dynamic>;
             allDocumentsJson.addAll(documentsJson);
-            
-            final pagination = responseBody['pagination'] as Map<String, dynamic>?;
+
+            final pagination =
+                responseBody['pagination'] as Map<String, dynamic>?;
             hasMore = pagination?['hasMore'] as bool? ?? false;
-            
+
             AppLogger.info(
               'Fetched page $page: ${documentsJson.length} documents',
-              data: {
-                'totalSoFar': allDocumentsJson.length,
-                'hasMore': hasMore,
-              },
+              data: {'totalSoFar': allDocumentsJson.length, 'hasMore': hasMore},
             );
           } else {
             throw Exception('Unexpected response format from backend');
@@ -346,14 +413,21 @@ class DocumentSyncService {
           page++;
         }
       } else {
-        // Incremental sync: use sync endpoint
-        final syncUrl = Uri.parse(baseApiUrl).replace(
-          queryParameters: {'since': _lastSyncTime!.toIso8601String()},
-        );
+        // INCREMENTAL SYNC: Only fetch documents updated since last sync
+        // This is much more efficient than full sync
+        final syncUrl = Uri.parse(
+          baseApiUrl,
+        ).replace(queryParameters: {'since': _lastSyncTime!.toIso8601String()});
 
         AppLogger.info(
-          'Fetching documents updated since ${_lastSyncTime!.toIso8601String()}',
-          data: {'url': syncUrl.toString()},
+          '🔄 Incremental sync: Fetching documents updated since ${_lastSyncTime!.toIso8601String()}',
+          data: {
+            'url': syncUrl.toString(),
+            'lastSyncTime': _lastSyncTime!.toIso8601String(),
+            'timeSinceLastSync': DateTime.now()
+                .difference(_lastSyncTime!)
+                .inMinutes,
+          },
         );
 
         final response = await http
@@ -386,7 +460,7 @@ class DocumentSyncService {
         }
 
         final responseBody = jsonDecode(response.body);
-        
+
         if (responseBody is List) {
           // Array response (from sync endpoint)
           allDocumentsJson.addAll(responseBody);
@@ -396,10 +470,12 @@ class DocumentSyncService {
       }
 
       AppLogger.info(
-        'Received ${allDocumentsJson.length} documents from backend',
+        'Received ${allDocumentsJson.length} documents from backend for user ${user.id}',
         data: {
+          'userId': user.id,
           'forceFullSync': forceFullSync,
           'replaceLocal': replaceLocal,
+          'documentCount': allDocumentsJson.length,
         },
       );
 
@@ -408,166 +484,181 @@ class DocumentSyncService {
       int updated = 0;
       int skipped = 0;
       int replaced = 0;
+      int conflicts = 0;
 
-      // If replaceLocal is true, clear all local documents first
+      // Track which documents exist in backend (for detecting local-only documents)
+      final backendDocumentIds = <String>{};
+
+      // SAFE MERGE STRATEGY: Never clear local storage unless explicitly requested
+      // Even then, we should preserve documents with local files that aren't in backend
       if (replaceLocal) {
+        // Only use replace mode if explicitly requested (not recommended for production)
+        // This is kept for backward compatibility but should be avoided
         final localCountBeforeClear = box.length;
-        AppLogger.info(
-          'Replacing local documents with backend data',
+        AppLogger.warning(
+          error: null,
+          '⚠️ REPLACE MODE: This will clear local documents. Use merge mode for production.',
           data: {
             'localCount': localCountBeforeClear,
             'backendCount': allDocumentsJson.length,
           },
         );
         await box.clear();
-        replaced = localCountBeforeClear; // Store count before clear
+        replaced = localCountBeforeClear;
       }
 
-      // Process backend documents
+      // Process backend documents with enhanced merge strategy
       for (final docJson in allDocumentsJson) {
         try {
           final remoteDoc = _parseBackendDocument(docJson);
+          backendDocumentIds.add(remoteDoc.id);
           final localDoc = box.get(remoteDoc.id);
 
           // Check if document files need to be downloaded (if filePath is a URL)
-          final needsDownload = remoteDoc.filePath.startsWith('http://') ||
+          final needsDownload =
+              remoteDoc.filePath.startsWith('http://') ||
               remoteDoc.filePath.startsWith('https://');
 
-          // If local document exists and has local files, keep showing it until download completes
-          final hasLocalFiles = localDoc != null &&
+          // Check if local document has local files (not just URLs)
+          final hasLocalFiles =
+              localDoc != null &&
               !localDoc.filePath.startsWith('http://') &&
               !localDoc.filePath.startsWith('https://');
 
-          DocumentModel finalDoc = remoteDoc;
-
-          // If we have a local version with local files, use it temporarily
-          // (will be updated when download completes)
-          if (hasLocalFiles && needsDownload) {
-            AppLogger.info(
-              '📱 Keeping local document visible, downloading updated version in background',
-              data: {
-                'id': remoteDoc.id,
-                'title': remoteDoc.title,
-              },
-            );
-            // Use local version for now
-            finalDoc = localDoc!;
-          }
-
-          // Download files if needed (in background, don't block sync)
-          if (needsDownload) {
-            AppLogger.info(
-              '📥 Document needs download, starting background download',
-              data: {
-                'id': remoteDoc.id,
-                'title': remoteDoc.title,
-                'fileUrl': remoteDoc.filePath.substring(
-                  0,
-                  remoteDoc.filePath.length > 100
-                      ? 100
-                      : remoteDoc.filePath.length,
-                ) + '...',
-              },
-            );
-
-            // Download files in background
-            DocumentDownloadService.instance
-                .downloadDocumentFiles(
-                  fileUrl: remoteDoc.filePath,
-                  thumbnailUrl: remoteDoc.thumbnailPath.isNotEmpty
-                      ? remoteDoc.thumbnailPath
-                      : null,
-                  documentId: remoteDoc.id,
-                  format: remoteDoc.format,
-                )
-                .then((downloadedFiles) {
-              // Update document with local paths after download
-              final downloadedFilePath = downloadedFiles['filePath'];
-              final downloadedThumbnailPath = downloadedFiles['thumbnailPath'];
-
-              if (downloadedFilePath != null) {
-                final updatedDoc = DocumentModel(
-                  id: remoteDoc.id,
-                  title: remoteDoc.title,
-                  filePath: downloadedFilePath,
-                  thumbnailPath: downloadedThumbnailPath ?? '',
-                  format: remoteDoc.format,
-                  pageCount: remoteDoc.pageCount,
-                  createdAt: remoteDoc.createdAt,
-                  updatedAt: remoteDoc.updatedAt,
-                  pageImagePaths: remoteDoc.pageImagePaths,
-                  scanMode: remoteDoc.scanMode,
-                  textContent: remoteDoc.textContent,
-                  colorProfile: remoteDoc.colorProfile,
-                  tags: remoteDoc.tags,
-                  metadata: remoteDoc.metadata,
-                );
-
-                box.put(remoteDoc.id, updatedDoc);
-                AppLogger.info(
-                  '✅ Document files downloaded and updated - user will now see online version',
-                  data: {
-                    'id': remoteDoc.id,
-                    'filePath': downloadedFilePath,
-                    'thumbnailPath': downloadedThumbnailPath ?? 'none',
-                  },
-                );
-              } else {
-                AppLogger.warning(
-                  '⚠️ Failed to download document files, keeping URL',
-                  error: null,
-                  data: {'id': remoteDoc.id},
-                );
-              }
-            }).catchError((error) {
-              AppLogger.error(
-                'Failed to download document files',
-                error: error,
-                data: {'id': remoteDoc.id},
-              );
-            });
-          }
-
+          // ENHANCED MERGE STRATEGY
           if (localDoc == null) {
-            // New document from backend
+            // Case 1: New document from backend - add it
+            DocumentModel finalDoc = remoteDoc;
+
+            // Update sync status
+            DocumentSyncStateService.instance.setSyncStatus(
+              remoteDoc.id,
+              needsDownload
+                  ? DocumentSyncStatus.pendingDownload
+                  : DocumentSyncStatus.synced,
+            );
+
+            // If it needs download, start download in background but add metadata now
+            if (needsDownload) {
+              _startBackgroundDownload(remoteDoc, box);
+            }
+
             await box.put(remoteDoc.id, finalDoc);
             added++;
             AppLogger.info(
-              'Added new document from backend',
+              '✅ Added new document from backend',
               data: {'id': remoteDoc.id, 'title': remoteDoc.title},
             );
           } else {
+            // Case 2: Document exists locally - apply conflict resolution
             if (replaceLocal) {
-              // Replace mode: always use backend version
+              // Replace mode: always use backend version (not recommended)
+              DocumentModel finalDoc = remoteDoc;
+
+              // Preserve local files if they exist and backend only has URL
+              if (hasLocalFiles && needsDownload) {
+                AppLogger.info(
+                  '📱 Preserving local files, downloading backend version in background',
+                  data: {'id': remoteDoc.id, 'title': remoteDoc.title},
+                );
+                // Keep local file paths temporarily, download in background
+                finalDoc = localDoc;
+                _startBackgroundDownload(remoteDoc, box);
+              } else if (needsDownload) {
+                _startBackgroundDownload(remoteDoc, box);
+              }
+
               await box.put(remoteDoc.id, finalDoc);
               updated++;
-              AppLogger.info(
-                'Replaced local document with backend version',
-                data: {'id': remoteDoc.id, 'title': remoteDoc.title},
-              );
             } else {
-              // Merge mode: conflict resolution by updatedAt timestamp
+              // MERGE MODE: Smart conflict resolution
               final localUpdatedAt = localDoc.updatedAt;
               final remoteUpdatedAt = remoteDoc.updatedAt;
+              final timeDifference = remoteUpdatedAt.difference(localUpdatedAt);
 
+              // Enhanced conflict detection: consider both timestamp and file state
               if (remoteUpdatedAt.isAfter(localUpdatedAt)) {
-                // Backend version is newer, update local
+                // Backend version is newer - update from backend
+                DocumentModel finalDoc = remoteDoc;
+
+                // If local has files and backend has URL, preserve local files during download
+                if (hasLocalFiles && needsDownload) {
+                  AppLogger.info(
+                    '📱 Backend newer: Keeping local files visible, downloading in background',
+                    data: {
+                      'id': remoteDoc.id,
+                      'title': remoteDoc.title,
+                      'localUpdated': localUpdatedAt.toIso8601String(),
+                      'remoteUpdated': remoteUpdatedAt.toIso8601String(),
+                    },
+                  );
+                  // Keep local version visible until download completes
+                  finalDoc = localDoc;
+                  _startBackgroundDownload(remoteDoc, box);
+                } else if (needsDownload) {
+                  _startBackgroundDownload(remoteDoc, box);
+                }
+
+                // Update sync status
+                DocumentSyncStateService.instance.setSyncStatus(
+                  remoteDoc.id,
+                  needsDownload
+                      ? DocumentSyncStatus.pendingDownload
+                      : DocumentSyncStatus.synced,
+                );
+
                 await box.put(remoteDoc.id, finalDoc);
                 updated++;
                 AppLogger.info(
-                  'Updated local document with newer backend version',
-                  data: {'id': remoteDoc.id, 'title': remoteDoc.title},
+                  '✅ Updated local document with newer backend version',
+                  data: {
+                    'id': remoteDoc.id,
+                    'title': remoteDoc.title,
+                    'timeDiff': '${timeDifference.inSeconds}s',
+                  },
                 );
               } else if (remoteUpdatedAt.isBefore(localUpdatedAt)) {
-                // Local version is newer, skip (will be uploaded by upload service)
+                // Local version is newer - keep local (will be uploaded by upload service)
+                // Update sync status to pending upload
+                DocumentSyncStateService.instance.setSyncStatus(
+                  remoteDoc.id,
+                  DocumentSyncStatus.pendingUpload,
+                );
                 skipped++;
                 AppLogger.info(
-                  'Skipped backend document (local is newer)',
-                  data: {'id': remoteDoc.id, 'title': remoteDoc.title},
+                  '⏭️ Skipped backend document (local is newer, will upload)',
+                  data: {
+                    'id': remoteDoc.id,
+                    'title': remoteDoc.title,
+                    'timeDiff': '${timeDifference.inSeconds}s',
+                  },
                 );
               } else {
-                // Same timestamp, skip
-                skipped++;
+                // Same timestamp - check if content differs
+                final contentDiffers = _documentsDiffer(localDoc, remoteDoc);
+                if (contentDiffers) {
+                  // Same timestamp but different content - potential conflict
+                  conflicts++;
+                  // Mark as conflict in sync state
+                  DocumentSyncStateService.instance.setSyncStatus(
+                    remoteDoc.id,
+                    DocumentSyncStatus.conflict,
+                  );
+                  AppLogger.warning(
+                    '⚠️ Conflict detected: Same timestamp but different content',
+                    error: null,
+                    data: {
+                      'id': remoteDoc.id,
+                      'title': remoteDoc.title,
+                      'action': 'Keeping local version (will be uploaded)',
+                    },
+                  );
+                  // Keep local version - it will be uploaded and overwrite backend
+                  skipped++;
+                } else {
+                  // Identical - already synced
+                  skipped++;
+                }
               }
             }
           }
@@ -581,16 +672,98 @@ class DocumentSyncService {
         }
       }
 
+      // PROTECT LOCAL-ONLY DOCUMENTS: Documents that exist locally but not in backend
+      // These are likely pending uploads or documents created offline
+      if (!replaceLocal) {
+        final allLocalDocs = box.values.toList();
+        for (final localDoc in allLocalDocs) {
+          if (!backendDocumentIds.contains(localDoc.id)) {
+            // This document exists locally but not in backend
+            final hasLocalFiles =
+                !localDoc.filePath.startsWith('http://') &&
+                !localDoc.filePath.startsWith('https://');
+
+            if (hasLocalFiles) {
+              // Preserve local-only documents (pending upload)
+              // Update sync status to pending upload
+              DocumentSyncStateService.instance.setSyncStatus(
+                localDoc.id,
+                DocumentSyncStatus.pendingUpload,
+              );
+              AppLogger.info(
+                '📱 Preserving local-only document (pending upload)',
+                data: {
+                  'id': localDoc.id,
+                  'title': localDoc.title,
+                  'createdAt': localDoc.createdAt.toIso8601String(),
+                },
+              );
+              // Document is already in box, no action needed
+              // Upload service will handle uploading it
+            } else {
+              // Local document with URL but not in backend - might be orphaned
+              AppLogger.warning(
+                '⚠️ Local document with URL not found in backend (may be orphaned)',
+                error: null,
+                data: {'id': localDoc.id, 'title': localDoc.title},
+              );
+            }
+          }
+        }
+      }
+
+      // Save last sync time to persistent storage
       _lastSyncTime = DateTime.now();
+      try {
+        if (_prefsBox != null) {
+          await _prefsBox!.put(
+            _lastSyncTimeKey,
+            _lastSyncTime!.toIso8601String(),
+          );
+        }
+      } catch (e) {
+        AppLogger.warning('Failed to save last sync time', error: e);
+      }
+
+      // Update sync status for all processed documents
+      // Mark remaining local documents as pending upload if they weren't in backend
+      if (!replaceLocal) {
+        final allLocalDocs = box.values.toList();
+        for (final localDoc in allLocalDocs) {
+          if (!backendDocumentIds.contains(localDoc.id)) {
+            final hasLocalFiles = !localDoc.filePath.startsWith('http://') &&
+                !localDoc.filePath.startsWith('https://');
+            if (hasLocalFiles) {
+              // This is a local-only document, mark as pending upload
+              DocumentSyncStateService.instance.setSyncStatus(
+                localDoc.id,
+                DocumentSyncStatus.pendingUpload,
+              );
+            }
+          }
+        }
+      }
+
+      final syncType = forceFullSync || _lastSyncTime == null
+          ? 'full'
+          : 'incremental';
+      final syncEfficiency = forceFullSync || _lastSyncTime == null
+          ? 'N/A'
+          : '${allDocumentsJson.length} documents fetched (incremental)';
+
       AppLogger.info(
         'Document sync completed',
         data: {
+          'syncType': syncType,
           'added': added,
           'updated': updated,
           'skipped': skipped,
           'replaced': replaced,
+          'conflicts': conflicts,
           'total': allDocumentsJson.length,
           'replaceLocal': replaceLocal,
+          'efficiency': syncEfficiency,
+          'lastSyncTime': _lastSyncTime!.toIso8601String(),
         },
       );
 
@@ -605,10 +778,33 @@ class DocumentSyncService {
         documentsReplaced: replaced,
       );
     } catch (e, stack) {
-      AppLogger.error('Document sync failed', error: e, stack: stack);
+      AppLogger.error(
+        'Document sync failed (attempt ${retryAttempt + 1}/$_maxRetryAttempts)',
+        error: e,
+        stack: stack,
+      );
+
+      // Retry with exponential backoff
+      if (retryAttempt < _maxRetryAttempts - 1) {
+        final delay = _calculateRetryDelay(retryAttempt);
+        AppLogger.info(
+          'Retrying sync in ${delay.inSeconds}s (attempt ${retryAttempt + 2}/$_maxRetryAttempts)',
+          data: {'error': e.toString(), 'delaySeconds': delay.inSeconds},
+        );
+
+        await Future.delayed(delay);
+        return syncDocuments(
+          forceFullSync: forceFullSync,
+          replaceLocal: replaceLocal,
+          retryAttempt: retryAttempt + 1,
+        );
+      }
+
+      // Max attempts reached
       return SyncResult(
         success: false,
-        message: 'Sync failed: ${e.toString()}',
+        message:
+            'Sync failed after $_maxRetryAttempts attempts: ${e.toString()}',
         documentsAdded: 0,
         documentsUpdated: 0,
         documentsSkipped: 0,
@@ -617,6 +813,201 @@ class DocumentSyncService {
     } finally {
       _isSyncing = false;
     }
+  }
+
+  /// Calculates retry delay with exponential backoff
+  Duration _calculateRetryDelay(int attempt) {
+    final baseDelay = _baseRetryDelay.inSeconds;
+    final delaySeconds =
+        baseDelay * (1 << attempt); // Exponential: 5s, 10s, 20s
+    final delay = Duration(seconds: delaySeconds);
+    return delay > _maxRetryBackoff ? _maxRetryBackoff : delay;
+  }
+
+  /// Starts background download for a document with URL filePath.
+  /// Uses the download queue for better management and progress tracking.
+  void _startBackgroundDownload(
+    DocumentModel remoteDoc,
+    Box<DocumentModel> box,
+  ) {
+    AppLogger.info(
+      '📥 Queuing document for download',
+      data: {
+        'id': remoteDoc.id,
+        'title': remoteDoc.title,
+        'fileUrl':
+            remoteDoc.filePath.substring(
+              0,
+              remoteDoc.filePath.length > 100 ? 100 : remoteDoc.filePath.length,
+            ) +
+            '...',
+      },
+    );
+
+    // Queue the download (will be processed by download service)
+    DocumentDownloadService.instance.queueDownload(
+      documentId: remoteDoc.id,
+      fileUrl: remoteDoc.filePath,
+      thumbnailUrl: remoteDoc.thumbnailPath.isNotEmpty
+          ? remoteDoc.thumbnailPath
+          : null,
+      format: remoteDoc.format,
+      priority: DownloadPriority.normal,
+    );
+
+    // Cancel any existing subscription for this document
+    _downloadSubscriptions[remoteDoc.id]?.cancel();
+    _downloadSubscriptions.remove(remoteDoc.id);
+
+    // Listen to download progress and update document when complete
+    final subscription = DocumentDownloadService.instance.progressStream.listen(
+      (progress) {
+        if (progress.documentId == remoteDoc.id && progress.isComplete) {
+          // Download completed, update document with local paths
+          _updateDocumentAfterDownload(remoteDoc, box);
+          _cleanupSubscription(remoteDoc.id);
+        } else if (progress.documentId == remoteDoc.id &&
+            progress.error != null) {
+          // Download failed
+          AppLogger.error(
+            'Download failed for document',
+            error: Exception(progress.error),
+            data: {'id': remoteDoc.id},
+          );
+          _cleanupSubscription(remoteDoc.id);
+        }
+      },
+      onError: (error) {
+        AppLogger.error(
+          'Error listening to download progress',
+          error: error,
+          data: {'id': remoteDoc.id},
+        );
+        _cleanupSubscription(remoteDoc.id);
+      },
+    );
+
+    // Store subscription for cleanup
+    _downloadSubscriptions[remoteDoc.id] = subscription;
+  }
+
+  /// Cleans up subscription for a document
+  void _cleanupSubscription(String documentId) {
+    final subscription = _downloadSubscriptions.remove(documentId);
+    subscription?.cancel();
+  }
+
+  /// Updates document in Hive after download completes
+  Future<void> _updateDocumentAfterDownload(
+    DocumentModel remoteDoc,
+    Box<DocumentModel> box,
+  ) async {
+    try {
+      // Get local file paths
+      final appDocsDir = await getApplicationDocumentsDirectory();
+      if (appDocsDir == null) {
+        AppLogger.warning(
+          'Failed to get application documents directory',
+          error: null,
+          data: {'id': remoteDoc.id},
+        );
+        return;
+      }
+
+      final documentsDir = Directory('${appDocsDir.path}/scanned_documents');
+      final thumbsDir = Directory('${appDocsDir.path}/thumbnails');
+
+      final localFilePath =
+          '${documentsDir.path}/${remoteDoc.id}/${remoteDoc.id}.${remoteDoc.format}';
+      final localThumbPath = '${thumbsDir.path}/${remoteDoc.id}_thumb.jpg';
+
+      // Check if files exist
+      final fileExists = await File(localFilePath).exists();
+      final thumbExists = await File(localThumbPath).exists();
+
+      if (fileExists) {
+        final currentDoc = box.get(remoteDoc.id);
+        if (currentDoc != null) {
+          final updatedDoc = DocumentModel(
+            id: remoteDoc.id,
+            title: remoteDoc.title,
+            filePath: localFilePath,
+            thumbnailPath: thumbExists ? localThumbPath : '',
+            format: remoteDoc.format,
+            pageCount: remoteDoc.pageCount,
+            createdAt: remoteDoc.createdAt,
+            updatedAt: remoteDoc.updatedAt,
+            pageImagePaths: remoteDoc.pageImagePaths,
+            scanMode: remoteDoc.scanMode,
+            textContent: remoteDoc.textContent,
+            colorProfile: remoteDoc.colorProfile,
+            tags: remoteDoc.tags,
+            metadata: remoteDoc.metadata,
+          );
+
+          await box.put(remoteDoc.id, updatedDoc);
+          AppLogger.info(
+            '✅ Document updated with local file paths after download',
+            data: {
+              'id': remoteDoc.id,
+              'filePath': localFilePath,
+              'thumbnailPath': thumbExists ? localThumbPath : 'none',
+            },
+          );
+        } else {
+          AppLogger.warning(
+            'Document not found in box after download',
+            error: null,
+            data: {'id': remoteDoc.id},
+          );
+        }
+      } else {
+        AppLogger.warning(
+          'Downloaded file not found at expected path',
+          error: null,
+          data: {
+            'id': remoteDoc.id,
+            'expectedPath': localFilePath,
+          },
+        );
+      }
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to update document after download',
+        error: e,
+        stack: stack,
+        data: {'id': remoteDoc.id},
+      );
+    }
+  }
+
+  /// Checks if two documents differ in content (beyond just timestamps).
+  /// Used for conflict detection when timestamps are equal.
+  bool _documentsDiffer(DocumentModel local, DocumentModel remote) {
+    // Compare key fields that indicate content changes
+    if (local.title != remote.title) return true;
+    if (local.pageCount != remote.pageCount) return true;
+    if (local.format != remote.format) return true;
+    if (local.scanMode != remote.scanMode) return true;
+    if (local.colorProfile != remote.colorProfile) return true;
+
+    // Compare tags (order-independent)
+    final localTags = Set.from(local.tags);
+    final remoteTags = Set.from(remote.tags);
+    if (localTags.length != remoteTags.length ||
+        !localTags.containsAll(remoteTags)) {
+      return true;
+    }
+
+    // Compare metadata keys (not values, as they may be formatted differently)
+    final localMetadataKeys = Set.from(local.metadata.keys);
+    final remoteMetadataKeys = Set.from(remote.metadata.keys);
+    if (localMetadataKeys.length != remoteMetadataKeys.length ||
+        !localMetadataKeys.containsAll(remoteMetadataKeys)) {
+      return true;
+    }
+
+    return false;
   }
 
   /// Parses a backend document JSON into a DocumentModel.

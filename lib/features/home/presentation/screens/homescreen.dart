@@ -12,6 +12,7 @@ import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/controllers/filtered_documents_provider.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
+import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
 import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -441,7 +442,13 @@ class HomeScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
+              // Global sync status indicator
+              const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: GlobalSyncStatusIndicator(),
+              ),
+              const SizedBox(width: 8),
               Container(
                 decoration: BoxDecoration(
                   gradient: AppDesign.primaryGradient,

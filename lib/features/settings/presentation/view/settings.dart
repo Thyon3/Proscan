@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:thyscan/features/help_and_support/presentation/screens/help_and_support.dart';
@@ -77,6 +78,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 activeColor: scheme.primary,
               ),
               scheme: scheme,
+            ),
+            const SizedBox(height: 8),
+            _buildSettingItem(
+              icon: Iconsax.cloud_change,
+              title: 'Sync Settings',
+              subtitle: 'Manage document sync preferences',
+              trailing: Icon(
+                Iconsax.arrow_right_3,
+                color: scheme.onSurface.withValues(alpha: 0.5),
+                size: 20,
+              ),
+              scheme: scheme,
+              onTap: () => context.push('/sync-settings'),
             ),
             const SizedBox(height: 24),
 

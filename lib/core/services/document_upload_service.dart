@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/services/document_backend_sync_service.dart';
+import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/utils/filename_sanitizer.dart';
 import 'package:thyscan/models/document_model.dart';
 
@@ -424,6 +425,13 @@ class DocumentUploadService {
 
       _emitProgress(documentId, UploadStatus.completed, progress: 1.0);
 
+      // Update sync status to synced
+      DocumentSyncStateService.instance.setSyncStatus(
+        documentId,
+        DocumentSyncStatus.synced,
+        lastSyncTime: DateTime.now(),
+      );
+
       AppLogger.info(
         'Document uploaded successfully',
         data: {'documentId': documentId},
@@ -454,6 +462,13 @@ class DocumentUploadService {
         UploadStatus.failed,
         error: e.toString(),
         lastAttempt: DateTime.now(),
+      );
+
+      // Update sync status to error
+      DocumentSyncStateService.instance.setSyncStatus(
+        documentId,
+        DocumentSyncStatus.error,
+        errorMessage: e.toString(),
       );
 
       _addToQueue(document);

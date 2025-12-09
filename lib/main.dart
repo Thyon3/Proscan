@@ -6,7 +6,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/config/router/router.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/document_sync_service.dart';
+import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
@@ -37,14 +39,31 @@ void main() {
         });
 
         // Initialize Hive (required for app to work)
+        // CRITICAL: Documents from internal storage are available immediately
+        // The UI will show these documents right away, even before sync completes
         await Hive.initFlutter();
         Hive.registerAdapter(DocumentModelAdapter());
         await Hive.openBox<DocumentModel>(DocumentService.boxName);
+        
+        AppLogger.info(
+          '📱 Hive initialized - Documents from internal storage are now available',
+          data: {
+            'documentCount': Hive.box<DocumentModel>(DocumentService.boxName).length,
+          },
+        );
 
         // Initialize document upload service
         DocumentUploadService.instance.initialize().catchError((error) {
           AppLogger.error(
             'DocumentUploadService initialization failed',
+            error: error,
+          );
+        });
+
+        // Initialize document download service
+        DocumentDownloadService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'DocumentDownloadService initialization failed',
             error: error,
           );
         });
@@ -57,38 +76,66 @@ void main() {
           );
         });
 
+        // Initialize document sync state service
+        DocumentSyncStateService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'DocumentSyncStateService initialization failed',
+            error: error,
+          );
+        });
+
         // Trigger initial sync after auth is ready (non-blocking)
-        // This replaces local documents with backend data when online
+        // SAFE MERGE MODE: Merges backend documents with local storage
+        // Never clears local documents - preserves offline work
         authInitFuture.then((_) async {
           // Wait a bit for auth to fully initialize
           await Future.delayed(const Duration(seconds: 2));
           final user = AuthService.instance.currentUser;
           if (user != null) {
             AppLogger.info(
-              'User authenticated, triggering initial document sync (replacing local with backend)',
+              '✅ User authenticated - userId: ${user.id}',
+              data: {
+                'userId': user.id,
+                'email': user.email ?? 'N/A',
+              },
             );
-            // Replace local documents with backend data on app startup
+            AppLogger.info(
+              '🔄 Triggering initial document sync for authenticated user (merging with local documents)',
+              data: {
+                'userId': user.id,
+                'localDocumentCount': Hive.box<DocumentModel>(DocumentService.boxName).length,
+              },
+            );
+            // SAFE: Merge backend documents with local storage
+            // Local documents are preserved and only updated if backend version is newer
+            // CRITICAL: Backend will only return documents with this user's userId
             DocumentSyncService.instance
                 .syncDocuments(
                   forceFullSync: true,
-                  replaceLocal: true, // Replace local with backend data
+                  replaceLocal: false, // SAFE: Merge mode - preserves local documents
                 )
                 .then((result) {
               AppLogger.info(
-                'Initial sync completed',
+                '✅ Initial sync completed for user ${user.id}',
                 data: {
+                  'userId': user.id,
                   'success': result.success,
                   'added': result.documentsAdded,
                   'updated': result.documentsUpdated,
-                  'replaced': result.documentsReplaced,
+                  'skipped': result.documentsSkipped,
                 },
               );
             }).catchError((error) {
               AppLogger.warning(
-                'Initial sync failed (app will use local documents)',
+                '⚠️ Initial sync failed for user ${user.id} (app will use local documents)',
                 error: error,
+                data: {'userId': user.id},
               );
             });
+          } else {
+            AppLogger.info(
+              'ℹ️ No authenticated user - app will show only local documents',
+            );
           }
         }).catchError((error) {
           AppLogger.warning(
