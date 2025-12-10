@@ -7,7 +7,9 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/features/home/controllers/library_state_provider.dart';
-import 'package:thyscan/features/home/controllers/filtered_documents_provider.dart';
+import 'package:thyscan/features/home/controllers/documents_pagination_provider.dart';
+import 'package:thyscan/features/home/controllers/home_state_provider.dart';
+import 'package:thyscan/features/home/models/document_filter.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_filter_bar.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_scan_list_item.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
@@ -25,8 +27,18 @@ class LibraryScreen extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // Get filtered and sorted documents from provider (reactive to Hive changes)
-    final allDocs = ref.watch(filteredDocumentsProvider);
+    // Use paginated documents provider (windowed loading - max 150 docs in memory)
+    final homeState = ref.watch(homeProvider);
+    final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
+    final paginatedState = ref.watch(currentPaginatedDocumentsProvider);
+    final paginatedNotifier = ref.read(
+      paginatedDocumentsProvider(
+        PaginatedDocumentsParams(
+          scanMode: activeFilter.scanMode,
+          sortBy: homeState.sortCriteria,
+        ),
+      ).notifier,
+    );
 
     return Scaffold(
       backgroundColor: colorScheme.background,
@@ -36,6 +48,7 @@ class LibraryScreen extends ConsumerWidget {
         libraryState,
         libraryNotifier,
         screenWidth,
+        paginatedState.totalItems,
       ),
       bottomNavigationBar: libraryState.isSelectionMode
           ? _PremiumSelectionActionBottomBar(
@@ -61,7 +74,7 @@ class LibraryScreen extends ConsumerWidget {
             ),
 
           // Show empty state or document list
-          if (allDocs.isEmpty)
+          if (paginatedState.documents.isEmpty && !paginatedState.isLoading)
             SliverToBoxAdapter(child: _buildPremiumEmptyState(context))
           else
             SliverPadding(
@@ -74,37 +87,68 @@ class LibraryScreen extends ConsumerWidget {
                 right: _getCardMargin(screenWidth),
               ),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final doc = allDocs[index];
-                  // Convert DocumentModel to Scan for compatibility
-                  final scan = _documentToScan(doc);
-                  final isSelected = libraryState.selectedScanIds.contains(
-                    scan.id,
-                  );
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    // Infinite scroll: load next page when near end
+                    if (index >= paginatedState.documents.length - 3 &&
+                        paginatedState.hasMore &&
+                        !paginatedState.isLoading) {
+                      paginatedNotifier.loadNextPage();
+                    }
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: LibraryScanListItem(
-                      scan: scan,
-                      isSelectionMode: libraryState.isSelectionMode,
-                      isSelected: isSelected,
-                      onLongPress: () {
-                        libraryNotifier.enterSelectionMode(scan.id);
-                      },
-                      onTap: () {
-                        if (libraryState.isSelectionMode) {
-                          libraryNotifier.toggleScanSelection(scan.id);
-                        } else {
-                          // Open document in SavePdfScreen
-                          _openDocument(context, doc);
-                        }
-                      },
-                      onEdit: () => _openDocument(context, doc),
-                      onDelete: () => _deleteDocument(context, doc),
-                      onShare: () => _shareDocument(context, doc),
-                    ),
-                  );
-                }, childCount: allDocs.length),
+                    if (index >= paginatedState.documents.length) {
+                      // Loading indicator at bottom
+                      return const Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+
+                    final doc = paginatedState.documents[index];
+                    // Convert DocumentModel to Scan for compatibility
+                    final scan = _documentToScan(doc);
+                    final isSelected = libraryState.selectedScanIds.contains(
+                      scan.id,
+                    );
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: LibraryScanListItem(
+                        scan: scan,
+                        isSelectionMode: libraryState.isSelectionMode,
+                        isSelected: isSelected,
+                        onLongPress: () {
+                          libraryNotifier.enterSelectionMode(scan.id);
+                        },
+                        onTap: () {
+                          if (libraryState.isSelectionMode) {
+                            libraryNotifier.toggleScanSelection(scan.id);
+                          } else {
+                            // Open document in SavePdfScreen
+                            _openDocument(context, doc);
+                          }
+                        },
+                        onEdit: () => _openDocument(context, doc),
+                        onDelete: () => _deleteDocument(context, doc),
+                        onShare: () => _shareDocument(context, doc),
+                      ),
+                    );
+                  },
+                  childCount: paginatedState.hasMore
+                      ? paginatedState.documents.length + 1
+                      : paginatedState.documents.length,
+                ),
+              ),
+            ),
+
+          // Loading indicator for initial load
+          if (paginatedState.isLoading && paginatedState.documents.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(48.0),
+                child: Center(child: CircularProgressIndicator()),
               ),
             ),
         ],
@@ -296,12 +340,12 @@ class LibraryScreen extends ConsumerWidget {
     LibraryState state,
     LibraryNotifier notifier,
     double screenWidth,
+    int totalDocuments,
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    // Use reactive provider instead of direct service call for real-time updates
-    final allDocs = ref.watch(allDocumentsProvider);
-    final areAllSelected = state.selectedScanIds.length == allDocs.length;
+    final areAllSelected = state.selectedScanIds.length == totalDocuments &&
+        totalDocuments > 0;
     final isTablet = screenWidth > 600;
 
     if (state.isSelectionMode) {
@@ -341,8 +385,12 @@ class LibraryScreen extends ConsumerWidget {
                 if (areAllSelected) {
                   notifier.selectNone();
                                 } else {
-                                  final allDocsIds = ref.read(allDocumentsProvider);
-                                  final allIds = allDocsIds.map((doc) => doc.id).toList();
+                                  // Select all visible documents (paginated)
+                                  final paginatedState =
+                                      ref.read(currentPaginatedDocumentsProvider);
+                                  final allIds = paginatedState.documents
+                                      .map((doc) => doc.id)
+                                      .toList();
                                   notifier.selectAll(allIds);
                                 }
               },
@@ -405,7 +453,7 @@ class LibraryScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${allDocs.length} documents',
+                            '$totalDocuments documents',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w500,
@@ -442,9 +490,11 @@ class LibraryScreen extends ConsumerWidget {
                           Flexible(
                             child: FilledButton.tonal(
                               onPressed: () {
-                                final allDocs = ref.watch(allDocumentsProvider);
-                                if (allDocs.isNotEmpty) {
-                                  notifier.enterSelectionMode(allDocs.first.id);
+                                final paginatedState =
+                                    ref.read(currentPaginatedDocumentsProvider);
+                                if (paginatedState.documents.isNotEmpty) {
+                                  notifier.enterSelectionMode(
+                                      paginatedState.documents.first.id);
                                 }
                               },
                               style: FilledButton.styleFrom(
@@ -760,8 +810,9 @@ class LibraryScreen extends ConsumerWidget {
     LibraryState state,
   ) async {
     try {
-      final allDocs = ref.read(allDocumentsProvider);
-      final selectedDocs = allDocs
+      // Get selected documents from paginated state
+      final paginatedState = ref.read(currentPaginatedDocumentsProvider);
+      final selectedDocs = paginatedState.documents
           .where((doc) => state.selectedScanIds.contains(doc.id))
           .toList();
 

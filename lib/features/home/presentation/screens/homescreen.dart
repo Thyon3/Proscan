@@ -9,7 +9,7 @@ import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/core/theme/constants/app_design.dart';
 import 'package:thyscan/features/home/presentation/widgets/premium_modal.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
-import 'package:thyscan/features/home/controllers/filtered_documents_provider.dart';
+import 'package:thyscan/features/home/controllers/documents_pagination_provider.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
@@ -29,9 +29,10 @@ class HomeScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    // Get filtered and sorted documents from provider (reactive to Hive changes)
-    final filteredDocs = ref.watch(filteredDocumentsProvider);
-    final recentDocs = filteredDocs.take(8).toList();
+    // Use paginated documents provider (windowed loading - max 150 docs in memory)
+    // For home screen, only show first 8 recent documents
+    final paginatedState = ref.watch(currentPaginatedDocumentsProvider);
+    final recentDocs = paginatedState.documents.take(8).toList();
 
     return Scaffold(
       backgroundColor: colorScheme.background,
@@ -320,9 +321,9 @@ class HomeScreen extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
 
     if (state.isSelectionMode) {
-      // Use reactive provider for real-time updates
-      final allDocs = ref.watch(filteredDocumentsProvider);
-      final recentDocs = allDocs.take(8).toList();
+      // Use paginated provider for real-time updates
+      final paginatedState = ref.watch(currentPaginatedDocumentsProvider);
+      final recentDocs = paginatedState.documents.take(8).toList();
       final areAllSelected = state.selectedScanIds.length == recentDocs.length;
 
       return AppBar(
@@ -362,8 +363,9 @@ class HomeScreen extends ConsumerWidget {
                 if (areAllSelected) {
                   notifier.exitSelectionMode();
                 } else {
-                  final allDocs = ref.read(filteredDocumentsProvider);
-                  final recentDocs = allDocs.take(8).toList();
+                  final paginatedState =
+                      ref.read(currentPaginatedDocumentsProvider);
+                  final recentDocs = paginatedState.documents.take(8).toList();
                   final allIds = recentDocs.map((doc) => doc.id).toList();
                   notifier.selectAll(allIds);
                 }
@@ -697,8 +699,9 @@ class HomeScreen extends ConsumerWidget {
     HomeState state,
   ) async {
     try {
-      final allDocs = ref.read(allDocumentsProvider);
-      final selectedDocs = allDocs
+      // Get selected documents from paginated state
+      final paginatedState = ref.read(currentPaginatedDocumentsProvider);
+      final selectedDocs = paginatedState.documents
           .where((doc) => state.selectedScanIds.contains(doc.id))
           .toList();
 
