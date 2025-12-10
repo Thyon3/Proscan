@@ -24,4 +24,7 @@ abstract class AppEnv {
 
   @EnviedField(varName: 'BACKEND_API_URL', obfuscate: true, optional: true)
   static String? backendApiUrl = _AppEnv.backendApiUrl;
+
+  @EnviedField(varName: 'REQUEST_SIGNATURE_SECRET', obfuscate: true, optional: true)
+  static String? requestSignatureSecret = _AppEnv.requestSignatureSecret;
 }

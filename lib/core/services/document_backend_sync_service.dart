@@ -9,6 +9,7 @@ import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/services/circuit_breaker_service.dart';
+import 'package:thyscan/core/services/request_signature_service.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -198,11 +199,6 @@ class DocumentBackendSyncService {
         },
       );
 
-      final headers = {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ${session.accessToken}',
-      };
-
       http.Response response;
 
       if (documentExists) {
@@ -243,6 +239,21 @@ class DocumentBackendSyncService {
                 '...',
           },
         );
+
+        // Generate request signature for critical operation
+        final requestBody = jsonDecode(body) as Map<String, dynamic>;
+        final signature = RequestSignatureService.instance.generateSignature(
+          method: 'PUT',
+          path: '/api/documents/${document.id}',
+          body: requestBody,
+        );
+
+        final headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+          'X-Request-Signature': signature.signature,
+          'X-Request-Timestamp': signature.timestamp.toString(),
+        };
 
         response = await CircuitBreakerService.instance.execute(
           serviceName: 'backend-api',
@@ -589,15 +600,27 @@ class DocumentBackendSyncService {
         data: {'documentId': documentId, 'hardDelete': hardDelete},
       );
 
+      // Generate request signature for critical operation
+      // Note: Query parameters are not included in signature (only path)
+      final signature = RequestSignatureService.instance.generateSignature(
+        method: 'DELETE',
+        path: '/api/documents/$documentId',
+        body: null, // DELETE requests typically don't have body
+      );
+
+      final headers = {
+        'Authorization': 'Bearer ${session.accessToken}',
+        'Content-Type': 'application/json',
+        'X-Request-Signature': signature.signature,
+        'X-Request-Timestamp': signature.timestamp.toString(),
+      };
+
       final response = await CircuitBreakerService.instance.execute(
         serviceName: 'backend-api',
         operation: () => http
             .delete(
               Uri.parse(deleteUrl),
-              headers: {
-                'Authorization': 'Bearer ${session.accessToken}',
-                'Content-Type': 'application/json',
-              },
+              headers: headers,
             )
             .timeout(
               const Duration(seconds: 30),
@@ -822,13 +845,25 @@ class DocumentBackendSyncService {
         data: {'documentId': document.id, 'title': document.title},
       );
 
+      // Generate request signature for critical operation
+      final requestBody = jsonDecode(body) as Map<String, dynamic>;
+      final signature = RequestSignatureService.instance.generateSignature(
+        method: 'PUT',
+        path: '/api/documents/${document.id}',
+        body: requestBody,
+      );
+
+      final headers = {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${session.accessToken}',
+        'X-Request-Signature': signature.signature,
+        'X-Request-Timestamp': signature.timestamp.toString(),
+      };
+
       final response = await http
           .put(
             Uri.parse(updateUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ${session.accessToken}',
-            },
+            headers: headers,
             body: body,
           )
           .timeout(
