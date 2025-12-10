@@ -11,6 +11,7 @@ import 'package:thyscan/core/services/document_sync_service.dart';
 import 'package:thyscan/core/services/document_health_check_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
+import 'package:thyscan/core/services/full_text_search_index_service.dart';
 import 'package:thyscan/core/services/recent_searches_service.dart';
 import 'package:thyscan/core/services/background_sync_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
@@ -139,6 +140,14 @@ void main() {
         RecentSearchesService.instance.initialize().catchError((error) {
           AppLogger.error(
             'RecentSearchesService initialization failed',
+            error: error,
+          );
+        });
+
+        // Initialize full-text search index service (instant search like Microsoft Lens)
+        FullTextSearchIndexService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'FullTextSearchIndexService initialization failed',
             error: error,
           );
         });
