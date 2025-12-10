@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:system_info2/system_info2.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/image_cache_service.dart';
+import 'package:thyscan/core/services/resource_guard.dart';
 
 /// Memory monitoring service to track memory usage and handle memory pressure.
 /// 
@@ -120,6 +121,7 @@ class MemoryMonitorService {
       data: {'critical': critical, 'callbackCount': _memoryPressureCallbacks.length},
     );
 
+    // Call all registered callbacks
     for (final callback in _memoryPressureCallbacks) {
       try {
         callback();
@@ -128,11 +130,38 @@ class MemoryMonitorService {
       }
     }
 
-    // Also clear image cache on critical memory pressure
+    // Clear image cache on memory pressure
+    ImageCacheService.instance.clearOnMemoryPressure().catchError((e) {
+      AppLogger.warning('Failed to clear image cache on memory pressure', error: e);
+    });
+
+    // On critical memory pressure, take more aggressive actions
     if (critical) {
-      ImageCacheService.instance.clearOnMemoryPressure().catchError((e) {
-        AppLogger.warning('Failed to clear image cache on memory pressure', error: e);
-      });
+      // Reduce concurrent operations
+      try {
+        // Clear some queues to reduce memory pressure
+        ResourceGuard.instance.clearAllQueues();
+        AppLogger.info('Cleared operation queues due to critical memory pressure');
+      } catch (e) {
+        AppLogger.warning('Failed to clear operation queues', error: e);
+      }
+
+      // Force garbage collection hint (Dart VM will handle this)
+      // Note: Dart doesn't have explicit GC control, but we can hint by creating
+      // temporary objects and letting them be collected
+      _hintGarbageCollection();
+    }
+  }
+
+  /// Hints to the garbage collector that collection might be beneficial
+  void _hintGarbageCollection() {
+    // Create temporary objects and let them be collected
+    // This is a hint to the VM that memory is under pressure
+    try {
+      final temp = List.generate(100, (i) => List.generate(100, (j) => i * j));
+      // Let temp go out of scope immediately
+    } catch (e) {
+      // Ignore errors
     }
   }
 

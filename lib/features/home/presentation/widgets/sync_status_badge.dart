@@ -105,6 +105,7 @@ class SyncStatusBadge extends StatelessWidget {
       case DocumentSyncStatus.error:
       case DocumentSyncStatus.failedRetry:
       case DocumentSyncStatus.failedSyncDelete:
+      case DocumentSyncStatus.failed:
         return Iconsax.warning_2; // Warning
       case DocumentSyncStatus.syncing:
       case DocumentSyncStatus.syncingMetadata:
@@ -130,6 +131,7 @@ class SyncStatusBadge extends StatelessWidget {
       case DocumentSyncStatus.error:
       case DocumentSyncStatus.failedRetry:
       case DocumentSyncStatus.failedSyncDelete:
+      case DocumentSyncStatus.failed:
         return Colors.red;
       case DocumentSyncStatus.conflict:
       case DocumentSyncStatus.pendingConflictResolution:
@@ -159,6 +161,8 @@ class SyncStatusBadge extends StatelessWidget {
         return 'Upload Failed - Retrying';
       case DocumentSyncStatus.failedSyncDelete:
         return 'Delete Sync Failed';
+      case DocumentSyncStatus.failed:
+        return 'Sync Failed';
       case DocumentSyncStatus.conflict:
         return 'Sync Conflict';
       case DocumentSyncStatus.pendingConflictResolution:
@@ -194,6 +198,8 @@ class SyncStatusBadge extends StatelessWidget {
         return 'This document has conflicting versions. Manual resolution may be required.';
       case DocumentSyncStatus.pendingConflictResolution:
         return 'Waiting for conflict resolution...';
+      case DocumentSyncStatus.failed:
+        return errorMessage ?? 'Sync failed after multiple retry attempts. Please try again manually.';
     }
   }
 
@@ -295,6 +301,7 @@ class SyncStatusBadge extends StatelessWidget {
     return status == DocumentSyncStatus.error ||
         status == DocumentSyncStatus.failedRetry ||
         status == DocumentSyncStatus.failedSyncDelete ||
+        status == DocumentSyncStatus.failed ||
         status == DocumentSyncStatus.pendingUpload ||
         status == DocumentSyncStatus.pendingDownload;
   }

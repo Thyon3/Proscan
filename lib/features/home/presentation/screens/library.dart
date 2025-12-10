@@ -246,10 +246,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       );
                     },
                     childCount: totalItemsToShow,
-                    // Optimize for virtual scrolling
-                    addAutomaticKeepAlives: false,
-                    addRepaintBoundaries: true,
+                    // Optimize for virtual scrolling with lazy loading
+                    addAutomaticKeepAlives: false, // Don't keep items alive when scrolled out
+                    addRepaintBoundaries: true, // Add repaint boundaries for performance
                     addSemanticIndexes: false,
+                    // Estimate item extent for better scrolling performance
+                    itemExtent: null, // Let items determine their own height (variable height list)
                   ),
                 ),
               ),

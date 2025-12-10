@@ -82,6 +82,11 @@ class SyncStatusIndicator extends StatelessWidget {
         color = Colors.red;
         tooltip = 'Delete sync failed';
         break;
+      case DocumentSyncStatus.failed:
+        iconData = Icons.error_outline;
+        color = Colors.red;
+        tooltip = 'Sync failed after multiple attempts';
+        break;
     }
 
     return Tooltip(
