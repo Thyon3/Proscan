@@ -3,6 +3,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +17,7 @@ import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/services/document_download_service.dart'
     show DocumentDownloadService, DownloadPriority, DownloadProgress;
 import 'package:thyscan/core/services/document_sync_state_service.dart';
+import 'package:thyscan/core/services/rate_limiter_service.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -228,6 +233,32 @@ class DocumentSyncService {
     }
 
     try {
+      // Check rate limit (non-blocking for queued requests)
+      if (!RateLimiterService.instance.tryAcquire('document_sync')) {
+        AppLogger.warning(
+          'Sync rate limited',
+          error: null,
+          data: {
+            'forceFullSync': forceFullSync,
+            'availableTokens': RateLimiterService.instance.getAvailableTokens('document_sync'),
+          },
+        );
+        // For queued requests, wait for rate limit
+        if (retryAttempt == 0) {
+          await RateLimiterService.instance.acquire('document_sync');
+        } else {
+          // For retries, return error to trigger retry with backoff
+          return SyncResult(
+            success: false,
+            message: 'Rate limited, will retry',
+            documentsAdded: 0,
+            documentsUpdated: 0,
+            documentsSkipped: 0,
+            documentsReplaced: 0,
+          );
+        }
+      }
+
       _isSyncing = true;
       AppLogger.info(
         '🔄 Starting document sync',
