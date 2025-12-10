@@ -2,6 +2,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/app_logger.dart';
@@ -12,17 +13,25 @@ import 'package:thyscan/services/document_service.dart';
 
 /// Async provider for all documents (never blocks main thread)
 /// Uses DocumentRepository with compute() isolates
-final allDocumentsAsyncProvider = FutureProvider<List<DocumentModel>>((ref) async {
-  return await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+final allDocumentsAsyncProvider = FutureProvider<List<DocumentModel>>((
+  ref,
+) async {
+  return await DocumentRepository.instance.getAllDocuments(
+    includeDeleted: false,
+  );
 });
 
 /// Async provider for document count (never blocks main thread)
 final documentCountAsyncProvider = FutureProvider<int>((ref) async {
-  return await DocumentRepository.instance.getDocumentCount(includeDeleted: false);
+  return await DocumentRepository.instance.getDocumentCount(
+    includeDeleted: false,
+  );
 });
 
 /// Async provider for filtered documents (never blocks main thread)
-final filteredDocumentsAsyncProvider = FutureProvider<List<DocumentModel>>((ref) async {
+final filteredDocumentsAsyncProvider = FutureProvider<List<DocumentModel>>((
+  ref,
+) async {
   final homeState = ref.watch(homeProvider);
   final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
 
@@ -50,12 +59,18 @@ final filteredDocumentsAsyncProvider = FutureProvider<List<DocumentModel>>((ref)
 });
 
 /// Async provider for document by ID (never blocks main thread)
-final documentByIdProvider = FutureProvider.family<DocumentModel?, String>((ref, id) async {
+final documentByIdProvider = FutureProvider.family<DocumentModel?, String>((
+  ref,
+  id,
+) async {
   return await DocumentRepository.instance.getDocumentById(id);
 });
 
 /// Async provider for document count by filter (never blocks main thread)
-final documentCountByFilterAsyncProvider = FutureProvider.family<int, String>((ref, filterId) async {
+final documentCountByFilterAsyncProvider = FutureProvider.family<int, String>((
+  ref,
+  filterId,
+) async {
   final allDocuments = await ref.watch(allDocumentsAsyncProvider.future);
   final filter = DocumentFilters.getById(filterId);
 
@@ -68,23 +83,30 @@ final documentCountByFilterAsyncProvider = FutureProvider.family<int, String>((r
 
 /// Stream provider that watches Hive box changes (async, non-blocking)
 /// Uses Hive box watch() which is already async-safe
-final documentsStreamProvider = StreamProvider<List<DocumentModel>>((ref) async* {
+final documentsStreamProvider = StreamProvider<List<DocumentModel>>((
+  ref,
+) async* {
   final box = await Hive.openBox<DocumentModel>(DocumentService.boxName);
-  
+
   // Initial load (async)
-  final initialDocs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+  final initialDocs = await DocumentRepository.instance.getAllDocuments(
+    includeDeleted: false,
+  );
   yield initialDocs;
 
   // Watch for changes
   await for (final event in box.watch()) {
     // Reload documents async when box changes
-    final updatedDocs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+    final updatedDocs = await DocumentRepository.instance.getAllDocuments(
+      includeDeleted: false,
+    );
     yield updatedDocs;
   }
 });
 
 /// StateNotifier that watches Hive box changes (async, non-blocking)
-class AsyncDocumentsNotifier extends StateNotifier<AsyncValue<List<DocumentModel>>> {
+class AsyncDocumentsNotifier
+    extends StateNotifier<AsyncValue<List<DocumentModel>>> {
   StreamSubscription? _subscription;
   final Box<DocumentModel> _box;
 
@@ -95,14 +117,18 @@ class AsyncDocumentsNotifier extends StateNotifier<AsyncValue<List<DocumentModel
   Future<void> _initialize() async {
     try {
       // Initial load (async, in isolate)
-      final docs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+      final docs = await DocumentRepository.instance.getAllDocuments(
+        includeDeleted: false,
+      );
       state = AsyncValue.data(docs);
 
       // Watch for changes
       _subscription = _box.watch().listen((_) async {
         // Reload async when box changes
         try {
-          final updatedDocs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+          final updatedDocs = await DocumentRepository.instance.getAllDocuments(
+            includeDeleted: false,
+          );
           state = AsyncValue.data(updatedDocs);
         } catch (e, stack) {
           AppLogger.error(
@@ -132,9 +158,11 @@ class AsyncDocumentsNotifier extends StateNotifier<AsyncValue<List<DocumentModel
 
 /// Provider that returns async documents notifier (never blocks main thread)
 final asyncDocumentsNotifierProvider =
-    StateNotifierProvider<AsyncDocumentsNotifier, AsyncValue<List<DocumentModel>>>((ref) {
-  // Get box reference (this is safe, just getting reference)
-  final box = Hive.box<DocumentModel>(DocumentService.boxName);
-  return AsyncDocumentsNotifier(box);
-});
-
+    StateNotifierProvider<
+      AsyncDocumentsNotifier,
+      AsyncValue<List<DocumentModel>>
+    >((ref) {
+      // Get box reference (this is safe, just getting reference)
+      final box = Hive.box<DocumentModel>(DocumentService.boxName);
+      return AsyncDocumentsNotifier(box);
+    });

@@ -668,6 +668,7 @@ class DocumentService {
         error: error,
       );
       // Upload will be retried automatically via queue
+      return null; // Return null to satisfy catchError signature
     });
 
     return doc;
@@ -772,7 +773,8 @@ class DocumentService {
           isDeleted: false,
           deletedAt: null,
         );
-        await box.put(id, revertedDoc);
+        // Use repository for async write
+        await DocumentRepository.instance.updateDocument(revertedDoc);
         _markCacheDirty();
         DocumentSyncStateService.instance.setSyncStatus(
           id,

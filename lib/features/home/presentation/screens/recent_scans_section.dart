@@ -125,13 +125,27 @@ class RecentScansSection extends ConsumerWidget {
             itemBuilder: (context, index) {
               final filter = DocumentFilters.allFilters[index];
               final isSelected = homeState.activeFilterId == filter.id;
-              final count = ref.watch(documentCountByFilterProvider(filter.id));
+              final countAsync = ref.watch(documentCountByFilterProvider(filter.id));
 
-              return DocumentFilterChip(
-                filter: filter,
-                isSelected: isSelected,
-                count: count,
-                onTap: () => homeNotifier.setActiveFilter(filter.id),
+              return countAsync.when(
+                data: (count) => DocumentFilterChip(
+                  filter: filter,
+                  isSelected: isSelected,
+                  count: count,
+                  onTap: () => homeNotifier.setActiveFilter(filter.id),
+                ),
+                loading: () => DocumentFilterChip(
+                  filter: filter,
+                  isSelected: isSelected,
+                  count: 0, // Show 0 while loading
+                  onTap: () => homeNotifier.setActiveFilter(filter.id),
+                ),
+                error: (_, __) => DocumentFilterChip(
+                  filter: filter,
+                  isSelected: isSelected,
+                  count: 0, // Show 0 on error
+                  onTap: () => homeNotifier.setActiveFilter(filter.id),
+                ),
               );
             },
           ),

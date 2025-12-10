@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/app_logger.dart';
@@ -28,14 +29,18 @@ class DocumentsNotifier extends StateNotifier<AsyncValue<List<DocumentModel>>> {
   Future<void> _initialize() async {
     try {
       // Initial load (async, in isolate - never blocks main thread)
-      final docs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+      final docs = await DocumentRepository.instance.getAllDocuments(
+        includeDeleted: false,
+      );
       state = AsyncValue.data(docs);
 
       // Listen to box changes - watch() returns Stream<BoxEvent>
       _subscription = _box.watch().listen((_) async {
         // Reload async when box changes (never blocks main thread)
         try {
-          final updatedDocs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+          final updatedDocs = await DocumentRepository.instance.getAllDocuments(
+            includeDeleted: false,
+          );
           state = AsyncValue.data(updatedDocs);
         } catch (e, stack) {
           AppLogger.error(
@@ -66,7 +71,9 @@ class DocumentsNotifier extends StateNotifier<AsyncValue<List<DocumentModel>>> {
 /// Provider that returns all documents (reactive to Hive changes, async, non-blocking)
 /// Excludes soft-deleted documents from the main view
 final allDocumentsProvider =
-    StateNotifierProvider<DocumentsNotifier, AsyncValue<List<DocumentModel>>>((ref) {
+    StateNotifierProvider<DocumentsNotifier, AsyncValue<List<DocumentModel>>>((
+      ref,
+    ) {
       final box = ref.watch(hiveBoxProvider);
       return DocumentsNotifier(box);
     });
@@ -74,7 +81,9 @@ final allDocumentsProvider =
 /// Provider that returns filtered and sorted documents based on current home state
 /// Uses local filtering by default for performance, but can use backend when online
 /// Now reactive to Hive box changes for immediate updates (async, non-blocking)
-final filteredDocumentsProvider = Provider<AsyncValue<List<DocumentModel>>>((ref) {
+final filteredDocumentsProvider = Provider<AsyncValue<List<DocumentModel>>>((
+  ref,
+) {
   final homeState = ref.watch(homeProvider);
 
   // Watch all documents (reactive to Hive changes, async)
@@ -115,10 +124,12 @@ final filteredDocumentsProvider = Provider<AsyncValue<List<DocumentModel>>>((ref
 
 /// Provider that uses backend search when online (for consistent cross-device results)
 /// Falls back to local filtering when offline
-final filteredDocumentsWithBackendProvider = FutureProvider<List<DocumentModel>>((ref) async {
+final filteredDocumentsWithBackendProvider = FutureProvider<List<DocumentModel>>((
+  ref,
+) async {
   final homeState = ref.watch(homeProvider);
   final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
-  
+
   // Check connectivity
   final connectivity = Connectivity();
   final connectivityResults = await connectivity.checkConnectivity();
@@ -174,7 +185,9 @@ final documentCountByFilterProvider = Provider.family<AsyncValue<int>, String>((
         return AsyncValue.data(allDocuments.length); // 'All' filter
       }
 
-      final count = allDocuments.where((doc) => filter.matches(doc.scanMode)).length;
+      final count = allDocuments
+          .where((doc) => filter.matches(doc.scanMode))
+          .length;
       return AsyncValue.data(count);
     },
     loading: () => const AsyncValue.loading(),

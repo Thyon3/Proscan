@@ -1,6 +1,9 @@
 // models/document_model.dart
+import 'dart:io';
+
 import 'package:hive/hive.dart';
 import 'package:thyscan/models/document_color_profile.dart';
+import 'package:thyscan/models/file_status.dart';
 
 part 'document_model.g.dart';
 
@@ -166,4 +169,117 @@ class DocumentModel extends HiveObject {
 
   /// Gets the document subject (if available from metadata).
   String? get subject => metadata['subject'];
+
+  /// Checks if the main file exists and is valid (bulletproof validation)
+  /// Returns true only if file exists and is readable
+  bool get hasValidFile {
+    if (filePath.isEmpty) return false;
+    
+    // If it's a URL (cloud document), consider it valid (can be re-downloaded)
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      return true;
+    }
+
+    try {
+      final file = File(filePath);
+      if (!file.existsSync()) return false;
+      
+      // Check if file is readable (not corrupted)
+      final stat = file.statSync();
+      return stat.size > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Checks if the thumbnail exists and is valid (bulletproof validation)
+  /// Returns true only if thumbnail exists and is readable
+  bool get hasValidThumbnail {
+    if (thumbnailPath.isEmpty) return false;
+    
+    // If it's a URL (cloud thumbnail), consider it valid (can be re-downloaded)
+    if (thumbnailPath.startsWith('http://') || 
+        thumbnailPath.startsWith('https://')) {
+      return true;
+    }
+
+    try {
+      final file = File(thumbnailPath);
+      if (!file.existsSync()) return false;
+      
+      // Check if file is readable (not corrupted)
+      final stat = file.statSync();
+      return stat.size > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Gets the file status (valid/missing/corrupted)
+  /// Performs actual file system check
+  FileStatus get fileStatus {
+    if (filePath.isEmpty) return FileStatus.missing;
+    
+    // Cloud documents are always considered valid (can be re-downloaded)
+    if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      return FileStatus.valid;
+    }
+
+    try {
+      final file = File(filePath);
+      if (!file.existsSync()) return FileStatus.missing;
+      
+      // Check if file is readable
+      try {
+        final stat = file.statSync();
+        if (stat.size == 0) return FileStatus.corrupted;
+        
+        // Try to read first byte to verify file is not corrupted
+        final raf = file.openSync();
+        raf.readByteSync();
+        raf.closeSync();
+        
+        return FileStatus.valid;
+      } catch (_) {
+        return FileStatus.corrupted;
+      }
+    } catch (_) {
+      return FileStatus.missing;
+    }
+  }
+
+  /// Gets the thumbnail status (valid/missing/corrupted)
+  FileStatus get thumbnailStatus {
+    if (thumbnailPath.isEmpty) return FileStatus.missing;
+    
+    // Cloud thumbnails are always considered valid (can be re-downloaded)
+    if (thumbnailPath.startsWith('http://') || 
+        thumbnailPath.startsWith('https://')) {
+      return FileStatus.valid;
+    }
+
+    try {
+      final file = File(thumbnailPath);
+      if (!file.existsSync()) return FileStatus.missing;
+      
+      // Check if file is readable
+      try {
+        final stat = file.statSync();
+        if (stat.size == 0) return FileStatus.corrupted;
+        return FileStatus.valid;
+      } catch (_) {
+        return FileStatus.corrupted;
+      }
+    } catch (_) {
+      return FileStatus.missing;
+    }
+  }
+
+  /// Checks if this is a cloud document (URL-based)
+  bool get isCloudDocument =>
+      filePath.startsWith('http://') || filePath.startsWith('https://');
+
+  /// Checks if file needs re-download (cloud document with missing local file)
+  bool get needsRedownload =>
+      isCloudDocument && !hasValidFile;
 }

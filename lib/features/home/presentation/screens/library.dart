@@ -222,6 +222,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         child: LibraryScanListItem(
                           scan: scan,
+                          document: doc, // Pass DocumentModel for validation
                           isSelectionMode: libraryState.isSelectionMode,
                           isSelected: isSelected,
                           onLongPress: () {

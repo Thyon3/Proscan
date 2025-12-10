@@ -81,6 +81,7 @@ class HomeScreen extends ConsumerWidget {
                     margin: const EdgeInsets.only(bottom: 12),
                     child: ScanListItem(
                       scan: scan,
+                      document: doc, // Pass DocumentModel for validation
                       isSelectionMode: homeState.isSelectionMode,
                       isSelected: isSelected,
                       onLongPress: () {

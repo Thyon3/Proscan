@@ -8,6 +8,7 @@ import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/document_sync_service.dart';
+import 'package:thyscan/core/services/document_health_check_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/recent_searches_service.dart';
@@ -97,6 +98,15 @@ void main() {
         RecentSearchesService.instance.initialize().catchError((error) {
           AppLogger.error(
             'RecentSearchesService initialization failed',
+            error: error,
+          );
+        });
+
+        // Run document health check in background (non-blocking)
+        // Prevents crashes from manually deleted files
+        DocumentHealthCheckService.instance.runHealthCheck().catchError((error) {
+          AppLogger.error(
+            'Document health check failed (non-critical)',
             error: error,
           );
         });

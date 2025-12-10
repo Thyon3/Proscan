@@ -1,12 +1,16 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
 import 'package:thyscan/features/home/presentation/widgets/document_thumbnail.dart';
+import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dart';
+import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
+import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/models/file_status.dart';
 
 class LibraryScanListItem extends StatelessWidget {
   final Scan scan;
+  final DocumentModel? document; // Optional DocumentModel for validation
   final bool isSelectionMode;
   final bool isSelected;
   final VoidCallback onTap;
@@ -18,6 +22,7 @@ class LibraryScanListItem extends StatelessWidget {
   const LibraryScanListItem({
     super.key,
     required this.scan,
+    this.document,
     required this.isSelectionMode,
     required this.isSelected,
     required this.onTap,
@@ -92,7 +97,7 @@ class LibraryScanListItem extends StatelessWidget {
             ),
             if (isSelectionMode) const SizedBox(width: 16),
 
-            // Thumbnail with professional styling
+            // Thumbnail with professional styling and file validation
             Container(
               width: 64,
               height: 84,
@@ -110,47 +115,9 @@ class LibraryScanListItem extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 child: Stack(
                   children: [
-                    scan.tags.contains('Text')
-                        ? Container(
-                            width: 64,
-                            height: 84,
-                            color: colorScheme.primaryContainer,
-                            child: Icon(
-                              Icons.description_rounded,
-                              size: 32,
-                              color: colorScheme.primary,
-                            ),
-                          )
-                        : File(scan.imagePath).existsSync()
-                        ? SizedBox(
-                            width: 64,
-                            height: 84,
-                            child: DocumentThumbnail(
-                              imagePath: scan.imagePath,
-                              fit: BoxFit.cover,
-                              borderRadius: BorderRadius.circular(12),
-                              placeholder: Container(
-                                color: colorScheme.surfaceVariant,
-                                child: Icon(
-                                  Icons.image_not_supported,
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                          )
-                        : Image.asset(
-                            scan.imagePath,
-                            width: 64,
-                            height: 84,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                              color: colorScheme.surfaceVariant,
-                              child: Icon(
-                                Icons.image_not_supported,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
+                    // Check if thumbnail is valid (bulletproof validation)
+                    _buildThumbnailContent(colorScheme),
+                    // Premium Gradient Overlay
                     Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -163,6 +130,16 @@ class LibraryScanListItem extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // File status badge overlay
+                    if (document != null && document!.fileStatus != FileStatus.valid)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: FileStatusBadge(
+                          status: document!.fileStatus,
+                          size: 12,
+                        ),
+                      ),
                     // Page count badge
                     Positioned(
                       top: 6,
@@ -243,24 +220,48 @@ class LibraryScanListItem extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
 
-                  // Status indicator
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      'Scanned',
-                      style: TextStyle(
-                        color: colorScheme.primary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                  // Status indicator with file validation
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Scanned',
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
-                    ),
+                      // File status badge
+                      if (document != null && document!.fileStatus != FileStatus.valid) ...[
+                        const SizedBox(width: 8),
+                        FileStatusBadge(
+                          status: document!.fileStatus,
+                          size: 14,
+                        ),
+                      ],
+                      // Re-download button for cloud documents
+                      if (document != null && document!.needsRedownload) ...[
+                        const SizedBox(width: 8),
+                        RedownloadButton(
+                          document: document!,
+                          size: 16,
+                          onDownloaded: () {
+                            // Refresh the UI after download
+                            // This will be handled by the parent widget
+                          },
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -428,6 +429,100 @@ class LibraryScanListItem extends StatelessWidget {
             child: const Text('Delete'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Builds thumbnail content with bulletproof file validation
+  Widget _buildThumbnailContent(ColorScheme colorScheme) {
+    // Use DocumentModel validation if available
+    if (document != null) {
+      final hasValidThumb = document!.hasValidThumbnail;
+      final thumbnailStatus = document!.thumbnailStatus;
+
+      // Show placeholder if thumbnail is missing or corrupted
+      if (!hasValidThumb || thumbnailStatus != FileStatus.valid) {
+        return Container(
+          width: 64,
+          height: 84,
+          color: colorScheme.surfaceVariant,
+          child: Icon(
+            Icons.image_not_supported_rounded,
+            size: 32,
+            color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+          ),
+        );
+      }
+    }
+
+    // Original logic for Scan model
+    if (scan.tags.contains('Text')) {
+      return Container(
+        width: 64,
+        height: 84,
+        color: colorScheme.primaryContainer,
+        child: Icon(
+          Icons.description_rounded,
+          size: 32,
+          color: colorScheme.primary,
+        ),
+      );
+    }
+
+    // Check if file exists (bulletproof validation)
+    if (scan.imagePath.isNotEmpty) {
+      // If it's a URL, show thumbnail (can be downloaded)
+      if (scan.imagePath.startsWith('http://') ||
+          scan.imagePath.startsWith('https://')) {
+        return SizedBox(
+          width: 64,
+          height: 84,
+          child: DocumentThumbnail(
+            imagePath: scan.imagePath,
+            fit: BoxFit.cover,
+            borderRadius: BorderRadius.circular(12),
+            placeholder: Container(
+              color: colorScheme.surfaceVariant,
+              child: Icon(
+                Icons.image_not_supported_rounded,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        );
+      }
+
+      // Check if local file exists
+      final file = File(scan.imagePath);
+      if (file.existsSync()) {
+        return SizedBox(
+          width: 64,
+          height: 84,
+          child: DocumentThumbnail(
+            imagePath: scan.imagePath,
+            fit: BoxFit.cover,
+            borderRadius: BorderRadius.circular(12),
+            placeholder: Container(
+              color: colorScheme.surfaceVariant,
+              child: Icon(
+                Icons.image_not_supported_rounded,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    // Fallback placeholder
+    return Container(
+      width: 64,
+      height: 84,
+      color: colorScheme.surfaceVariant,
+      child: Icon(
+        Icons.image_not_supported_rounded,
+        size: 32,
+        color: colorScheme.onSurfaceVariant.withOpacity(0.6),
       ),
     );
   }
