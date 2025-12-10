@@ -3,16 +3,17 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:thyscan/core/repositories/document_repository_interface.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
-/// Production-ready async DocumentRepository
+/// Production-ready async DocumentRepository implementation
 /// - All Hive reads in compute() isolate (never blocks main thread)
 /// - In-memory cache for recent results
 /// - 100% async methods only
 /// - Used by top Flutter apps (CamScanner, Microsoft Lens pattern)
-class DocumentRepository {
+class DocumentRepository implements IDocumentRepository {
   static final DocumentRepository instance = DocumentRepository._();
   DocumentRepository._();
 
