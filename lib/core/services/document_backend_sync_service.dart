@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/services/circuit_breaker_service.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -243,14 +244,17 @@ class DocumentBackendSyncService {
           },
         );
 
-        response = await http
-            .put(Uri.parse(updateUrl), headers: headers, body: body)
-            .timeout(
-              const Duration(seconds: 30),
-              onTimeout: () {
-                throw TimeoutException('Backend API request timed out');
-              },
-            );
+        response = await CircuitBreakerService.instance.execute(
+          serviceName: 'backend-api',
+          operation: () => http
+              .put(Uri.parse(updateUrl), headers: headers, body: body)
+              .timeout(
+                const Duration(seconds: 30),
+                onTimeout: () {
+                  throw TimeoutException('Backend API request timed out');
+                },
+              ),
+        );
 
         print('📡 [BACKEND SYNC] Update API Response received');
         print('   Status Code: ${response.statusCode}');
@@ -293,13 +297,15 @@ class DocumentBackendSyncService {
           },
         );
 
-        response = await http
-            .post(Uri.parse(createUrl), headers: headers, body: body)
-            .timeout(
-              const Duration(seconds: 30),
-              onTimeout: () {
-                AppLogger.error(
-                  '⏱️ Backend API request timed out',
+        response = await CircuitBreakerService.instance.execute(
+          serviceName: 'backend-api',
+          operation: () => http
+              .post(Uri.parse(createUrl), headers: headers, body: body)
+              .timeout(
+                const Duration(seconds: 30),
+                onTimeout: () {
+                  AppLogger.error(
+                    '⏱️ Backend API request timed out',
                   error: null,
                   data: {'documentId': document.id, 'url': createUrl},
                 );
@@ -583,20 +589,23 @@ class DocumentBackendSyncService {
         data: {'documentId': documentId, 'hardDelete': hardDelete},
       );
 
-      final response = await http
-          .delete(
-            Uri.parse(deleteUrl),
-            headers: {
-              'Authorization': 'Bearer ${session.accessToken}',
-              'Content-Type': 'application/json',
-            },
-          )
-          .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              throw TimeoutException('Backend API request timed out');
-            },
-          );
+      final response = await CircuitBreakerService.instance.execute(
+        serviceName: 'backend-api',
+        operation: () => http
+            .delete(
+              Uri.parse(deleteUrl),
+              headers: {
+                'Authorization': 'Bearer ${session.accessToken}',
+                'Content-Type': 'application/json',
+              },
+            )
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () {
+                throw TimeoutException('Backend API request timed out');
+              },
+            ),
+      );
 
       if (response.statusCode == 204 || response.statusCode == 200) {
         AppLogger.info(
