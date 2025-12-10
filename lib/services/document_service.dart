@@ -833,6 +833,97 @@ class DocumentService {
       );
     }
 
+    // 2. Delete local files (if they exist)
+    await _deleteLocalFiles(doc, isUploaded);
+
+    // 3. Clear sync status for this document
+    try {
+      DocumentSyncStateService.instance.clearSyncStatus(id);
+      AppLogger.info(
+        'Cleared sync status for deleted document',
+        data: {'documentId': id},
+      );
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to clear sync status (non-critical)',
+        error: e,
+        data: {'documentId': id},
+      );
+    }
+
+    // 4. Delete from local Hive storage
+    final box = Hive.box<DocumentModel>(boxName);
+    await box.delete(id);
+    _markCacheDirty();
+    
+    // Invalidate search cache
+    DocumentSearchService.instance.invalidateCacheForDocument(id);
+
+    AppLogger.info(
+      '✅ Document hard deletion completed',
+      data: {
+        'documentId': id,
+        'wasUploaded': isUploaded,
+      },
+    );
+  }
+
+  /// Restores a soft-deleted document
+  Future<void> restoreDocument(String id) async {
+    final box = Hive.box<DocumentModel>(boxName);
+    final doc = box.get(id);
+
+    if (doc == null || !doc.isDeleted) {
+      AppLogger.warning(
+        'Document not found or not deleted',
+        error: null,
+        data: {'documentId': id},
+      );
+      return;
+    }
+
+    final restoredDoc = doc.copyWith(
+      isDeleted: false,
+      deletedAt: null,
+    );
+    await box.put(id, restoredDoc);
+    _markCacheDirty();
+
+    // If document was uploaded, restore it on backend
+    final isUploaded = doc.filePath.startsWith('http://') ||
+        doc.filePath.startsWith('https://');
+    
+    if (isUploaded) {
+      try {
+        // Update document metadata on backend to clear deleted flag
+        await DocumentBackendSyncService.instance.updateDocumentMetadata(restoredDoc);
+        DocumentSyncStateService.instance.setSyncStatus(
+          id,
+          DocumentSyncStatus.synced,
+          lastSyncTime: DateTime.now(),
+        );
+        AppLogger.info(
+          '✅ Document restored on backend',
+          data: {'documentId': id},
+        );
+      } catch (e, stack) {
+        AppLogger.error(
+          '⚠️ Failed to restore document on backend',
+          error: e,
+          stack: stack,
+          data: {'documentId': id},
+        );
+        DocumentSyncStateService.instance.setSyncStatus(
+          id,
+          DocumentSyncStatus.error,
+          errorMessage: 'Failed to restore on backend: ${e.toString()}',
+        );
+      }
+    }
+  }
+
+  /// Deletes local files associated with a document
+  Future<void> _deleteLocalFiles(DocumentModel doc, bool isUploaded) async {
     try {
       // Only try to delete if it's a local file path (not a URL)
       if (!isUploaded) {
@@ -891,98 +982,6 @@ class DocumentService {
       }
     }
   }
-
-  /// Restores a soft-deleted document
-  Future<void> restoreDocument(String id) async {
-    final box = Hive.box<DocumentModel>(boxName);
-    final doc = box.get(id);
-
-    if (doc == null || !doc.isDeleted) {
-      AppLogger.warning(
-        'Document not found or not deleted',
-        error: null,
-        data: {'documentId': id},
-      );
-      return;
-    }
-
-    final restoredDoc = doc.copyWith(
-      isDeleted: false,
-      deletedAt: null,
-    );
-    await box.put(id, restoredDoc);
-    _markCacheDirty();
-
-    // If document was uploaded, restore it on backend
-    final isUploaded = doc.filePath.startsWith('http://') ||
-        doc.filePath.startsWith('https://');
-    
-    if (isUploaded) {
-      try {
-        // Update document metadata on backend to clear deleted flag
-        await DocumentBackendSyncService.instance.updateDocumentMetadata(restoredDoc);
-        DocumentSyncStateService.instance.setSyncStatus(
-          id,
-          DocumentSyncStatus.synced,
-          lastSyncTime: DateTime.now(),
-        );
-        AppLogger.info(
-          '✅ Document restored on backend',
-          data: {'documentId': id},
-        );
-      } catch (e, stack) {
-        AppLogger.error(
-          '⚠️ Failed to restore document on backend',
-          error: e,
-          stack: stack,
-          data: {'documentId': id},
-        );
-        DocumentSyncStateService.instance.setSyncStatus(
-          id,
-          DocumentSyncStatus.error,
-          errorMessage: 'Failed to restore on backend: ${e.toString()}',
-        );
-      }
-    }
-  }
-
-    // 2. Delete local files (if they exist)
-    await _deleteLocalFiles(doc, isUploaded);
-
-    // 3. Clear sync status for this document
-    try {
-      DocumentSyncStateService.instance.clearSyncStatus(id);
-      AppLogger.info(
-        'Cleared sync status for deleted document',
-        data: {'documentId': id},
-      );
-    } catch (e) {
-      AppLogger.warning(
-        'Failed to clear sync status (non-critical)',
-        error: e,
-        data: {'documentId': id},
-      );
-    }
-
-    // 4. Delete from local Hive storage
-    final box = Hive.box<DocumentModel>(boxName);
-    await box.delete(id);
-    _markCacheDirty();
-    
-    // Invalidate search cache
-    DocumentSearchService.instance.invalidateCacheForDocument(id);
-
-    AppLogger.info(
-      '✅ Document hard deletion completed',
-      data: {
-        'documentId': id,
-        'wasUploaded': isUploaded,
-      },
-    );
-  }
-
-  /// Deletes local files associated with a document
-  Future<void> _deleteLocalFiles(DocumentModel doc, bool isUploaded) async {
 
   Future<void> renameDocument(String id, String newTitle) {
     return DocumentOperationQueue.instance.enqueue(

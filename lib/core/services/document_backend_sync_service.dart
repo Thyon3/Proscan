@@ -38,7 +38,8 @@ class ConflictException implements Exception {
 /// - Network connectivity checks
 class DocumentBackendSyncService {
   DocumentBackendSyncService._();
-  static final DocumentBackendSyncService instance = DocumentBackendSyncService._();
+  static final DocumentBackendSyncService instance =
+      DocumentBackendSyncService._();
 
   static const String _storageBucket = 'documents';
   final Connectivity _connectivity = Connectivity();
@@ -76,7 +77,7 @@ class DocumentBackendSyncService {
       }
 
       var backendUrl = AppEnv.backendApiUrl;
-      
+
       // Fix for Android emulator: replace localhost with 10.0.2.2
       if (backendUrl != null && backendUrl.contains('localhost')) {
         print('⚠️ [BACKEND SYNC] Detected localhost in backend URL');
@@ -84,12 +85,14 @@ class DocumentBackendSyncService {
         backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
         print('   Fixed URL for Android emulator: $backendUrl');
       }
-      
+
       print('🔗 [BACKEND SYNC] Backend URL check: ${backendUrl ?? "NULL"}');
-      
+
       if (backendUrl == null || backendUrl.isEmpty) {
         print('═══════════════════════════════════════════════════════════');
-        print('❌ [BACKEND SYNC] CRITICAL ERROR: Backend API URL NOT CONFIGURED!');
+        print(
+          '❌ [BACKEND SYNC] CRITICAL ERROR: Backend API URL NOT CONFIGURED!',
+        );
         print('   Document ID: ${document.id}');
         print('   Fix: Add BACKEND_API_URL=http://10.0.2.2:3000 to .env');
         print('   Then run: flutter pub run build_runner build');
@@ -99,7 +102,8 @@ class DocumentBackendSyncService {
           error: null,
           data: {
             'documentId': document.id,
-            'hint': 'Add BACKEND_API_URL=http://localhost:3000 to your .env file and run: flutter pub run build_runner build',
+            'hint':
+                'Add BACKEND_API_URL=http://localhost:3000 to your .env file and run: flutter pub run build_runner build',
           },
         );
         throw Exception(
@@ -186,7 +190,9 @@ class DocumentBackendSyncService {
           'hasTextContent': document.textContent != null,
           'tagsCount': document.tags.length,
           'metadataCount': document.metadata.length,
-          'fileUrl': fileUrl.substring(0, fileUrl.length > 50 ? 50 : fileUrl.length) + '...',
+          'fileUrl':
+              fileUrl.substring(0, fileUrl.length > 50 ? 50 : fileUrl.length) +
+              '...',
           'isUpdate': documentExists,
         },
       );
@@ -215,7 +221,9 @@ class DocumentBackendSyncService {
         print('   Backend URL: $updateUrl');
         print('   Format: ${document.format}');
         print('   Page Count: ${document.pageCount}');
-        print('   File URL: ${fileUrl.substring(0, fileUrl.length > 60 ? 60 : fileUrl.length)}...');
+        print(
+          '   File URL: ${fileUrl.substring(0, fileUrl.length > 60 ? 60 : fileUrl.length)}...',
+        );
         print('═══════════════════════════════════════════════════════════');
 
         AppLogger.info(
@@ -226,16 +234,17 @@ class DocumentBackendSyncService {
             'url': updateUrl,
             'format': document.format,
             'pageCount': document.pageCount,
-            'fileUrl': fileUrl.substring(0, fileUrl.length > 50 ? 50 : fileUrl.length) + '...',
+            'fileUrl':
+                fileUrl.substring(
+                  0,
+                  fileUrl.length > 50 ? 50 : fileUrl.length,
+                ) +
+                '...',
           },
         );
 
         response = await http
-            .put(
-              Uri.parse(updateUrl),
-              headers: headers,
-              body: body,
-            )
+            .put(Uri.parse(updateUrl), headers: headers, body: body)
             .timeout(
               const Duration(seconds: 30),
               onTimeout: () {
@@ -261,7 +270,7 @@ class DocumentBackendSyncService {
         print('   Format: ${document.format}');
         print('   Page Count: ${document.pageCount}');
         print('═══════════════════════════════════════════════════════════');
-        
+
         AppLogger.info(
           '📝 Creating NEW document in backend PostgreSQL',
           data: {
@@ -278,16 +287,14 @@ class DocumentBackendSyncService {
           data: {
             'documentId': document.id,
             'bodyLength': body.length,
-            'bodyPreview': body.length > 200 ? body.substring(0, 200) + '...' : body,
+            'bodyPreview': body.length > 200
+                ? body.substring(0, 200) + '...'
+                : body,
           },
         );
 
         response = await http
-            .post(
-              Uri.parse(createUrl),
-              headers: headers,
-              body: body,
-            )
+            .post(Uri.parse(createUrl), headers: headers, body: body)
             .timeout(
               const Duration(seconds: 30),
               onTimeout: () {
@@ -303,7 +310,7 @@ class DocumentBackendSyncService {
         print('📡 [BACKEND SYNC] API Response received');
         print('   Status Code: ${response.statusCode}');
         print('   Response Length: ${response.body.length} bytes');
-        
+
         AppLogger.info(
           '📡 Backend API response received',
           data: {
@@ -320,16 +327,18 @@ class DocumentBackendSyncService {
           '⚠️ Conflict detected: document was modified on server',
           data: {'documentId': document.id},
         );
-        
+
         try {
           // Try to get the remote version
-          final remoteDocJson = jsonDecode(response.body) as Map<String, dynamic>;
+          final remoteDocJson =
+              jsonDecode(response.body) as Map<String, dynamic>;
           final remoteUpdatedAt = remoteDocJson['updatedAt'] != null
               ? DateTime.parse(remoteDocJson['updatedAt'] as String)
               : null;
-          
+
           // Last write wins: compare timestamps
-          if (remoteUpdatedAt != null && remoteUpdatedAt.isAfter(document.updatedAt)) {
+          if (remoteUpdatedAt != null &&
+              remoteUpdatedAt.isAfter(document.updatedAt)) {
             // Remote is newer, update local with remote
             AppLogger.info(
               'Remote version is newer, updating local document',
@@ -379,15 +388,18 @@ class DocumentBackendSyncService {
         print('   Status: ${response.statusCode}');
         print('   Action: ${documentExists ? "UPDATED" : "CREATED"}');
         print('═══════════════════════════════════════════════════════════');
-        
+
         try {
-          final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+          final responseData =
+              jsonDecode(response.body) as Map<String, dynamic>;
           print('   Backend ID: ${responseData['id']}');
           print('   Title: ${responseData['title']}');
-          print('   File URL: ${(responseData['fileUrl'] as String?)?.substring(0, 60) ?? "null"}...');
+          print(
+            '   File URL: ${(responseData['fileUrl'] as String?)?.substring(0, 60) ?? "null"}...',
+          );
           print('   Format: ${responseData['format']}');
           print('   Page Count: ${responseData['pageCount']}');
-          
+
           AppLogger.info(
             '✅ Document metadata synced successfully to PostgreSQL',
             data: {
@@ -435,9 +447,11 @@ class DocumentBackendSyncService {
         print('═══════════════════════════════════════════════════════════');
         print('❌ [BACKEND SYNC] FAILED to save to PostgreSQL');
         print('   Status Code: ${response.statusCode}');
-        print('   Response: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}');
+        print(
+          '   Response: ${response.body.length > 200 ? response.body.substring(0, 200) + "..." : response.body}',
+        );
         print('═══════════════════════════════════════════════════════════');
-        
+
         AppLogger.error(
           '❌ FAILED to sync document metadata to backend',
           error: Exception('HTTP ${response.statusCode}: ${response.body}'),
@@ -511,17 +525,17 @@ class DocumentBackendSyncService {
       }
 
       var backendUrl = AppEnv.backendApiUrl;
-      
+
       // Fix for Android emulator: replace localhost with 10.0.2.2
       if (backendUrl != null && backendUrl.contains('localhost')) {
         backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
       }
-      
+
       if (backendUrl == null || backendUrl.isEmpty) {
-      AppLogger.warning(
-        'Backend API URL not configured, skipping backend deletion',
-        error: null,
-      );
+        AppLogger.warning(
+          'Backend API URL not configured, skipping backend deletion',
+          error: null,
+        );
         // Still try to delete from Supabase Storage
         await _deleteFromSupabaseStorage(
           documentId: documentId,
@@ -563,7 +577,9 @@ class DocumentBackendSyncService {
       }
 
       AppLogger.info(
-        hardDelete ? 'Hard deleting document from backend' : 'Soft deleting document from backend',
+        hardDelete
+            ? 'Hard deleting document from backend'
+            : 'Soft deleting document from backend',
         data: {'documentId': documentId, 'hardDelete': hardDelete},
       );
 
@@ -723,12 +739,12 @@ class DocumentBackendSyncService {
       }
 
       var backendUrl = AppEnv.backendApiUrl;
-      
+
       // Fix for Android emulator: replace localhost with 10.0.2.2
       if (backendUrl != null && backendUrl.contains('localhost')) {
         backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
       }
-      
+
       if (backendUrl == null || backendUrl.isEmpty) {
         AppLogger.warning(
           'Backend API URL not configured, skipping metadata update',
@@ -751,7 +767,9 @@ class DocumentBackendSyncService {
       );
 
       if (!isOnline) {
-        AppLogger.info('No internet connection, metadata update will be queued');
+        AppLogger.info(
+          'No internet connection, metadata update will be queued',
+        );
         throw Exception('No internet connection');
       }
 
@@ -865,12 +883,12 @@ class DocumentBackendSyncService {
       }
 
       var backendUrl = AppEnv.backendApiUrl;
-      
+
       // Fix for Android emulator: replace localhost with 10.0.2.2
       if (backendUrl != null && backendUrl.contains('localhost')) {
         backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
       }
-      
+
       if (backendUrl == null || backendUrl.isEmpty) {
         AppLogger.warning(
           'Backend API URL not configured, skipping remote fetch',
@@ -923,7 +941,8 @@ class DocumentBackendSyncService {
           );
 
       if (response.statusCode == 200) {
-        final List<dynamic> documentsJson = jsonDecode(response.body) as List<dynamic>;
+        final List<dynamic> documentsJson =
+            jsonDecode(response.body) as List<dynamic>;
         final documents = documentsJson
             .map((json) => _documentFromJson(json as Map<String, dynamic>))
             .toList();
@@ -994,12 +1013,12 @@ class DocumentBackendSyncService {
       }
 
       var backendUrl = AppEnv.backendApiUrl;
-      
+
       // Fix for Android emulator: replace localhost with 10.0.2.2
       if (backendUrl != null && backendUrl.contains('localhost')) {
         backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
       }
-      
+
       if (backendUrl == null || backendUrl.isEmpty) {
         AppLogger.warning(
           'Backend API URL not configured, cannot search documents',
@@ -1044,13 +1063,16 @@ class DocumentBackendSyncService {
 
       // Build URL
       final queryString = queryParams.entries
-          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .map(
+            (e) =>
+                '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+          )
           .join('&');
       final searchUrl = UrlValidator.buildApiUrl(
         backendUrl,
         'api/documents/search?$queryString',
       );
-      
+
       if (searchUrl == null) {
         throw Exception('Failed to build search URL');
       }
@@ -1085,7 +1107,8 @@ class DocumentBackendSyncService {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body) as Map<String, dynamic>;
         final documentsJson = responseData['documents'] as List<dynamic>;
-        final paginationData = responseData['pagination'] as Map<String, dynamic>;
+        final paginationData =
+            responseData['pagination'] as Map<String, dynamic>;
 
         final documents = documentsJson
             .map((json) => _documentFromJson(json as Map<String, dynamic>))
@@ -1127,10 +1150,7 @@ class DocumentBackendSyncService {
         'Failed to search documents',
         error: e,
         stack: stack,
-        data: {
-          'query': query,
-          'scanMode': scanMode,
-        },
+        data: {'query': query, 'scanMode': scanMode},
       );
       rethrow;
     }
@@ -1169,12 +1189,12 @@ class DocumentBackendSyncService {
       }
 
       var backendUrl = AppEnv.backendApiUrl;
-      
+
       // Fix for Android emulator: replace localhost with 10.0.2.2
       if (backendUrl != null && backendUrl.contains('localhost')) {
         backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
       }
-      
+
       if (backendUrl == null || backendUrl.isEmpty) {
         AppLogger.warning(
           'Backend API URL not configured, cannot get search suggestions',
@@ -1193,7 +1213,7 @@ class DocumentBackendSyncService {
         backendUrl,
         'api/documents/search/suggestions?q=${Uri.encodeComponent(query)}&limit=$limit',
       );
-      
+
       if (suggestionsUrl == null) {
         throw Exception('Failed to build suggestions URL');
       }
@@ -1220,10 +1240,7 @@ class DocumentBackendSyncService {
 
         AppLogger.info(
           'Search suggestions fetched',
-          data: {
-            'query': query,
-            'suggestionsCount': suggestions.length,
-          },
+          data: {'query': query, 'suggestionsCount': suggestions.length},
         );
 
         return suggestions;
@@ -1241,7 +1258,7 @@ class DocumentBackendSyncService {
       AppLogger.warning(
         'Failed to get search suggestions',
         error: e,
-        stack: stack,
+
         data: {'query': query},
       );
       return [];
@@ -1263,7 +1280,9 @@ class DocumentBackendSyncService {
       textContent: json['textContent'] as String?,
       colorProfile: json['colorProfile'] as String? ?? 'color',
       tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
-      metadata: (json['metadata'] as Map<String, dynamic>?)?.cast<String, String>() ?? {},
+      metadata:
+          (json['metadata'] as Map<String, dynamic>?)?.cast<String, String>() ??
+          {},
       isDeleted: json['isDeleted'] as bool? ?? false,
       deletedAt: json['deletedAt'] != null
           ? DateTime.parse(json['deletedAt'] as String)
@@ -1271,4 +1290,3 @@ class DocumentBackendSyncService {
     );
   }
 }
-

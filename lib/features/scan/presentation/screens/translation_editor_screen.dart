@@ -55,9 +55,14 @@ class _TranslationEditorScreenState
       _loadDocument();
     } else {
       // Initialize with current provider state if new translation
-      final state = ref.read(translationProvider);
-      _controller.text = state.translatedText;
-      _originalText = state.translatedText;
+      // Use addPostFrameCallback to safely access ref after build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final state = ref.read(translationProvider);
+          _controller.text = state.translatedText;
+          _originalText = state.translatedText;
+        }
+      });
     }
 
     _controller.addListener(_onTextChanged);

@@ -11,6 +11,7 @@ import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart
 import 'package:thyscan/features/home/presentation/widgets/search_autocomplete.dart';
 import 'package:thyscan/features/home/presentation/widgets/search_result_highlighter.dart';
 import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/document_service.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -28,7 +29,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   List<ToolItem> _toolResults = [];
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
+
   // Advanced filters state
   DateTime? _dateFrom;
   DateTime? _dateTo;
@@ -115,7 +116,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     ref.read(searchQueryProvider.notifier).state = query;
     // Reset page when query changes
     ref.read(searchPageProvider.notifier).state = 0;
-    
+
     // Add to recent searches when user finishes typing (after debounce)
     if (query.trim().isNotEmpty) {
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -124,7 +125,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
         }
       });
     }
-    
+
     // Search tools locally (tools are not documents)
     if (query.isEmpty) {
       _toolResults = [];
@@ -136,7 +137,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
       }).toList();
     }
   }
-  
+
   void _onSuggestionTap(String suggestion) {
     _searchController.text = suggestion;
     ref.read(searchQueryProvider.notifier).state = suggestion;
@@ -144,7 +145,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     RecentSearchesService.instance.addSearch(suggestion);
     _searchFocus.unfocus();
   }
-  
+
   void _onRecentSearchTap(String search) {
     _searchController.text = search;
     ref.read(searchQueryProvider.notifier).state = search;
@@ -152,7 +153,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     RecentSearchesService.instance.addSearch(search);
     _searchFocus.unfocus();
   }
-  
+
   void _onRecentSearchRemove(String search) {
     RecentSearchesService.instance.removeSearch(search);
   }
@@ -196,7 +197,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     final searchResultsAsync = ref.watch(currentSearchResultsProvider);
     final isSearching = ref.watch(isSearchingProvider);
     final hasQuery = searchQuery.isNotEmpty;
-    final hasResults = searchResultsAsync.hasValue && 
+    final hasResults =
+        searchResultsAsync.hasValue &&
         (searchResultsAsync.value!.items.isNotEmpty || _toolResults.isNotEmpty);
 
     return Scaffold(
@@ -224,7 +226,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                     : isSearching
                     ? _buildPremiumLoadingState(colorScheme)
                     : hasResults
-                    ? _buildPremiumSearchResults(colorScheme, searchResultsAsync.value!, searchQuery)
+                    ? _buildPremiumSearchResults(
+                        colorScheme,
+                        searchResultsAsync.value!,
+                        searchQuery,
+                      )
                     : _buildPremiumNoResults(colorScheme),
               ),
             ),
@@ -388,10 +394,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
               onSearchRemove: _onRecentSearchRemove,
             ),
             const SizedBox(height: 24),
-            
+
             // Advanced Filters Toggle
             _buildAdvancedFiltersToggle(colorScheme),
-            
+
             if (_showAdvancedFilters) ...[
               const SizedBox(height: 16),
               AdvancedSearchFilters(
@@ -402,19 +408,27 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                 onDateFromChanged: (date) {
                   setState(() => _dateFrom = date);
                   // Trigger search with new filters
-                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(
+                    searchQueryProvider,
+                  );
                 },
                 onDateToChanged: (date) {
                   setState(() => _dateTo = date);
-                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(
+                    searchQueryProvider,
+                  );
                 },
                 onMinPagesChanged: (pages) {
                   setState(() => _minPages = pages);
-                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(
+                    searchQueryProvider,
+                  );
                 },
                 onMaxPagesChanged: (pages) {
                   setState(() => _maxPages = pages);
-                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(
+                    searchQueryProvider,
+                  );
                 },
                 onClearFilters: () {
                   setState(() {
@@ -423,11 +437,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                     _minPages = null;
                     _maxPages = null;
                   });
-                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(
+                    searchQueryProvider,
+                  );
                 },
               ),
             ],
-            
+
             const SizedBox(height: 24),
             _buildPremiumRecentSearchesPlaceholder(colorScheme),
 
@@ -795,11 +811,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.tune_rounded,
-                  size: 20,
-                  color: colorScheme.primary,
-                ),
+                Icon(Icons.tune_rounded, size: 20, color: colorScheme.primary),
                 const SizedBox(width: 12),
                 Text(
                   'Advanced Filters',
@@ -823,7 +835,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     );
   }
 
-  Widget _buildPremiumSearchResults(ColorScheme colorScheme, PaginatedDocuments searchResults, String query) {
+  Widget _buildPremiumSearchResults(
+    ColorScheme colorScheme,
+    PaginatedDocuments searchResults,
+    String query,
+  ) {
     return FadeTransition(
       opacity: _fadeAnimation,
       child: ListView(
@@ -852,9 +868,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
             ),
             const SizedBox(height: 20),
             ...searchResults.items.map(
-              (doc) => _buildPremiumDocumentResult(doc, colorScheme),
+              (doc) => _buildPremiumDocumentResult(doc, colorScheme, query),
             ),
-            
+
             // Load more button if there are more results
             if (searchResults.hasMore) ...[
               const SizedBox(height: 24),

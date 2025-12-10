@@ -24,7 +24,7 @@ class SearchAnalyticsService {
         'Search tracked',
         data: {
           'queryLength': query.length,
-          'queryWordCount': query.split(/\s+/).length,
+          'queryWordCount': query.split(RegExp(r'\s+')).length,
           'scanMode': scanMode,
           'sortBy': sortBy,
           'resultCount': resultCount,
@@ -49,7 +49,7 @@ class SearchAnalyticsService {
         'Popular search tracked',
         data: {
           'queryLength': query.length,
-          'queryWordCount': query.split(/\s+/).length,
+          'queryWordCount': query.split(RegExp(r'\s+')).length,
         },
       );
     } catch (e) {

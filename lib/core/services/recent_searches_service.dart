@@ -47,7 +47,7 @@ class RecentSearchesService {
 
     try {
       final trimmedQuery = query.trim();
-      
+
       // Remove if already exists (to move to top)
       if (_box!.containsKey(trimmedQuery)) {
         _box!.delete(trimmedQuery);
@@ -65,7 +65,7 @@ class RecentSearchesService {
         }
       }
 
-      AppLogger.debug('Recent search added', data: {'query': trimmedQuery});
+      AppLogger.warning('Recent search added', data: {'query': trimmedQuery});
     } catch (e) {
       AppLogger.warning('Failed to add recent search', error: e);
     }
@@ -80,7 +80,7 @@ class RecentSearchesService {
     try {
       // Get all searches with timestamps
       final searches = _box!.toMap().entries.toList();
-      
+
       // Sort by timestamp (most recent first)
       searches.sort((a, b) {
         try {
@@ -93,10 +93,7 @@ class RecentSearchesService {
       });
 
       // Return limited results
-      return searches
-          .take(limit)
-          .map((e) => e.key as String)
-          .toList();
+      return searches.take(limit).map((e) => e.key as String).toList();
     } catch (e) {
       AppLogger.warning('Failed to get recent searches', error: e);
       return [];
@@ -125,10 +122,9 @@ class RecentSearchesService {
 
     try {
       _box!.delete(query.trim());
-      AppLogger.debug('Recent search removed', data: {'query': query});
+      AppLogger.warning('Recent search removed', data: {'query': query});
     } catch (e) {
       AppLogger.warning('Failed to remove recent search', error: e);
     }
   }
 }
-
