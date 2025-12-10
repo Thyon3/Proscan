@@ -31,6 +31,47 @@ void main() {
         );
       };
 
+      // Set global error widget builder (catches rendering errors)
+      // This prevents one corrupted widget from crashing the entire app
+      ErrorWidget.builder = (details) {
+        AppLogger.error(
+          'ErrorWidget caught error',
+          error: details.exception,
+          stack: details.stack,
+        );
+        
+        // Return a safe error widget instead of crashing
+        return Material(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.red.shade50,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, color: Colors.red, size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  'Something went wrong',
+                  style: TextStyle(
+                    color: Colors.red.shade900,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This widget failed to render',
+                  style: TextStyle(
+                    color: Colors.red.shade700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      };
+
       try {
         // OFFLINE-FIRST: Start AuthService.init() in background (non-blocking)
         // App opens instantly, auth initializes silently in background

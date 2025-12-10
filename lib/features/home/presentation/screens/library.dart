@@ -5,11 +5,14 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
+import 'package:thyscan/core/widgets/error_boundary.dart';
 import 'package:thyscan/features/home/controllers/library_state_provider.dart';
 import 'package:thyscan/features/home/controllers/documents_pagination_provider.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/models/document_filter.dart';
+import 'package:thyscan/features/home/presentation/widgets/corrupted_document_tile.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_filter_bar.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/document_shimmer_placeholder.dart';
@@ -212,32 +215,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         return const SizedBox.shrink();
                       }
 
-                      // Show actual document item
-                      final doc = paginatedState.documents[index];
-                      final scan = _documentToScan(doc);
-                      final isSelected =
-                          libraryState.selectedScanIds.contains(scan.id);
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: LibraryScanListItem(
-                          scan: scan,
-                          document: doc, // Pass DocumentModel for validation
-                          isSelectionMode: libraryState.isSelectionMode,
-                          isSelected: isSelected,
-                          onLongPress: () {
-                            libraryNotifier.enterSelectionMode(scan.id);
-                          },
-                          onTap: () {
-                            if (libraryState.isSelectionMode) {
-                              libraryNotifier.toggleScanSelection(scan.id);
-                            } else {
-                              _openDocument(context, doc);
-                            }
-                          },
-                          onEdit: () => _openDocument(context, doc),
-                          onDelete: () => _deleteDocument(context, doc),
-                          onShare: () => _shareDocument(context, doc),
+                      // Wrap each item in error boundary (bulletproof - never crashes)
+                      return ListItemErrorBoundary(
+                        fallback: (context, error) {
+                          // Show corrupted document tile on error
+                          final doc = index < paginatedState.documents.length
+                              ? paginatedState.documents[index]
+                              : null;
+                          return CorruptedDocumentTile(
+                            documentId: doc?.id ?? 'unknown',
+                            documentTitle: doc?.title,
+                            onDeleted: () {
+                              // Refresh the list after deletion
+                              paginatedNotifier.refresh();
+                            },
+                            onRetry: () {
+                              // Retry by refreshing
+                              paginatedNotifier.refresh();
+                            },
+                          );
+                        },
+                        child: _buildDocumentItem(
+                          context,
+                          index,
+                          paginatedState,
+                          libraryState,
+                          libraryNotifier,
                         ),
                       );
                     },
@@ -270,6 +273,70 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (screenWidth < 400) return 16; // Medium phones
     if (screenWidth > 600) return 24; // Tablets
     return 20; // Standard phones
+  }
+
+  /// Builds a document item with error handling (bulletproof)
+  Widget _buildDocumentItem(
+    BuildContext context,
+    int index,
+    PaginatedDocumentsState paginatedState,
+    LibraryState libraryState,
+    LibraryNotifier libraryNotifier,
+  ) {
+    try {
+      // Show actual document item
+      final doc = paginatedState.documents[index];
+      final scan = _documentToScan(doc);
+      final isSelected =
+          libraryState.selectedScanIds.contains(scan.id);
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: LibraryScanListItem(
+          scan: scan,
+          document: doc, // Pass DocumentModel for validation
+          isSelectionMode: libraryState.isSelectionMode,
+          isSelected: isSelected,
+          onLongPress: () {
+            libraryNotifier.enterSelectionMode(scan.id);
+          },
+          onTap: () {
+            if (libraryState.isSelectionMode) {
+              libraryNotifier.toggleScanSelection(scan.id);
+            } else {
+              _openDocument(context, doc);
+            }
+          },
+          onEdit: () => _openDocument(context, doc),
+          onDelete: () => _deleteDocument(context, doc),
+          onShare: () => _shareDocument(context, doc),
+        ),
+      );
+    } catch (e, stack) {
+      // This should never be reached due to error boundary,
+      // but provides extra safety
+      AppLogger.error(
+        'Error building document item (caught in builder)',
+        error: e,
+        stack: stack,
+        data: {'index': index},
+      );
+
+      // Return corrupted tile as fallback
+      final doc = index < paginatedState.documents.length
+          ? paginatedState.documents[index]
+          : null;
+      return CorruptedDocumentTile(
+        documentId: doc?.id ?? 'unknown',
+        documentTitle: doc?.title,
+        onDeleted: () {
+          // Refresh will be handled by parent
+        },
+        onRetry: () {
+          // Retry will be handled by parent
+        },
+      );
+    }
   }
 
   /// Convert DocumentModel to Scan for UI compatibility

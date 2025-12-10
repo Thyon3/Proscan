@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:thyscan/core/widgets/error_boundary.dart';
+import 'package:thyscan/features/home/presentation/widgets/corrupted_document_tile.dart';
 import 'package:thyscan/features/home/presentation/widgets/document_thumbnail.dart';
 import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
@@ -34,6 +36,24 @@ class LibraryScanListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Wrap in error boundary for bulletproof error handling
+    return ListItemErrorBoundary(
+      fallback: (context, error) {
+        // Show corrupted document tile if this widget crashes
+        return CorruptedDocumentTile(
+          documentId: scan.id,
+          documentTitle: scan.title,
+          onDeleted: onDelete,
+          onRetry: () {
+            // Retry by rebuilding (will be handled by parent)
+          },
+        );
+      },
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 

@@ -8,9 +8,12 @@ import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/core/theme/constants/app_design.dart';
 import 'package:thyscan/features/home/presentation/widgets/premium_modal.dart';
+import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/widgets/error_boundary.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/controllers/documents_pagination_provider.dart';
 import 'package:thyscan/features/home/presentation/screens/recent_scans_section.dart';
+import 'package:thyscan/features/home/presentation/widgets/corrupted_document_tile.dart';
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
 import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
@@ -71,32 +74,30 @@ class HomeScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate((context, index) {
-                  final doc = recentDocs[index];
-                  final scan = _documentToScan(doc);
-                  final isSelected = homeState.selectedScanIds.contains(
-                    scan.id,
-                  );
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: ScanListItem(
-                      scan: scan,
-                      document: doc, // Pass DocumentModel for validation
-                      isSelectionMode: homeState.isSelectionMode,
-                      isSelected: isSelected,
-                      onLongPress: () {
-                        homeNotifier.enterSelectionMode(scan.id);
-                      },
-                      onTap: () {
-                        if (homeState.isSelectionMode) {
-                          homeNotifier.toggleScanSelection(scan.id);
-                        } else {
-                          _openDocument(context, doc);
-                        }
-                      },
-                      onEdit: () => _openDocument(context, doc),
-                      onDelete: () => _deleteDocument(context, doc),
-                      onShare: () => _shareDocument(context, doc),
+                  // Wrap each item in error boundary (bulletproof - never crashes)
+                  return ListItemErrorBoundary(
+                    fallback: (context, error) {
+                      // Show corrupted document tile on error
+                      final doc = index < recentDocs.length
+                          ? recentDocs[index]
+                          : null;
+                      return CorruptedDocumentTile(
+                        documentId: doc?.id ?? 'unknown',
+                        documentTitle: doc?.title,
+                        onDeleted: () {
+                          // Refresh will be handled by parent
+                        },
+                        onRetry: () {
+                          // Retry will be handled by parent
+                        },
+                      );
+                    },
+                    child: _buildDocumentItem(
+                      context,
+                      index,
+                      recentDocs,
+                      homeState,
+                      homeNotifier,
                     ),
                   );
                 }, childCount: recentDocs.length),
