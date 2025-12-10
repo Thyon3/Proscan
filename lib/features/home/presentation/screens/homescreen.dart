@@ -154,6 +154,66 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
+  /// Builds a document item with error handling (bulletproof)
+  Widget _buildDocumentItem(
+    BuildContext context,
+    int index,
+    List<DocumentModel> recentDocs,
+    HomeState homeState,
+    HomeNotifier homeNotifier,
+  ) {
+    try {
+      final doc = recentDocs[index];
+      final scan = _documentToScan(doc);
+      final isSelected = homeState.selectedScanIds.contains(scan.id);
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        child: ScanListItem(
+          scan: scan,
+          document: doc, // Pass DocumentModel for validation
+          isSelectionMode: homeState.isSelectionMode,
+          isSelected: isSelected,
+          onLongPress: () {
+            homeNotifier.enterSelectionMode(scan.id);
+          },
+          onTap: () {
+            if (homeState.isSelectionMode) {
+              homeNotifier.toggleScanSelection(scan.id);
+            } else {
+              _openDocument(context, doc);
+            }
+          },
+          onEdit: () => _openDocument(context, doc),
+          onDelete: () => _deleteDocument(context, doc),
+          onShare: () => _shareDocument(context, doc),
+        ),
+      );
+    } catch (e, stack) {
+      // This should never be reached due to error boundary,
+      // but provides extra safety
+      AppLogger.error(
+        'Error building document item (caught in builder)',
+        error: e,
+        stack: stack,
+        data: {'index': index},
+      );
+
+      // Return corrupted tile as fallback
+      final doc = index < recentDocs.length ? recentDocs[index] : null;
+      return CorruptedDocumentTile(
+        documentId: doc?.id ?? 'unknown',
+        documentTitle: doc?.title,
+        onDeleted: () {
+          // Refresh will be handled by parent
+        },
+        onRetry: () {
+          // Retry will be handled by parent
+        },
+      );
+    }
+  }
+
   /// Open document in appropriate screen based on format
   void _openDocument(BuildContext context, DocumentModel doc) {
     if (doc.format == 'txt' || doc.format == 'docx') {
