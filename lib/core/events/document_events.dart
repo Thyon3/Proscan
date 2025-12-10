@@ -1,4 +1,6 @@
 // core/events/document_events.dart
+import 'dart:async';
+
 import 'package:thyscan/models/document_model.dart';
 
 /// Base class for document events
@@ -89,23 +91,23 @@ class DocumentEventBus {
 
   /// Stream of document created events
   Stream<DocumentCreatedEvent> get createdEvents =>
-      events.whereType<DocumentCreatedEvent>();
+      events.where((event) => event is DocumentCreatedEvent).cast<DocumentCreatedEvent>();
 
   /// Stream of document updated events
   Stream<DocumentUpdatedEvent> get updatedEvents =>
-      events.whereType<DocumentUpdatedEvent>();
+      events.where((event) => event is DocumentUpdatedEvent).cast<DocumentUpdatedEvent>();
 
   /// Stream of document deleted events
   Stream<DocumentDeletedEvent> get deletedEvents =>
-      events.whereType<DocumentDeletedEvent>();
+      events.where((event) => event is DocumentDeletedEvent).cast<DocumentDeletedEvent>();
 
   /// Stream of document synced events
   Stream<DocumentSyncedEvent> get syncedEvents =>
-      events.whereType<DocumentSyncedEvent>();
+      events.where((event) => event is DocumentSyncedEvent).cast<DocumentSyncedEvent>();
 
   /// Stream of document sync failed events
   Stream<DocumentSyncFailedEvent> get syncFailedEvents =>
-      events.whereType<DocumentSyncFailedEvent>();
+      events.where((event) => event is DocumentSyncFailedEvent).cast<DocumentSyncFailedEvent>();
 
   /// Emits a document event
   void emit(DocumentEvent event) {

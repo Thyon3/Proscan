@@ -250,8 +250,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     addAutomaticKeepAlives: false, // Don't keep items alive when scrolled out
                     addRepaintBoundaries: true, // Add repaint boundaries for performance
                     addSemanticIndexes: false,
-                    // Estimate item extent for better scrolling performance
-                    itemExtent: null, // Let items determine their own height (variable height list)
                   ),
                 ),
               ),

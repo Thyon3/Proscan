@@ -106,7 +106,7 @@ class ResourceGuard {
     _imageProcessingQueue.add(operation);
     _imageProcessingQueue.sort((a, b) => b.priority.index.compareTo(a.priority.index));
 
-    AppLogger.debug(
+    AppLogger.info(
       'Image processing operation queued',
       data: {
         'operationId': operationId,
@@ -144,7 +144,7 @@ class ResourceGuard {
     _uploadQueue.add(operation);
     _uploadQueue.sort((a, b) => b.priority.index.compareTo(a.priority.index));
 
-    AppLogger.debug(
+    AppLogger.info(
       'Upload operation queued',
       data: {
         'operationId': operationId,
@@ -182,7 +182,7 @@ class ResourceGuard {
     _downloadQueue.add(operation);
     _downloadQueue.sort((a, b) => b.priority.index.compareTo(a.priority.index));
 
-    AppLogger.debug(
+    AppLogger.info(
       'Download operation queued',
       data: {
         'operationId': operationId,

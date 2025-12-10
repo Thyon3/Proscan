@@ -626,6 +626,7 @@ class DocumentUploadService {
         );
 
         _isProcessing[upload.documentId] = true;
+      }
     } catch (e) {
       AppLogger.warning(
         error: null,

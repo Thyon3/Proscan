@@ -18,3 +18,11 @@ class FileSystemFailure extends Failure {
 class AuthFailure extends Failure {
   const AuthFailure(super.message);
 }
+
+class NetworkFailure extends Failure {
+  const NetworkFailure(super.message);
+}
+
+class PdfGenerationFailure extends Failure {
+  const PdfGenerationFailure(super.message);
+}

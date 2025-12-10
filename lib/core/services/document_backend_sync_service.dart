@@ -308,6 +308,11 @@ class DocumentBackendSyncService {
           },
         );
 
+        final headers = {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${session.accessToken}',
+        };
+
         response = await CircuitBreakerService.instance.execute(
           serviceName: 'backend-api',
           operation: () => http
@@ -317,12 +322,13 @@ class DocumentBackendSyncService {
                 onTimeout: () {
                   AppLogger.error(
                     '⏱️ Backend API request timed out',
-                  error: null,
-                  data: {'documentId': document.id, 'url': createUrl},
-                );
-                throw TimeoutException('Backend API request timed out');
-              },
-            );
+                    error: null,
+                    data: {'documentId': document.id, 'url': createUrl},
+                  );
+                  throw TimeoutException('Backend API request timed out');
+                },
+              ),
+        );
 
         print('📡 [BACKEND SYNC] API Response received');
         print('   Status Code: ${response.statusCode}');

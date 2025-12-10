@@ -98,7 +98,7 @@ class RequestSignatureService {
     final digest = hmac.convert(bytes);
     final signature = digest.toString();
 
-    AppLogger.debug(
+    AppLogger.info(
       'Generated request signature',
       data: {
         'method': method,

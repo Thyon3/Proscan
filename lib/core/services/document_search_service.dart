@@ -321,13 +321,6 @@ class DocumentSearchService {
     return filtered;
   }
 
-  /// Clears the search result cache.
-  void clearCache() {
-    _cache.clear();
-    _cacheTimestamps.clear();
-    AppLogger.info('Search cache cleared');
-  }
-
   /// Invalidates cache for a specific document (call when document is created/updated/deleted).
   void invalidateCacheForDocument(String documentId) {
     // Clear all cache entries since any document change could affect search results

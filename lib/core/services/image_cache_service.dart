@@ -138,7 +138,7 @@ class ImageCacheService {
       );
       _currentCacheSize += fileSize;
 
-      AppLogger.debug(
+      AppLogger.info(
         'Image cached',
         data: {
           'sourcePath': sourcePath,
@@ -275,7 +275,7 @@ class ImageCacheService {
         _currentCacheSize -= entry.size;
         _cacheEntries.remove(oldestKey);
 
-        AppLogger.debug(
+        AppLogger.info(
           'Evicted cache entry',
           data: {
             'path': oldestKey,
