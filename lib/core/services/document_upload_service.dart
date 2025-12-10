@@ -166,6 +166,32 @@ class DocumentUploadService {
     _isInitialized = false;
   }
 
+  /// Clears all upload queues and resets service state
+  /// Called during logout to clear user data
+  Future<void> clearAll() async {
+    try {
+      AppLogger.info('Clearing DocumentUploadService data');
+      
+      // Clear upload queue
+      _uploadQueue.clear();
+      
+      // Clear processing flags
+      _isProcessing.clear();
+      
+      // Cancel connectivity subscription
+      _connectivitySubscription?.cancel();
+      _connectivitySubscription = null;
+      
+      AppLogger.info('DocumentUploadService data cleared');
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to clear DocumentUploadService data',
+        error: e,
+        stack: stack,
+      );
+    }
+  }
+
   /// Uploads a document to Supabase Storage and syncs metadata to backend.
   ///
   /// **Process:**

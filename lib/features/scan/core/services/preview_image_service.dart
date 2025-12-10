@@ -102,6 +102,10 @@ class PreviewImageService {
         'Preview generated successfully',
         data: {'path': previewPath, 'size': resizedBytes.length},
       );
+      
+      // Clean up old preview files periodically
+      _cleanupOldPreviewFiles(previewDir);
+      
       return previewPath;
     } catch (e, stack) {
       AppLogger.error(
@@ -111,6 +115,59 @@ class PreviewImageService {
         data: {'originalPath': originalPath},
       );
       rethrow;
+    }
+  }
+
+  /// Cleans up old preview files
+  /// Keeps the most recent N files and deletes files older than 24 hours
+  static Future<void> _cleanupOldPreviewFiles(Directory previewDir) async {
+    try {
+      if (!await previewDir.exists()) return;
+
+      final files = previewDir
+          .listSync()
+          .whereType<File>()
+          .where((file) => p.basename(file.path).endsWith('_preview.jpg') ||
+              p.basename(file.path).endsWith('_preview.png'))
+          .toList();
+
+      if (files.isEmpty) return;
+
+      // Sort by modification time (newest first)
+      files.sort((a, b) {
+        try {
+          return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+        } catch (_) {
+          return 0;
+        }
+      });
+
+      const keepCount = 50; // Keep more previews as they're smaller
+      final now = DateTime.now();
+      const maxAge = Duration(hours: 24);
+
+      int deleted = 0;
+      for (int i = keepCount; i < files.length; i++) {
+        final file = files[i];
+        try {
+          final modified = await file.lastModified();
+          if (now.difference(modified) > maxAge) {
+            await file.delete();
+            deleted++;
+          }
+        } catch (_) {
+          // Ignore errors deleting individual files
+        }
+      }
+
+      if (deleted > 0) {
+        AppLogger.info(
+          'Cleaned up old preview files',
+          data: {'deleted': deleted},
+        );
+      }
+    } catch (e) {
+      AppLogger.warning('Failed to cleanup old preview files', error: e);
     }
   }
 

@@ -43,6 +43,9 @@ enum DocumentSyncStatus {
 
   /// Pending conflict resolution (user intervention required)
   pendingConflictResolution,
+
+  /// Download/upload failed after max retries
+  failed,
 }
 
 /// Service to track sync status for documents.
@@ -229,6 +232,79 @@ class DocumentSyncStateService {
     }
   }
 
+  /// Gets the retry count for a document
+  int getRetryCount(String documentId) {
+    if (!_isInitialized || _box == null) return 0;
+
+    try {
+      final statusData = _box!.get(documentId);
+      if (statusData == null) return 0;
+
+      return (statusData['retryCount'] as int?) ?? 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Increments the retry count for a document
+  void incrementRetryCount(String documentId) {
+    if (!_isInitialized || _box == null) return;
+
+    try {
+      final statusData = _box!.get(documentId) as Map<String, dynamic>?;
+      final currentCount = (statusData?['retryCount'] as int?) ?? 0;
+      final newCount = currentCount + 1;
+
+      final updatedData = <String, dynamic>{
+        ...?statusData,
+        'retryCount': newCount,
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
+
+      _box!.put(documentId, updatedData);
+
+      AppLogger.info(
+        'Retry count incremented',
+        data: {'documentId': documentId, 'retryCount': newCount},
+      );
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to increment retry count',
+        error: e,
+        data: {'documentId': documentId},
+      );
+    }
+  }
+
+  /// Resets the retry count for a document
+  void resetRetryCount(String documentId) {
+    if (!_isInitialized || _box == null) return;
+
+    try {
+      final statusData = _box!.get(documentId) as Map<String, dynamic>?;
+      if (statusData == null) return;
+
+      final updatedData = <String, dynamic>{
+        ...statusData,
+        'retryCount': 0,
+        'updatedAt': DateTime.now().toIso8601String(),
+      };
+
+      _box!.put(documentId, updatedData);
+
+      AppLogger.info(
+        'Retry count reset',
+        data: {'documentId': documentId},
+      );
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to reset retry count',
+        error: e,
+        data: {'documentId': documentId},
+      );
+    }
+  }
+
   /// Clears sync status for a document (e.g., when document is deleted)
   void clearSyncStatus(String documentId) {
     if (!_isInitialized || _box == null) return;
@@ -409,6 +485,25 @@ class DocumentSyncStateService {
   /// Disposes the service
   void dispose() {
     _statusController.close();
+  }
+
+  /// Clears all sync state data
+  /// Called during logout to clear user data
+  Future<void> clearAll() async {
+    try {
+      AppLogger.info('Clearing DocumentSyncStateService data');
+      
+      if (_box != null) {
+        await _box!.clear();
+        AppLogger.info('DocumentSyncStateService data cleared');
+      }
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to clear DocumentSyncStateService data',
+        error: e,
+        stack: stack,
+      );
+    }
   }
 }
 

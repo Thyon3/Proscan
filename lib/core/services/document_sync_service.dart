@@ -56,6 +56,10 @@ class DocumentSyncService {
   // Track active download subscriptions to prevent memory leaks
   final Map<String, StreamSubscription<DownloadProgress>> _downloadSubscriptions = {};
   
+  // Sync queue to handle concurrent sync requests
+  final _syncQueue = <_SyncRequest>[];
+  static const Duration _syncRequestTimeout = Duration(minutes: 10);
+  
   static const String _lastSyncTimeKey = 'last_sync_time';
   static const int _maxRetryAttempts = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 5);
@@ -130,6 +134,43 @@ class DocumentSyncService {
       subscription.cancel();
     }
     _downloadSubscriptions.clear();
+  }
+
+  /// Clears all sync data and resets service state
+  /// Called during logout to clear user data
+  Future<void> clearAll() async {
+    try {
+      AppLogger.info('Clearing DocumentSyncService data');
+      
+      // Clear sync state
+      _isSyncing = false;
+      _lastSyncTime = null;
+      
+      // Cancel connectivity subscription
+      _connectivitySubscription?.cancel();
+      _connectivitySubscription = null;
+      
+      // Cancel all download subscriptions
+      for (final subscription in _downloadSubscriptions.values) {
+        subscription.cancel();
+      }
+      _downloadSubscriptions.clear();
+      
+      // Clear sync preferences box
+      if (_prefsBox != null) {
+        await _prefsBox!.clear();
+        await _prefsBox!.close();
+        _prefsBox = null;
+      }
+      
+      AppLogger.info('DocumentSyncService data cleared');
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to clear DocumentSyncService data',
+        error: e,
+        stack: stack,
+      );
+    }
   }
 
   /// Syncs documents from backend to local storage.
@@ -834,7 +875,59 @@ class DocumentSyncService {
       );
     } finally {
       _isSyncing = false;
+      // Process next queued sync request
+      _processSyncQueue();
     }
+  }
+
+  /// Processes the sync queue after a sync completes
+  void _processSyncQueue() {
+    if (_syncQueue.isEmpty || _isSyncing) {
+      return;
+    }
+
+    // Remove expired requests
+    final now = DateTime.now();
+    _syncQueue.removeWhere((req) {
+      if (now.difference(req.createdAt) > _syncRequestTimeout) {
+        if (!req.completer.isCompleted) {
+          req.completer.completeError(
+            TimeoutException('Sync request expired'),
+          );
+        }
+        return true;
+      }
+      return false;
+    });
+
+    if (_syncQueue.isEmpty) {
+      return;
+    }
+
+    // Process next request in queue
+    final nextRequest = _syncQueue.removeAt(0);
+    AppLogger.info(
+      'Processing queued sync request',
+      data: {
+        'forceFullSync': nextRequest.forceFullSync,
+        'replaceLocal': nextRequest.replaceLocal,
+        'queueRemaining': _syncQueue.length,
+      },
+    );
+
+    syncDocuments(
+      forceFullSync: nextRequest.forceFullSync,
+      replaceLocal: nextRequest.replaceLocal,
+      retryAttempt: nextRequest.retryAttempt,
+    ).then((result) {
+      if (!nextRequest.completer.isCompleted) {
+        nextRequest.completer.complete(result);
+      }
+    }).catchError((error) {
+      if (!nextRequest.completer.isCompleted) {
+        nextRequest.completer.completeError(error);
+      }
+    });
   }
 
   /// Calculates retry delay with exponential backoff
@@ -848,15 +941,40 @@ class DocumentSyncService {
 
   /// Starts background download for a document with URL filePath.
   /// Uses the download queue for better management and progress tracking.
+  /// Implements retry logic with exponential backoff (max 3 retries).
   void _startBackgroundDownload(
     DocumentModel remoteDoc,
     Box<DocumentModel> box,
   ) {
+    // Check retry count before queuing
+    final retryCount = DocumentSyncStateService.instance.getRetryCount(remoteDoc.id);
+    const maxRetries = 3;
+
+    if (retryCount >= maxRetries) {
+      // Max retries reached - mark as failed
+      AppLogger.warning(
+        'Download failed after $maxRetries retries, marking as failed',
+        error: null,
+        data: {
+          'id': remoteDoc.id,
+          'title': remoteDoc.title,
+          'retryCount': retryCount,
+        },
+      );
+      DocumentSyncStateService.instance.setSyncStatus(
+        remoteDoc.id,
+        DocumentSyncStatus.failed,
+        errorMessage: 'Download failed after $maxRetries attempts',
+      );
+      return;
+    }
+
     AppLogger.info(
       '📥 Queuing document for download',
       data: {
         'id': remoteDoc.id,
         'title': remoteDoc.title,
+        'retryCount': retryCount,
         'fileUrl':
             remoteDoc.filePath.substring(
               0,
@@ -885,26 +1003,73 @@ class DocumentSyncService {
     final subscription = DocumentDownloadService.instance.progressStream.listen(
       (progress) {
         if (progress.documentId == remoteDoc.id && progress.isComplete) {
-          // Download completed, update document with local paths
+          // Download completed successfully - reset retry count
+          DocumentSyncStateService.instance.resetRetryCount(remoteDoc.id);
+          // Update document with local paths
           _updateDocumentAfterDownload(remoteDoc, box);
           _cleanupSubscription(remoteDoc.id);
         } else if (progress.documentId == remoteDoc.id &&
             progress.error != null) {
-          // Download failed
+          // Download failed - increment retry count and retry with exponential backoff
+          DocumentSyncStateService.instance.incrementRetryCount(remoteDoc.id);
+          final newRetryCount = DocumentSyncStateService.instance.getRetryCount(remoteDoc.id);
+          
           AppLogger.error(
-            'Download failed for document',
+            'Download failed for document (retry $newRetryCount/$maxRetries)',
             error: Exception(progress.error),
-            data: {'id': remoteDoc.id},
+            data: {'id': remoteDoc.id, 'retryCount': newRetryCount},
           );
+
+          if (newRetryCount < maxRetries) {
+            // Calculate exponential backoff delay: 5min, 15min, 30min
+            final delayMinutes = [5, 15, 30][newRetryCount - 1];
+            AppLogger.info(
+              'Retrying download after ${delayMinutes} minutes',
+              data: {'id': remoteDoc.id, 'retryCount': newRetryCount},
+            );
+            
+            // Schedule retry
+            Future.delayed(Duration(minutes: delayMinutes), () {
+              _startBackgroundDownload(remoteDoc, box);
+            });
+          } else {
+            // Max retries reached - mark as failed
+            DocumentSyncStateService.instance.setSyncStatus(
+              remoteDoc.id,
+              DocumentSyncStatus.failed,
+              errorMessage: progress.error ?? 'Download failed after $maxRetries attempts',
+            );
+          }
+          
           _cleanupSubscription(remoteDoc.id);
         }
       },
       onError: (error) {
+        // Increment retry count on stream error
+        DocumentSyncStateService.instance.incrementRetryCount(remoteDoc.id);
+        final newRetryCount = DocumentSyncStateService.instance.getRetryCount(remoteDoc.id);
+        
         AppLogger.error(
-          'Error listening to download progress',
+          'Error listening to download progress (retry $newRetryCount/$maxRetries)',
           error: error,
-          data: {'id': remoteDoc.id},
+          data: {'id': remoteDoc.id, 'retryCount': newRetryCount},
         );
+
+        if (newRetryCount < maxRetries) {
+          // Calculate exponential backoff delay
+          final delayMinutes = [5, 15, 30][newRetryCount - 1];
+          Future.delayed(Duration(minutes: delayMinutes), () {
+            _startBackgroundDownload(remoteDoc, box);
+          });
+        } else {
+          // Max retries reached - mark as failed
+          DocumentSyncStateService.instance.setSyncStatus(
+            remoteDoc.id,
+            DocumentSyncStatus.failed,
+            errorMessage: 'Download failed after $maxRetries attempts: ${error.toString()}',
+          );
+        }
+        
         _cleanupSubscription(remoteDoc.id);
       },
     );
@@ -1184,4 +1349,21 @@ class SyncResult {
         'total: $totalProcessed'
         ')';
   }
+}
+
+/// Internal class to represent a queued sync request
+class _SyncRequest {
+  final Completer<SyncResult> completer;
+  final bool forceFullSync;
+  final bool replaceLocal;
+  final int retryAttempt;
+  final DateTime createdAt;
+
+  _SyncRequest({
+    required this.completer,
+    required this.forceFullSync,
+    required this.replaceLocal,
+    required this.retryAttempt,
+    required this.createdAt,
+  });
 }

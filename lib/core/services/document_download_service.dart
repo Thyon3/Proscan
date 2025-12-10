@@ -154,6 +154,42 @@ class DocumentDownloadService {
     _isInitialized = false;
   }
 
+  /// Clears all download queues and resets service state
+  /// Called during logout to clear user data
+  Future<void> clearAll() async {
+    try {
+      AppLogger.info('Clearing DocumentDownloadService data');
+      
+      // Clear download queue
+      _downloadQueue.clear();
+      
+      // Cancel active downloads
+      for (final download in _activeDownloads.values) {
+        try {
+          await download.timeout(const Duration(seconds: 1));
+        } catch (_) {
+          // Ignore timeout errors
+        }
+      }
+      _activeDownloads.clear();
+      
+      // Clear processing flags
+      _isProcessing.clear();
+      
+      // Cancel connectivity subscription
+      _connectivitySubscription?.cancel();
+      _connectivitySubscription = null;
+      
+      AppLogger.info('DocumentDownloadService data cleared');
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to clear DocumentDownloadService data',
+        error: e,
+        stack: stack,
+      );
+    }
+  }
+
   /// Queues a document for download
   ///
   /// Downloads are processed in priority order with concurrent limits.

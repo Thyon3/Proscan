@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/errors/pdf_exceptions.dart';
+import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 
@@ -53,7 +54,64 @@ class PdfPreprocessor {
       }
     }
 
+    // Clean up old preprocessed files after operation
+    _cleanupOldPreprocessedFiles(tempDir);
+
     return results;
+  }
+
+  /// Cleans up old preprocessed image files
+  /// Keeps the most recent N files and deletes files older than 24 hours
+  static Future<void> _cleanupOldPreprocessedFiles(
+    Directory tempDir,
+  ) async {
+    try {
+      if (!await tempDir.exists()) return;
+
+      final files = tempDir
+          .listSync()
+          .whereType<File>()
+          .where((file) => p.basename(file.path).startsWith('pre_'))
+          .toList();
+
+      if (files.isEmpty) return;
+
+      // Sort by modification time (newest first)
+      files.sort((a, b) {
+        try {
+          return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+        } catch (_) {
+          return 0;
+        }
+      });
+
+      const keepCount = 20; // Keep more preprocessed files
+      final now = DateTime.now();
+      const maxAge = Duration(hours: 24);
+
+      int deleted = 0;
+      for (int i = keepCount; i < files.length; i++) {
+        final file = files[i];
+        try {
+          final modified = await file.lastModified();
+          if (now.difference(modified) > maxAge) {
+            await file.delete();
+            deleted++;
+          }
+        } catch (_) {
+          // Ignore errors deleting individual files
+        }
+      }
+
+      if (deleted > 0) {
+        AppLogger.info(
+          'Cleaned up old preprocessed files',
+          data: {'deleted': deleted},
+        );
+      }
+    } catch (e) {
+      AppLogger.warning('Failed to cleanup old preprocessed files', error: e);
+    }
   }
 }
 

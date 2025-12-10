@@ -3,11 +3,22 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/errors/failures.dart';
 import 'package:thyscan/core/models/app_user.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/background_sync_service.dart';
+import 'package:thyscan/core/services/document_download_service.dart';
+import 'package:thyscan/core/services/document_search_service.dart';
+import 'package:thyscan/core/services/document_sync_service.dart';
+import 'package:thyscan/core/services/document_sync_state_service.dart';
+import 'package:thyscan/core/services/document_upload_service.dart';
+import 'package:thyscan/core/services/full_text_search_index_service.dart';
+import 'package:thyscan/core/services/recent_searches_service.dart';
+import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/document_service.dart';
 
 /// Singleton service for handling authentication with Supabase.
 /// Supports email/password and Google Sign-In.
@@ -348,17 +359,58 @@ class AuthService {
             data: {'hasSession': session != null},
           );
 
+          // Handle token refresh events explicitly
+          if (event == AuthChangeEvent.tokenRefreshed) {
+            AppLogger.info(
+              'Token refreshed successfully',
+              data: {
+                'hasSession': session != null,
+                'userId': session?.user?.id,
+              },
+            );
+            // Token refresh succeeded - emit user to ensure UI is updated
+            if (session?.user != null) {
+              final appUser = AppUser.fromSupabase(session!.user!);
+              _userController.add(appUser);
+            }
+          } else if (event == AuthChangeEvent.signedOut) {
+            AppLogger.warning(
+              'User signed out unexpectedly (token may have expired or been revoked)',
+              error: null,
+              data: {'hasSession': session != null},
+            );
+            _userController.add(null);
+          } else if (event == AuthChangeEvent.userUpdated) {
+            AppLogger.info(
+              'User data updated',
+              data: {
+                'hasSession': session != null,
+                'userId': session?.user?.id,
+              },
+            );
+            if (session?.user != null) {
+              final appUser = AppUser.fromSupabase(session!.user!);
+              _userController.add(appUser);
+            }
+          }
+
+          // Handle general user state
           final user = session?.user;
           if (user != null) {
-            final appUser = AppUser.fromSupabase(user);
-            _userController.add(appUser);
-            AppLogger.info('User authenticated: ${appUser.email}');
-          } else {
+            // Only emit if not already handled by specific event handlers above
+            if (event != AuthChangeEvent.tokenRefreshed &&
+                event != AuthChangeEvent.userUpdated) {
+              final appUser = AppUser.fromSupabase(user);
+              _userController.add(appUser);
+              AppLogger.info('User authenticated: ${appUser.email}');
+            }
+          } else if (event != AuthChangeEvent.signedOut) {
+            // Only emit null if not already handled by signedOut event
             _userController.add(null);
             AppLogger.info('User signed out');
           }
         });
-        AppLogger.info('Auth state change listener registered');
+        AppLogger.info('Auth state change listener registered with token refresh monitoring');
       } catch (e, stack) {
         AppLogger.error(
           'Failed to register auth state listener',
@@ -624,17 +676,146 @@ class AuthService {
   }
 
   /// Signs out the current user and clears the session.
+  /// Also clears all local user data including documents, sync state, caches, and queues.
   Future<void> signOut() async {
     // Ensure AuthService is initialized before proceeding
     await ensureInitialized();
 
     try {
-      AppLogger.info('Signing out user');
+      AppLogger.info('Signing out user - clearing all local data');
 
+      // Clear all local data BEFORE signing out from Supabase
+      // This ensures data is cleared even if Supabase signOut fails
+      try {
+        AppLogger.info('Clearing document cache and Hive boxes');
+        
+        // Clear document Hive box
+        try {
+          final box = Hive.box<DocumentModel>('documents');
+          await box.clear();
+          AppLogger.info('Documents box cleared');
+        } catch (e) {
+          AppLogger.warning('Failed to clear documents box', error: e);
+        }
+
+        // Clear sync preferences box
+        try {
+          final syncBox = await Hive.openBox('sync_preferences');
+          await syncBox.clear();
+          await syncBox.close();
+          AppLogger.info('Sync preferences box cleared');
+        } catch (e) {
+          AppLogger.warning('Failed to clear sync preferences box', error: e);
+        }
+
+        // Clear recent searches box
+        try {
+          final recentSearchesBox = await Hive.openBox<String>('recent_searches');
+          await recentSearchesBox.clear();
+          await recentSearchesBox.close();
+          AppLogger.info('Recent searches box cleared');
+        } catch (e) {
+          AppLogger.warning('Failed to clear recent searches box', error: e);
+        }
+
+        // Clear document sync states box
+        try {
+          final syncStatesBox = await Hive.openBox<Map>('document_sync_states');
+          await syncStatesBox.clear();
+          await syncStatesBox.close();
+          AppLogger.info('Document sync states box cleared');
+        } catch (e) {
+          AppLogger.warning('Failed to clear document sync states box', error: e);
+        }
+
+        // Clear full-text search index boxes
+        try {
+          final indexBox = await Hive.openBox<Map>('full_text_search_index');
+          await indexBox.clear();
+          await indexBox.close();
+          final documentIndexBox = await Hive.openBox<Map>('document_search_index');
+          await documentIndexBox.clear();
+          await documentIndexBox.close();
+          AppLogger.info('Full-text search index boxes cleared');
+        } catch (e) {
+          AppLogger.warning('Failed to clear search index boxes', error: e);
+        }
+
+        // Clear service state
+        AppLogger.info('Clearing service state');
+        
+        // Clear document sync service
+        try {
+          await DocumentSyncService.instance.clearAll();
+        } catch (e) {
+          AppLogger.warning('Failed to clear DocumentSyncService', error: e);
+        }
+
+        // Clear document sync state service
+        try {
+          await DocumentSyncStateService.instance.clearAll();
+        } catch (e) {
+          AppLogger.warning('Failed to clear DocumentSyncStateService', error: e);
+        }
+
+        // Clear upload service
+        try {
+          await DocumentUploadService.instance.clearAll();
+        } catch (e) {
+          AppLogger.warning('Failed to clear DocumentUploadService', error: e);
+        }
+
+        // Clear download service
+        try {
+          await DocumentDownloadService.instance.clearAll();
+        } catch (e) {
+          AppLogger.warning('Failed to clear DocumentDownloadService', error: e);
+        }
+
+        // Clear search service cache
+        try {
+          DocumentSearchService.instance.clearCache();
+        } catch (e) {
+          AppLogger.warning('Failed to clear DocumentSearchService cache', error: e);
+        }
+
+        // Clear full-text search index
+        try {
+          await FullTextSearchIndexService.instance.clearAll();
+        } catch (e) {
+          AppLogger.warning('Failed to clear FullTextSearchIndexService', error: e);
+        }
+
+        // Clear recent searches
+        try {
+          RecentSearchesService.instance.clearRecentSearches();
+        } catch (e) {
+          AppLogger.warning('Failed to clear RecentSearchesService', error: e);
+        }
+
+        // Cancel background sync
+        try {
+          await BackgroundSyncService.cancelPeriodicSync();
+          AppLogger.info('Background sync cancelled');
+        } catch (e) {
+          AppLogger.warning('Failed to cancel background sync', error: e);
+        }
+
+        AppLogger.info('All local data cleared successfully');
+      } catch (e, stack) {
+        AppLogger.error(
+          'Error during data cleanup (continuing with logout)',
+          error: e,
+          stack: stack,
+        );
+        // Continue with logout even if cleanup fails
+      }
+
+      // Now sign out from Supabase
       await supabase.auth.signOut();
 
-      // Clear any local cache if needed
-      // (e.g., clear Hive boxes, shared preferences, etc.)
+      // Emit null user to stream
+      _userController.add(null);
 
       AppLogger.info('User signed out successfully');
     } on AuthException catch (e) {

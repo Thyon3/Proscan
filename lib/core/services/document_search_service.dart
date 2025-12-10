@@ -391,5 +391,22 @@ class DocumentSearchService {
         return 'pages';
     }
   }
+
+  /// Clears all search cache
+  /// Called during logout to clear user data
+  void clearCache() {
+    try {
+      AppLogger.info('Clearing DocumentSearchService cache');
+      _cache.clear();
+      _cacheTimestamps.clear();
+      AppLogger.info('DocumentSearchService cache cleared');
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to clear DocumentSearchService cache',
+        error: e,
+        stack: stack,
+      );
+    }
+  }
 }
 

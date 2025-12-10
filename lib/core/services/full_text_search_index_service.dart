@@ -491,5 +491,21 @@ class FullTextSearchIndexService {
     
     AppLogger.info('Search index cleared');
   }
+
+  /// Clears all search index data
+  /// Called during logout to clear user data
+  Future<void> clearAll() async {
+    try {
+      AppLogger.info('Clearing FullTextSearchIndexService data');
+      await clearIndex();
+      AppLogger.info('FullTextSearchIndexService data cleared');
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to clear FullTextSearchIndexService data',
+        error: e,
+        stack: stack,
+      );
+    }
+  }
 }
 

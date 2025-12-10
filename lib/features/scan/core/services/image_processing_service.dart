@@ -9,7 +9,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:thyscan/core/services/app_logger.dart';
 
 /// Public API for image processing operations.
 ///
@@ -33,7 +35,12 @@ class ImageProcessingService {
       targetPath: targetPath,
     );
 
-    return compute<_RotateArgs, String>(_rotateIsolate, args);
+    final result = await compute<_RotateArgs, String>(_rotateIsolate, args);
+    
+    // Clean up old rotated files after operation
+    _cleanupOldTempFiles(tempDir, pattern: 'rotated_', keepCount: 10);
+    
+    return result;
   }
 
   /// Apply a filter transformation to [sourcePath] and
@@ -55,7 +62,71 @@ class ImageProcessingService {
       filterName: filterName,
     );
 
-    return compute<_FilterArgs, String>(_filterIsolate, args);
+    final result = await compute<_FilterArgs, String>(_filterIsolate, args);
+    
+    // Clean up old filtered files after operation
+    _cleanupOldTempFiles(tempDir, pattern: 'filtered_', keepCount: 10);
+    
+    return result;
+  }
+
+  /// Cleans up old temporary files matching a pattern
+  /// Keeps the most recent N files and deletes files older than 24 hours
+  static Future<void> _cleanupOldTempFiles(
+    Directory tempDir, {
+    required String pattern,
+    int keepCount = 10,
+  }) async {
+    try {
+      if (!await tempDir.exists()) return;
+
+      final files = tempDir
+          .listSync()
+          .whereType<File>()
+          .where((file) => p.basename(file.path).startsWith(pattern))
+          .toList();
+
+      if (files.length <= keepCount) return;
+
+      // Sort by modification time (newest first)
+      files.sort((a, b) {
+        try {
+          return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+        } catch (_) {
+          return 0;
+        }
+      });
+
+      final now = DateTime.now();
+      final maxAge = const Duration(hours: 24);
+
+      int deleted = 0;
+      for (int i = keepCount; i < files.length; i++) {
+        final file = files[i];
+        try {
+          final modified = await file.lastModified();
+          if (now.difference(modified) > maxAge) {
+            await file.delete();
+            deleted++;
+          }
+        } catch (_) {
+          // Ignore errors deleting individual files
+        }
+      }
+
+      if (deleted > 0) {
+        AppLogger.info(
+          'Cleaned up old temp files',
+          data: {'pattern': pattern, 'deleted': deleted},
+        );
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to cleanup old temp files',
+        error: e,
+        data: {'pattern': pattern},
+      );
+    }
   }
 }
 
