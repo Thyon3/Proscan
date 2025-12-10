@@ -7,6 +7,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/events/document_events.dart';
 import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/rate_limiter_service.dart';
@@ -495,6 +496,14 @@ class DocumentUploadService {
           
           // For now, we'll use "last write wins" - keep local version
           // In the future, this could trigger a UI dialog for user resolution
+          // Emit sync failed event
+          DocumentEventBus.instance.emitSyncFailed(
+            documentId,
+            error: syncError.message,
+            isUpload: true,
+            retryCount: attempt,
+          );
+          
           // Re-throw to prevent marking as synced
           rethrow;
         }

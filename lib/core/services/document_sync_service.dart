@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/config/app_env.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
+import 'package:thyscan/core/events/document_events.dart';
 import 'package:thyscan/core/services/document_download_service.dart'
     show DocumentDownloadService, DownloadPriority, DownloadProgress;
 import 'package:thyscan/core/services/document_sync_state_service.dart';
@@ -621,6 +622,10 @@ class DocumentSyncService {
 
             await box.put(remoteDoc.id, finalDoc);
             added++;
+            
+            // Emit document created event
+            DocumentEventBus.instance.emitCreated(finalDoc);
+            
             AppLogger.info(
               '✅ Added new document from backend',
               data: {
@@ -688,16 +693,20 @@ class DocumentSyncService {
                       : DocumentSyncStatus.synced,
                 );
 
-                await box.put(remoteDoc.id, finalDoc);
-                updated++;
-                AppLogger.info(
-                  '✅ Updated local document with newer backend version',
-                  data: {
-                    'id': remoteDoc.id,
-                    'title': remoteDoc.title,
-                    'timeDiff': '${timeDifference.inSeconds}s',
-                  },
-                );
+              await box.put(remoteDoc.id, finalDoc);
+              updated++;
+              
+              // Emit document updated event
+              DocumentEventBus.instance.emitUpdated(finalDoc, previousDocument: localDoc);
+              
+              AppLogger.info(
+                '✅ Updated local document with newer backend version',
+                data: {
+                  'id': remoteDoc.id,
+                  'title': remoteDoc.title,
+                  'timeDiff': '${timeDifference.inSeconds}s',
+                },
+              );
               } else if (remoteUpdatedAt.isBefore(localUpdatedAt)) {
                 // Local version is newer - keep local (will be uploaded by upload service)
                 // Update sync status to pending upload
@@ -1051,6 +1060,14 @@ class DocumentSyncService {
             data: {'id': remoteDoc.id, 'retryCount': newRetryCount},
           );
 
+          // Emit sync failed event
+          DocumentEventBus.instance.emitSyncFailed(
+            remoteDoc.id,
+            error: progress.error ?? 'Unknown error',
+            isUpload: false,
+            retryCount: newRetryCount,
+          );
+          
           if (newRetryCount < maxRetries) {
             // Calculate exponential backoff delay: 5min, 15min, 30min
             final delayMinutes = [5, 15, 30][newRetryCount - 1];
@@ -1170,6 +1187,13 @@ class DocumentSyncService {
             remoteDoc.id,
             DocumentSyncStatus.synced,
             lastSyncTime: DateTime.now(),
+          );
+          
+          // Emit sync success event
+          DocumentEventBus.instance.emitSynced(
+            remoteDoc.id,
+            isUpload: false,
+            success: true,
           );
           
           AppLogger.info(
