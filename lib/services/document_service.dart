@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import 'package:thyscan/core/errors/failures.dart';
 import 'package:thyscan/core/errors/pdf_exceptions.dart';
 import 'package:thyscan/core/errors/storage_exceptions.dart';
+import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/app_storage_service.dart';
 import 'package:thyscan/core/services/document_backend_sync_service.dart';
@@ -682,8 +683,8 @@ class DocumentService {
   }
 
   Future<void> _deleteDocumentInternal(String id, {bool hardDelete = false}) async {
-    final box = Hive.box<DocumentModel>(boxName);
-    final doc = box.get(id);
+    // Use repository for async read (never blocks main thread)
+    final doc = await DocumentRepository.instance.getDocumentById(id);
 
     if (doc == null) {
       AppLogger.warning(
@@ -731,8 +732,8 @@ class DocumentService {
       isDeleted: true,
       deletedAt: DateTime.now(),
     );
-    final box = Hive.box<DocumentModel>(boxName);
-    await box.put(id, softDeletedDoc);
+    // Use repository for async write
+    await DocumentRepository.instance.updateDocument(softDeletedDoc);
     _markCacheDirty();
 
     // Request soft delete from backend
@@ -1063,9 +1064,8 @@ class DocumentService {
       return;
     }
 
-    final box = Hive.box<DocumentModel>(boxName);
-    // Filter out soft-deleted documents from cache
-    final docs = box.values.where((doc) => !doc.isDeleted).toList();
+    // Use repository for async Hive access (never blocks main thread)
+    final docs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
     _documentsCache
       ..clear()
       ..addEntries(docs.map((doc) => MapEntry(doc.id, doc)));

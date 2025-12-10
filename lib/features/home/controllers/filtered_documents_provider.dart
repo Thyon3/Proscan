@@ -2,31 +2,58 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_riverpod/legacy.dart'
-    show StateNotifier, StateNotifierProvider;
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:thyscan/core/repositories/document_repository.dart';
+import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/document_search_service.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/models/document_filter.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
-/// Provider that watches Hive box for real-time document updates
+/// Provider that watches Hive box for real-time document updates (async, non-blocking)
 final hiveBoxProvider = Provider<Box<DocumentModel>>((ref) {
   return Hive.box<DocumentModel>(DocumentService.boxName);
 });
 
-/// StateNotifier that watches Hive box and emits document list updates
-class DocumentsNotifier extends StateNotifier<List<DocumentModel>> {
+/// StateNotifier that watches Hive box and emits document list updates (async, non-blocking)
+class DocumentsNotifier extends StateNotifier<AsyncValue<List<DocumentModel>>> {
   final Box<DocumentModel> _box;
   StreamSubscription? _subscription;
 
-  DocumentsNotifier(this._box) : super(_box.values.where((doc) => !doc.isDeleted).toList()) {
-    // Listen to box changes - watch() returns Stream<BoxEvent>
-    _subscription = _box.watch().listen((_) {
-      // Update state immediately when box changes, excluding soft-deleted documents
-      state = _box.values.where((doc) => !doc.isDeleted).toList();
-    });
+  DocumentsNotifier(this._box) : super(const AsyncValue.loading()) {
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      // Initial load (async, in isolate - never blocks main thread)
+      final docs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+      state = AsyncValue.data(docs);
+
+      // Listen to box changes - watch() returns Stream<BoxEvent>
+      _subscription = _box.watch().listen((_) async {
+        // Reload async when box changes (never blocks main thread)
+        try {
+          final updatedDocs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+          state = AsyncValue.data(updatedDocs);
+        } catch (e, stack) {
+          AppLogger.error(
+            'Error reloading documents in DocumentsNotifier',
+            error: e,
+            stack: stack,
+          );
+          state = AsyncValue.error(e, stack);
+        }
+      });
+    } catch (e, stack) {
+      AppLogger.error(
+        'Error initializing DocumentsNotifier',
+        error: e,
+        stack: stack,
+      );
+      state = AsyncValue.error(e, stack);
+    }
   }
 
   @override
@@ -36,48 +63,54 @@ class DocumentsNotifier extends StateNotifier<List<DocumentModel>> {
   }
 }
 
-/// Provider that returns all documents (reactive to Hive changes)
+/// Provider that returns all documents (reactive to Hive changes, async, non-blocking)
 /// Excludes soft-deleted documents from the main view
 final allDocumentsProvider =
-    StateNotifierProvider<DocumentsNotifier, List<DocumentModel>>((ref) {
+    StateNotifierProvider<DocumentsNotifier, AsyncValue<List<DocumentModel>>>((ref) {
       final box = ref.watch(hiveBoxProvider);
       return DocumentsNotifier(box);
     });
 
 /// Provider that returns filtered and sorted documents based on current home state
 /// Uses local filtering by default for performance, but can use backend when online
-/// Now reactive to Hive box changes for immediate updates
-final filteredDocumentsProvider = Provider<List<DocumentModel>>((ref) {
+/// Now reactive to Hive box changes for immediate updates (async, non-blocking)
+final filteredDocumentsProvider = Provider<AsyncValue<List<DocumentModel>>>((ref) {
   final homeState = ref.watch(homeProvider);
 
-  // Watch all documents (reactive to Hive changes)
-  final allDocuments = ref.watch(allDocumentsProvider);
+  // Watch all documents (reactive to Hive changes, async)
+  final allDocumentsAsync = ref.watch(allDocumentsProvider);
 
-  // Apply filter based on scan mode and exclude soft-deleted documents
-  final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
-  final filteredDocs = allDocuments.where((doc) {
-    // Exclude soft-deleted documents from main view
-    if (doc.isDeleted) {
-      return false;
-    }
-    return activeFilter.matches(doc.scanMode);
-  }).toList();
+  return allDocumentsAsync.when(
+    data: (allDocuments) {
+      // Apply filter based on scan mode and exclude soft-deleted documents
+      final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
+      final filteredDocs = allDocuments.where((doc) {
+        // Exclude soft-deleted documents from main view
+        if (doc.isDeleted) {
+          return false;
+        }
+        return activeFilter.matches(doc.scanMode);
+      }).toList();
 
-  // Apply sorting
-  switch (homeState.sortCriteria) {
-    case SortCriteria.date:
-      filteredDocs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      break;
-    case SortCriteria.size:
-      // Sort by file size (approximate based on page count)
-      filteredDocs.sort((a, b) => b.pageCount.compareTo(a.pageCount));
-      break;
-    case SortCriteria.pages:
-      filteredDocs.sort((a, b) => b.pageCount.compareTo(a.pageCount));
-      break;
-  }
+      // Apply sorting
+      switch (homeState.sortCriteria) {
+        case SortCriteria.date:
+          filteredDocs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          break;
+        case SortCriteria.size:
+          // Sort by file size (approximate based on page count)
+          filteredDocs.sort((a, b) => b.pageCount.compareTo(a.pageCount));
+          break;
+        case SortCriteria.pages:
+          filteredDocs.sort((a, b) => b.pageCount.compareTo(a.pageCount));
+          break;
+      }
 
-  return filteredDocs;
+      return AsyncValue.data(filteredDocs);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (error, stack) => AsyncValue.error(error, stack),
+  );
 });
 
 /// Provider that uses backend search when online (for consistent cross-device results)
@@ -115,7 +148,8 @@ final filteredDocumentsWithBackendProvider = FutureProvider<List<DocumentModel>>
   }
 
   // Use local filtering (offline or "All" filter or backend failed)
-  final allDocuments = ref.watch(allDocumentsProvider);
+  final allDocumentsAsync = ref.watch(allDocumentsProvider);
+  final allDocuments = await allDocumentsAsync.value ?? [];
   return DocumentSearchService.instance.filterAndSort(
     documents: allDocuments,
     scanMode: activeFilter.scanMode,
@@ -124,19 +158,26 @@ final filteredDocumentsWithBackendProvider = FutureProvider<List<DocumentModel>>
   );
 });
 
-/// Provider for document count by filter (reactive to Hive changes)
-final documentCountByFilterProvider = Provider.family<int, String>((
+/// Provider for document count by filter (reactive to Hive changes, async, non-blocking)
+final documentCountByFilterProvider = Provider.family<AsyncValue<int>, String>((
   ref,
   filterId,
 ) {
-  // Watch all documents (reactive to Hive changes)
-  final allDocuments = ref.watch(allDocumentsProvider);
+  // Watch all documents (reactive to Hive changes, async)
+  final allDocumentsAsync = ref.watch(allDocumentsProvider);
 
-  final filter = DocumentFilters.getById(filterId);
+  return allDocumentsAsync.when(
+    data: (allDocuments) {
+      final filter = DocumentFilters.getById(filterId);
 
-  if (filter.scanMode == null) {
-    return allDocuments.length; // 'All' filter
-  }
+      if (filter.scanMode == null) {
+        return AsyncValue.data(allDocuments.length); // 'All' filter
+      }
 
-  return allDocuments.where((doc) => filter.matches(doc.scanMode)).length;
+      final count = allDocuments.where((doc) => filter.matches(doc.scanMode)).length;
+      return AsyncValue.data(count);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (error, stack) => AsyncValue.error(error, stack),
+  );
 });
