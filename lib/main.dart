@@ -10,6 +10,7 @@ import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/document_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
+import 'package:thyscan/core/services/recent_searches_service.dart';
 import 'package:thyscan/core/services/background_sync_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
@@ -89,6 +90,13 @@ void main() {
         BackgroundSyncService.initialize().catchError((error) {
           AppLogger.error(
             'BackgroundSyncService initialization failed',
+            error: error,
+          );
+        });
+
+        RecentSearchesService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'RecentSearchesService initialization failed',
             error: error,
           );
         });

@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:thyscan/core/services/recent_searches_service.dart';
 import 'package:thyscan/features/home/controllers/search_provider.dart';
+import 'package:thyscan/features/home/presentation/widgets/advanced_search_filters.dart';
 import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
+import 'package:thyscan/features/home/presentation/widgets/search_autocomplete.dart';
+import 'package:thyscan/features/home/presentation/widgets/search_result_highlighter.dart';
 import 'package:thyscan/models/document_model.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -19,10 +23,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
+  final ScrollController _scrollController = ScrollController();
 
   List<ToolItem> _toolResults = [];
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+  
+  // Advanced filters state
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+  int? _minPages;
+  int? _maxPages;
+  bool _showAdvancedFilters = false;
 
   // Available tools
   final List<ToolItem> _allTools = [
@@ -92,6 +104,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   void dispose() {
     _searchController.dispose();
     _searchFocus.dispose();
+    _scrollController.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -103,6 +116,15 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     // Reset page when query changes
     ref.read(searchPageProvider.notifier).state = 0;
     
+    // Add to recent searches when user finishes typing (after debounce)
+    if (query.trim().isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (_searchController.text == query) {
+          RecentSearchesService.instance.addSearch(query);
+        }
+      });
+    }
+    
     // Search tools locally (tools are not documents)
     if (query.isEmpty) {
       _toolResults = [];
@@ -113,6 +135,26 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
             tool.description.toLowerCase().contains(queryLower);
       }).toList();
     }
+  }
+  
+  void _onSuggestionTap(String suggestion) {
+    _searchController.text = suggestion;
+    ref.read(searchQueryProvider.notifier).state = suggestion;
+    ref.read(searchPageProvider.notifier).state = 0;
+    RecentSearchesService.instance.addSearch(suggestion);
+    _searchFocus.unfocus();
+  }
+  
+  void _onRecentSearchTap(String search) {
+    _searchController.text = search;
+    ref.read(searchQueryProvider.notifier).state = search;
+    ref.read(searchPageProvider.notifier).state = 0;
+    RecentSearchesService.instance.addSearch(search);
+    _searchFocus.unfocus();
+  }
+  
+  void _onRecentSearchRemove(String search) {
+    RecentSearchesService.instance.removeSearch(search);
   }
 
   void _openDocument(DocumentModel doc) {
@@ -165,6 +207,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
             // Premium Search Header
             _buildPremiumSearchHeader(theme, colorScheme),
 
+            // Autocomplete suggestions
+            if (hasQuery)
+              SearchAutocomplete(
+                query: searchQuery,
+                onSuggestionTap: _onSuggestionTap,
+                onSuggestionRemove: (_) {},
+              ),
+
             // Search results
             Expanded(
               child: AnimatedSwitcher(
@@ -174,7 +224,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                     : isSearching
                     ? _buildPremiumLoadingState(colorScheme)
                     : hasResults
-                    ? _buildPremiumSearchResults(colorScheme, searchResultsAsync.value!)
+                    ? _buildPremiumSearchResults(colorScheme, searchResultsAsync.value!, searchQuery)
                     : _buildPremiumNoResults(colorScheme),
               ),
             ),
@@ -327,13 +377,58 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SingleChildScrollView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Recent Searches Section
-            _buildPremiumSectionTitle('Recent Searches', colorScheme),
-            const SizedBox(height: 20),
+            RecentSearchesWidget(
+              onSearchTap: _onRecentSearchTap,
+              onSearchRemove: _onRecentSearchRemove,
+            ),
+            const SizedBox(height: 24),
+            
+            // Advanced Filters Toggle
+            _buildAdvancedFiltersToggle(colorScheme),
+            
+            if (_showAdvancedFilters) ...[
+              const SizedBox(height: 16),
+              AdvancedSearchFilters(
+                dateFrom: _dateFrom,
+                dateTo: _dateTo,
+                minPages: _minPages,
+                maxPages: _maxPages,
+                onDateFromChanged: (date) {
+                  setState(() => _dateFrom = date);
+                  // Trigger search with new filters
+                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                },
+                onDateToChanged: (date) {
+                  setState(() => _dateTo = date);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                },
+                onMinPagesChanged: (pages) {
+                  setState(() => _minPages = pages);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                },
+                onMaxPagesChanged: (pages) {
+                  setState(() => _maxPages = pages);
+                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                },
+                onClearFilters: () {
+                  setState(() {
+                    _dateFrom = null;
+                    _dateTo = null;
+                    _minPages = null;
+                    _maxPages = null;
+                  });
+                  ref.read(searchQueryProvider.notifier).state = ref.read(searchQueryProvider);
+                },
+              ),
+            ],
+            
+            const SizedBox(height: 24),
             _buildPremiumRecentSearchesPlaceholder(colorScheme),
 
             const SizedBox(height: 40),
@@ -679,7 +774,56 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
     );
   }
 
-  Widget _buildPremiumSearchResults(ColorScheme colorScheme, PaginatedDocuments searchResults) {
+  Widget _buildAdvancedFiltersToggle(ColorScheme colorScheme) {
+    return InkWell(
+      onTap: () {
+        setState(() => _showAdvancedFilters = !_showAdvancedFilters);
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceVariant.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: colorScheme.outline.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.tune_rounded,
+                  size: 20,
+                  color: colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Advanced Filters',
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            Icon(
+              _showAdvancedFilters
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPremiumSearchResults(ColorScheme colorScheme, PaginatedDocuments searchResults, String query) {
     return FadeTransition(
       opacity: _fadeAnimation,
       child: ListView(
@@ -853,6 +997,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
   Widget _buildPremiumDocumentResult(
     DocumentModel doc,
     ColorScheme colorScheme,
+    String query,
   ) {
     final dateFormat = DateFormat('MMM dd, yyyy');
 
@@ -928,15 +1073,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
                   ),
           ),
         ),
-        title: Text(
-          doc.title,
+        title: SearchResultHighlighter(
+          text: doc.title,
+          query: query,
           style: GoogleFonts.inter(
             fontSize: 17,
             fontWeight: FontWeight.w700,
             color: colorScheme.onSurface,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

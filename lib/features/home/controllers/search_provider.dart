@@ -2,7 +2,9 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_search_service.dart';
+import 'package:thyscan/core/services/recent_searches_service.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/models/document_filter.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -85,6 +87,27 @@ final isSearchingProvider = Provider<bool>((ref) {
 final searchErrorProvider = Provider<String?>((ref) {
   final resultsAsync = ref.watch(currentSearchResultsProvider);
   return resultsAsync.hasError ? resultsAsync.error.toString() : null;
+});
+
+/// Provider for search suggestions/autocomplete
+final searchSuggestionsProvider = FutureProvider.family<List<String>, String>((ref, query) async {
+  if (query.trim().isEmpty || query.trim().length < 1) {
+    return [];
+  }
+
+  try {
+    return await DocumentBackendSyncService.instance.getSearchSuggestions(
+      query: query.trim(),
+      limit: 10,
+    );
+  } catch (e) {
+    return [];
+  }
+});
+
+/// Provider for recent searches
+final recentSearchesProvider = Provider<List<String>>((ref) {
+  return RecentSearchesService.instance.getRecentSearches(limit: 10);
 });
 
 /// Search parameters model

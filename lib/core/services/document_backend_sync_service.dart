@@ -1136,6 +1136,118 @@ class DocumentBackendSyncService {
     }
   }
 
+  /// Gets search suggestions/autocomplete from backend
+  ///
+  /// **Parameters:**
+  /// - `query`: Search query string (minimum 1 character)
+  /// - `limit`: Maximum number of suggestions (default: 10)
+  ///
+  /// **Returns:**
+  /// - List of suggestion strings
+  ///
+  /// **Throws:**
+  /// - Exception if request fails
+  Future<List<String>> getSearchSuggestions({
+    required String query,
+    int limit = 10,
+  }) async {
+    try {
+      if (query.trim().isEmpty) {
+        return [];
+      }
+
+      await AuthService.instance.ensureInitialized();
+      final user = AuthService.instance.currentUser;
+
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final session = AuthService.instance.supabase.auth.currentSession;
+      if (session == null) {
+        throw Exception('No active session');
+      }
+
+      var backendUrl = AppEnv.backendApiUrl;
+      
+      // Fix for Android emulator: replace localhost with 10.0.2.2
+      if (backendUrl != null && backendUrl.contains('localhost')) {
+        backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
+      }
+      
+      if (backendUrl == null || backendUrl.isEmpty) {
+        AppLogger.warning(
+          'Backend API URL not configured, cannot get search suggestions',
+          error: null,
+        );
+        return [];
+      }
+
+      // Validate and normalize URL
+      if (!UrlValidator.isValidUrl(backendUrl)) {
+        throw Exception('Invalid backend API URL format: $backendUrl');
+      }
+
+      // Build URL
+      final suggestionsUrl = UrlValidator.buildApiUrl(
+        backendUrl,
+        'api/documents/search/suggestions?q=${Uri.encodeComponent(query)}&limit=$limit',
+      );
+      
+      if (suggestionsUrl == null) {
+        throw Exception('Failed to build suggestions URL');
+      }
+
+      final response = await http
+          .get(
+            Uri.parse(suggestionsUrl),
+            headers: {
+              'Authorization': 'Bearer ${session.accessToken}',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              throw TimeoutException('Backend API request timed out');
+            },
+          );
+
+      if (response.statusCode == 200) {
+        final suggestions = (jsonDecode(response.body) as List<dynamic>)
+            .map((s) => s as String)
+            .toList();
+
+        AppLogger.info(
+          'Search suggestions fetched',
+          data: {
+            'query': query,
+            'suggestionsCount': suggestions.length,
+          },
+        );
+
+        return suggestions;
+      } else {
+        AppLogger.error(
+          'Failed to get search suggestions',
+          data: {
+            'statusCode': response.statusCode,
+            'responseBody': response.body,
+          },
+        );
+        return [];
+      }
+    } catch (e, stack) {
+      AppLogger.warning(
+        'Failed to get search suggestions',
+        error: e,
+        stack: stack,
+        data: {'query': query},
+      );
+      return [];
+    }
+  }
+
   /// Converts JSON from backend to DocumentModel
   DocumentModel _documentFromJson(Map<String, dynamic> json) {
     return DocumentModel(
