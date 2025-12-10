@@ -200,8 +200,8 @@ class DocumentService {
         metadata: resolvedMetadata.toDocumentMap(),
       );
 
-      final box = Hive.box<DocumentModel>(boxName);
-      await box.put(id, doc);
+      // Use repository for async write (never blocks main thread)
+      await DocumentRepository.instance.saveDocument(doc);
       _markCacheDirty();
       
       // Invalidate search cache
@@ -335,8 +335,8 @@ class DocumentService {
       throw ArgumentError('pageImagePaths cannot be empty');
     }
 
-    final box = Hive.box<DocumentModel>(boxName);
-    final existingDoc = box.get(documentId);
+    // Use repository for async read (never blocks main thread)
+    final existingDoc = await DocumentRepository.instance.getDocumentById(documentId);
 
     if (existingDoc == null) {
       throw DocumentStorageException(
@@ -508,7 +508,8 @@ class DocumentService {
         metadata: resolvedMetadata.toDocumentMap(),
       );
 
-      await box.put(documentId, updatedDoc);
+      // Use repository for async write (never blocks main thread)
+      await DocumentRepository.instance.updateDocument(updatedDoc);
       _markCacheDirty();
       
       // Invalidate search cache
@@ -654,8 +655,8 @@ class DocumentService {
       },
     );
 
-    final box = Hive.box<DocumentModel>(boxName);
-    await box.put(id, doc);
+    // Use repository for async write (never blocks main thread)
+    await DocumentRepository.instance.saveDocument(doc);
     _markCacheDirty();
     
     // Invalidate search cache
@@ -854,9 +855,9 @@ class DocumentService {
       );
     }
 
-    // 4. Delete from local Hive storage
-    final box = Hive.box<DocumentModel>(boxName);
-    await box.delete(id);
+    // 4. Delete from local storage using repository
+    // Use repository for async delete (never blocks main thread)
+    await DocumentRepository.instance.deleteDocument(id);
     _markCacheDirty();
     
     // Invalidate search cache
@@ -873,8 +874,8 @@ class DocumentService {
 
   /// Restores a soft-deleted document
   Future<void> restoreDocument(String id) async {
-    final box = Hive.box<DocumentModel>(boxName);
-    final doc = box.get(id);
+    // Use repository for async read (never blocks main thread)
+    final doc = await DocumentRepository.instance.getDocumentById(id);
 
     if (doc == null || !doc.isDeleted) {
       AppLogger.warning(
@@ -889,7 +890,8 @@ class DocumentService {
       isDeleted: false,
       deletedAt: null,
     );
-    await box.put(id, restoredDoc);
+    // Use repository for async write (never blocks main thread)
+    await DocumentRepository.instance.updateDocument(restoredDoc);
     _markCacheDirty();
 
     // If document was uploaded, restore it on backend
@@ -1016,7 +1018,8 @@ class DocumentService {
         tags: doc.tags,
         metadata: doc.metadata,
       );
-      await box.put(id, updatedDoc);
+      // Use repository for async write (never blocks main thread)
+      await DocumentRepository.instance.updateDocument(updatedDoc);
       _markCacheDirty();
       
       // Invalidate search cache
