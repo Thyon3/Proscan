@@ -6,6 +6,7 @@ import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart
 import 'package:thyscan/features/home/presentation/widgets/corrupted_document_tile.dart';
 import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
+import 'package:thyscan/features/home/presentation/widgets/sync_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -205,20 +206,27 @@ class ScanListItem extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // File status badge overlay (if file is missing/corrupted)
+                      // Sync status badge (top-right) - like CamScanner
+                      SyncStatusBadge(
+                        documentId: scan.id,
+                        document: document,
+                        size: 20,
+                        position: BadgePosition.topRight,
+                      ),
+                      // File status badge overlay (top-left if file is invalid)
                       if (document != null && document!.fileStatus != FileStatus.valid)
                         Positioned(
                           top: 8,
-                          right: 8,
+                          left: 8,
                           child: FileStatusBadge(
                             status: document!.fileStatus,
                             size: 12,
                           ),
                         ),
 
-                      // Page Count Badge
+                      // Page Count Badge (bottom-right)
                       Positioned(
-                        top: 8,
+                        bottom: 8,
                         right: 8,
                         child: Container(
                           padding: const EdgeInsets.symmetric(

@@ -6,6 +6,7 @@ import 'package:thyscan/features/home/presentation/widgets/corrupted_document_ti
 import 'package:thyscan/features/home/presentation/widgets/document_thumbnail.dart';
 import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
+import 'package:thyscan/features/home/presentation/widgets/sync_status_badge.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/models/file_status.dart';
@@ -150,19 +151,26 @@ class LibraryScanListItem extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // File status badge overlay
+                    // Sync status badge (top-right) - like CamScanner
+                    SyncStatusBadge(
+                      documentId: scan.id,
+                      document: document,
+                      size: 20,
+                      position: BadgePosition.topRight,
+                    ),
+                    // File status badge overlay (top-left if file is invalid)
                     if (document != null && document!.fileStatus != FileStatus.valid)
                       Positioned(
                         top: 4,
-                        right: 4,
+                        left: 4,
                         child: FileStatusBadge(
                           status: document!.fileStatus,
                           size: 12,
                         ),
                       ),
-                    // Page count badge
+                    // Page count badge (bottom-right)
                     Positioned(
-                      top: 6,
+                      bottom: 6,
                       right: 6,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
