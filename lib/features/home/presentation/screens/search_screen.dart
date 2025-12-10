@@ -1,28 +1,26 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:thyscan/features/home/controllers/search_provider.dart';
 import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
 import 'package:thyscan/models/document_model.dart';
-import 'package:thyscan/services/document_service.dart';
 
-class SearchScreen extends StatefulWidget {
+class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
   @override
-  State<SearchScreen> createState() => _SearchScreenState();
+  ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen>
+class _SearchScreenState extends ConsumerState<SearchScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
 
-  List<DocumentModel> _searchResults = [];
   List<ToolItem> _toolResults = [];
-  bool _isSearching = false;
-  String _searchQuery = '';
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -99,35 +97,22 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   void _onSearchChanged() {
-    setState(() {
-      _searchQuery = _searchController.text;
-      _performSearch();
-    });
-  }
-
-  void _performSearch() {
-    if (_searchQuery.isEmpty) {
-      _searchResults = [];
+    final query = _searchController.text;
+    // Update search query provider (debouncing handled by provider)
+    ref.read(searchQueryProvider.notifier).state = query;
+    // Reset page when query changes
+    ref.read(searchPageProvider.notifier).state = 0;
+    
+    // Search tools locally (tools are not documents)
+    if (query.isEmpty) {
       _toolResults = [];
-      _isSearching = false;
-      return;
+    } else {
+      final queryLower = query.toLowerCase();
+      _toolResults = _allTools.where((tool) {
+        return tool.name.toLowerCase().contains(queryLower) ||
+            tool.description.toLowerCase().contains(queryLower);
+      }).toList();
     }
-
-    _isSearching = true;
-    final query = _searchQuery.toLowerCase();
-
-    // Search documents
-    final allDocs = DocumentService.instance.getAllDocuments();
-    _searchResults = allDocs.where((doc) {
-      return doc.title.toLowerCase().contains(query) ||
-          doc.format.toLowerCase().contains(query);
-    }).toList();
-
-    // Search tools
-    _toolResults = _allTools.where((tool) {
-      return tool.name.toLowerCase().contains(query) ||
-          tool.description.toLowerCase().contains(query);
-    }).toList();
   }
 
   void _openDocument(DocumentModel doc) {
@@ -155,12 +140,9 @@ class _SearchScreenState extends State<SearchScreen>
 
   void _clearSearch() {
     _searchController.clear();
-    setState(() {
-      _searchQuery = '';
-      _searchResults = [];
-      _toolResults = [];
-      _isSearching = false;
-    });
+    ref.read(searchQueryProvider.notifier).state = '';
+    ref.read(searchPageProvider.notifier).state = 0;
+    _toolResults = [];
     _searchFocus.requestFocus();
   }
 
@@ -168,7 +150,12 @@ class _SearchScreenState extends State<SearchScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final hasResults = _searchResults.isNotEmpty || _toolResults.isNotEmpty;
+    final searchQuery = ref.watch(searchQueryProvider);
+    final searchResultsAsync = ref.watch(currentSearchResultsProvider);
+    final isSearching = ref.watch(isSearchingProvider);
+    final hasQuery = searchQuery.isNotEmpty;
+    final hasResults = searchResultsAsync.hasValue && 
+        (searchResultsAsync.value!.items.isNotEmpty || _toolResults.isNotEmpty);
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -182,10 +169,12 @@ class _SearchScreenState extends State<SearchScreen>
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 400),
-                child: _searchQuery.isEmpty
+                child: !hasQuery
                     ? _buildPremiumEmptyState(colorScheme)
+                    : isSearching
+                    ? _buildPremiumLoadingState(colorScheme)
                     : hasResults
-                    ? _buildPremiumSearchResults(colorScheme)
+                    ? _buildPremiumSearchResults(colorScheme, searchResultsAsync.value!)
                     : _buildPremiumNoResults(colorScheme),
               ),
             ),
@@ -306,7 +295,7 @@ class _SearchScreenState extends State<SearchScreen>
                     ),
                   ),
                 ),
-                if (_searchQuery.isNotEmpty)
+                if (ref.watch(searchQueryProvider).isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(right: 16),
                     child: GestureDetector(
@@ -669,7 +658,28 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  Widget _buildPremiumSearchResults(ColorScheme colorScheme) {
+  Widget _buildPremiumLoadingState(ColorScheme colorScheme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Searching...',
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumSearchResults(ColorScheme colorScheme, PaginatedDocuments searchResults) {
     return FadeTransition(
       opacity: _fadeAnimation,
       child: ListView(
@@ -690,18 +700,43 @@ class _SearchScreenState extends State<SearchScreen>
           ],
 
           // Documents section
-          if (_searchResults.isNotEmpty) ...[
+          if (searchResults.items.isNotEmpty) ...[
             _buildPremiumResultsSectionHeader(
               'Documents',
-              _searchResults.length,
+              searchResults.totalItems,
               colorScheme,
             ),
             const SizedBox(height: 20),
-            ..._searchResults.map(
+            ...searchResults.items.map(
               (doc) => _buildPremiumDocumentResult(doc, colorScheme),
             ),
+            
+            // Load more button if there are more results
+            if (searchResults.hasMore) ...[
+              const SizedBox(height: 24),
+              _buildLoadMoreButton(colorScheme),
+            ],
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildLoadMoreButton(ColorScheme colorScheme) {
+    return Center(
+      child: FilledButton.icon(
+        onPressed: () {
+          // Load next page
+          final currentPage = ref.read(searchPageProvider);
+          ref.read(searchPageProvider.notifier).state = currentPage + 1;
+        },
+        icon: const Icon(Icons.expand_more_rounded),
+        label: const Text('Load More'),
+        style: FilledButton.styleFrom(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        ),
       ),
     );
   }

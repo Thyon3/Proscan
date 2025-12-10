@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart'
     show StateNotifier, StateNotifierProvider;
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:thyscan/core/services/document_search_service.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/models/document_filter.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -43,6 +45,7 @@ final allDocumentsProvider =
     });
 
 /// Provider that returns filtered and sorted documents based on current home state
+/// Uses local filtering by default for performance, but can use backend when online
 /// Now reactive to Hive box changes for immediate updates
 final filteredDocumentsProvider = Provider<List<DocumentModel>>((ref) {
   final homeState = ref.watch(homeProvider);
@@ -75,6 +78,50 @@ final filteredDocumentsProvider = Provider<List<DocumentModel>>((ref) {
   }
 
   return filteredDocs;
+});
+
+/// Provider that uses backend search when online (for consistent cross-device results)
+/// Falls back to local filtering when offline
+final filteredDocumentsWithBackendProvider = FutureProvider<List<DocumentModel>>((ref) async {
+  final homeState = ref.watch(homeProvider);
+  final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
+  
+  // Check connectivity
+  final connectivity = Connectivity();
+  final connectivityResults = await connectivity.checkConnectivity();
+  final isOnline = connectivityResults.any(
+    (result) =>
+        result != ConnectivityResult.none &&
+        result != ConnectivityResult.bluetooth,
+  );
+
+  // For "All" filter with default sort, use local (fast and documents are synced)
+  // For specific filters or when online, prefer backend for consistency
+  if (isOnline && activeFilter.scanMode != null) {
+    try {
+      // Use backend search for filtered views when online
+      final results = await DocumentSearchService.instance.search(
+        query: null, // No text query, just filtering
+        scanMode: activeFilter.scanMode,
+        sortBy: homeState.sortCriteria,
+        descending: true,
+        page: 0,
+        pageSize: 1000, // Get all results for main view
+      );
+      return results.items;
+    } catch (e) {
+      // Fallback to local on error
+    }
+  }
+
+  // Use local filtering (offline or "All" filter or backend failed)
+  final allDocuments = ref.watch(allDocumentsProvider);
+  return DocumentSearchService.instance.filterAndSort(
+    documents: allDocuments,
+    scanMode: activeFilter.scanMode,
+    sortBy: homeState.sortCriteria,
+    descending: true,
+  );
 });
 
 /// Provider for document count by filter (reactive to Hive changes)

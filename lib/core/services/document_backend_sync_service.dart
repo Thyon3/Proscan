@@ -10,6 +10,7 @@ import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/document_service.dart';
 
 /// Exception thrown when a document conflict is detected
 class ConflictException implements Exception {
@@ -951,6 +952,185 @@ class DocumentBackendSyncService {
         error: e,
         stack: stack,
         data: {'since': since.toIso8601String()},
+      );
+      rethrow;
+    }
+  }
+
+  /// Searches documents using backend API with query, filtering, sorting, and pagination.
+  ///
+  /// **Parameters:**
+  /// - `query`: Search query string (searches title, textContent, tags)
+  /// - `scanMode`: Filter by scan mode (optional)
+  /// - `sortBy`: Sort field ('date', 'size', 'pages', 'title')
+  /// - `order`: Sort order ('asc' or 'desc')
+  /// - `page`: Page number (default: 0)
+  /// - `pageSize`: Items per page (default: 20)
+  ///
+  /// **Returns:**
+  /// - PaginatedDocuments with search results
+  ///
+  /// **Throws:**
+  /// - Exception if search fails
+  Future<PaginatedDocuments> searchDocuments({
+    String? query,
+    String? scanMode,
+    String sortBy = 'date',
+    String order = 'desc',
+    int page = 0,
+    int pageSize = 20,
+  }) async {
+    try {
+      await AuthService.instance.ensureInitialized();
+      final user = AuthService.instance.currentUser;
+
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final session = AuthService.instance.supabase.auth.currentSession;
+      if (session == null) {
+        throw Exception('No active session');
+      }
+
+      var backendUrl = AppEnv.backendApiUrl;
+      
+      // Fix for Android emulator: replace localhost with 10.0.2.2
+      if (backendUrl != null && backendUrl.contains('localhost')) {
+        backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
+      }
+      
+      if (backendUrl == null || backendUrl.isEmpty) {
+        AppLogger.warning(
+          'Backend API URL not configured, cannot search documents',
+          error: null,
+        );
+        throw Exception('Backend API URL not configured');
+      }
+
+      // Validate and normalize URL
+      if (!UrlValidator.isValidUrl(backendUrl)) {
+        throw Exception('Invalid backend API URL format: $backendUrl');
+      }
+
+      // Check network connectivity
+      final connectivityResults = await _connectivity.checkConnectivity();
+      final isOnline = connectivityResults.any(
+        (result) =>
+            result != ConnectivityResult.none &&
+            result != ConnectivityResult.bluetooth,
+      );
+
+      if (!isOnline) {
+        throw Exception('No internet connection');
+      }
+
+      // Build query parameters
+      final queryParams = <String, String>{};
+      if (query != null && query.trim().isNotEmpty) {
+        queryParams['q'] = query.trim();
+      }
+      if (scanMode != null && scanMode.isNotEmpty) {
+        queryParams['scanMode'] = scanMode;
+      }
+      if (sortBy.isNotEmpty) {
+        queryParams['sortBy'] = sortBy;
+      }
+      if (order.isNotEmpty) {
+        queryParams['order'] = order;
+      }
+      queryParams['page'] = page.toString();
+      queryParams['pageSize'] = pageSize.toString();
+
+      // Build URL
+      final queryString = queryParams.entries
+          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      final searchUrl = UrlValidator.buildApiUrl(
+        backendUrl,
+        'api/documents/search?$queryString',
+      );
+      
+      if (searchUrl == null) {
+        throw Exception('Failed to build search URL');
+      }
+
+      AppLogger.info(
+        'Searching documents on backend',
+        data: {
+          'query': query,
+          'scanMode': scanMode,
+          'sortBy': sortBy,
+          'order': order,
+          'page': page,
+          'pageSize': pageSize,
+        },
+      );
+
+      final response = await http
+          .get(
+            Uri.parse(searchUrl),
+            headers: {
+              'Authorization': 'Bearer ${session.accessToken}',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw TimeoutException('Backend API request timed out');
+            },
+          );
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body) as Map<String, dynamic>;
+        final documentsJson = responseData['documents'] as List<dynamic>;
+        final paginationData = responseData['pagination'] as Map<String, dynamic>;
+
+        final documents = documentsJson
+            .map((json) => _documentFromJson(json as Map<String, dynamic>))
+            .toList();
+
+        final paginatedResults = PaginatedDocuments(
+          page: paginationData['page'] as int,
+          pageSize: paginationData['pageSize'] as int,
+          totalItems: paginationData['total'] as int,
+          items: documents,
+          hasMore: paginationData['hasMore'] as bool,
+        );
+
+        AppLogger.info(
+          'Document search completed',
+          data: {
+            'query': query,
+            'resultsCount': documents.length,
+            'total': paginationData['total'],
+            'page': paginationData['page'],
+          },
+        );
+
+        return paginatedResults;
+      } else {
+        AppLogger.error(
+          'Failed to search documents',
+          data: {
+            'statusCode': response.statusCode,
+            'responseBody': response.body,
+          },
+        );
+        throw Exception(
+          'Failed to search documents: HTTP ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to search documents',
+        error: e,
+        stack: stack,
+        data: {
+          'query': query,
+          'scanMode': scanMode,
+        },
       );
       rethrow;
     }

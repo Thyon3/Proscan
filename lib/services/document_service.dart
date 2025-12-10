@@ -14,6 +14,7 @@ import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/app_storage_service.dart';
 import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_operation_queue.dart';
+import 'package:thyscan/core/services/document_search_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
@@ -201,6 +202,9 @@ class DocumentService {
       final box = Hive.box<DocumentModel>(boxName);
       await box.put(id, doc);
       _markCacheDirty();
+      
+      // Invalidate search cache
+      DocumentSearchService.instance.invalidateCacheForDocument(id);
 
       // Upload to cloud in background (non-blocking)
       print('═══════════════════════════════════════════════════════════');
@@ -505,6 +509,9 @@ class DocumentService {
 
       await box.put(documentId, updatedDoc);
       _markCacheDirty();
+      
+      // Invalidate search cache
+      DocumentSearchService.instance.invalidateCacheForDocument(documentId);
 
       // Upload updated file to Supabase Storage and sync metadata to backend
       // This will replace the old file in storage and update the backend with new metadata
@@ -649,6 +656,9 @@ class DocumentService {
     final box = Hive.box<DocumentModel>(boxName);
     await box.put(id, doc);
     _markCacheDirty();
+    
+    // Invalidate search cache
+    DocumentSearchService.instance.invalidateCacheForDocument(id);
 
     // Upload to cloud in background (non-blocking)
     DocumentUploadService.instance.uploadDocument(doc).catchError((error) {
@@ -958,6 +968,9 @@ class DocumentService {
     final box = Hive.box<DocumentModel>(boxName);
     await box.delete(id);
     _markCacheDirty();
+    
+    // Invalidate search cache
+    DocumentSearchService.instance.invalidateCacheForDocument(id);
 
     AppLogger.info(
       '✅ Document hard deletion completed',
@@ -1003,6 +1016,9 @@ class DocumentService {
       );
       await box.put(id, updatedDoc);
       _markCacheDirty();
+      
+      // Invalidate search cache
+      DocumentSearchService.instance.invalidateCacheForDocument(id);
     }
   }
 
