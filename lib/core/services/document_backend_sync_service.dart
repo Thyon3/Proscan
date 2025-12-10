@@ -11,6 +11,17 @@ import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/utils/url_validator.dart';
 import 'package:thyscan/models/document_model.dart';
 
+/// Exception thrown when a document conflict is detected
+class ConflictException implements Exception {
+  final String message;
+  final Map<String, dynamic>? remoteDocument;
+
+  ConflictException(this.message, {this.remoteDocument});
+
+  @override
+  String toString() => 'ConflictException: $message';
+}
+
 /// Production-ready service for syncing document metadata with backend API.
 ///
 /// Handles:
@@ -302,6 +313,65 @@ class DocumentBackendSyncService {
         );
       }
 
+      // Handle conflict (409 Conflict)
+      if (response.statusCode == 409) {
+        AppLogger.warning(
+          '⚠️ Conflict detected: document was modified on server',
+          data: {'documentId': document.id},
+        );
+        
+        try {
+          // Try to get the remote version
+          final remoteDocJson = jsonDecode(response.body) as Map<String, dynamic>;
+          final remoteUpdatedAt = remoteDocJson['updatedAt'] != null
+              ? DateTime.parse(remoteDocJson['updatedAt'] as String)
+              : null;
+          
+          // Last write wins: compare timestamps
+          if (remoteUpdatedAt != null && remoteUpdatedAt.isAfter(document.updatedAt)) {
+            // Remote is newer, update local with remote
+            AppLogger.info(
+              'Remote version is newer, updating local document',
+              data: {
+                'documentId': document.id,
+                'localUpdatedAt': document.updatedAt.toIso8601String(),
+                'remoteUpdatedAt': remoteUpdatedAt.toIso8601String(),
+              },
+            );
+            // Mark as conflict - DocumentService will handle the resolution
+            throw ConflictException(
+              'Document was modified on server. Remote version is newer.',
+              remoteDocument: remoteDocJson,
+            );
+          } else {
+            // Local is newer or same, force push local to cloud
+            AppLogger.info(
+              'Local version is newer, forcing update to server',
+              data: {
+                'documentId': document.id,
+                'localUpdatedAt': document.updatedAt.toIso8601String(),
+                'remoteUpdatedAt': remoteUpdatedAt?.toIso8601String(),
+              },
+            );
+            // Retry with force flag (if backend supports it)
+            // For now, we'll just throw the conflict and let DocumentService handle it
+            throw ConflictException(
+              'Document was modified on server. Local version is newer.',
+              remoteDocument: remoteDocJson,
+            );
+          }
+        } catch (e) {
+          if (e is ConflictException) {
+            rethrow;
+          }
+          // If we can't parse the conflict response, throw generic conflict
+          throw ConflictException(
+            'Document conflict detected but could not resolve',
+            remoteDocument: null,
+          );
+        }
+      }
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         print('═══════════════════════════════════════════════════════════');
         print('✅ [BACKEND SYNC] SUCCESS! Document saved to PostgreSQL');
@@ -409,13 +479,14 @@ class DocumentBackendSyncService {
   /// Deletes document from backend and Supabase Storage.
   ///
   /// **Process:**
-  /// 1. Deletes from Supabase Storage (file and thumbnail)
-  /// 2. Deletes metadata from PostgreSQL via backend API
+  /// 1. Deletes from Supabase Storage (file and thumbnail) if hardDelete is true
+  /// 2. Deletes or soft-deletes metadata from PostgreSQL via backend API
   ///
   /// **Parameters:**
   /// - `documentId`: Document UUID
   /// - `fileUrl`: Supabase Storage URL (optional, extracted from path if not provided)
   /// - `thumbnailUrl`: Supabase Storage thumbnail URL (optional)
+  /// - `hardDelete`: If true, permanently deletes. If false, performs soft delete (default: false)
   ///
   /// **Throws:**
   /// - `Exception` if deletion fails
@@ -423,6 +494,7 @@ class DocumentBackendSyncService {
     required String documentId,
     String? fileUrl,
     String? thumbnailUrl,
+    bool hardDelete = false,
   }) async {
     try {
       await AuthService.instance.ensureInitialized();
@@ -470,26 +542,28 @@ class DocumentBackendSyncService {
         throw Exception('No internet connection');
       }
 
-      // 1. Delete from Supabase Storage first
-      await _deleteFromSupabaseStorage(
-        documentId: documentId,
-        userId: user.id,
-        fileUrl: fileUrl,
-        thumbnailUrl: thumbnailUrl,
-      );
+      // 1. Delete from Supabase Storage first (only for hard delete)
+      if (hardDelete) {
+        await _deleteFromSupabaseStorage(
+          documentId: documentId,
+          userId: user.id,
+          fileUrl: fileUrl,
+          thumbnailUrl: thumbnailUrl,
+        );
+      }
 
-      // 2. Delete from backend database
+      // 2. Delete from backend database (soft or hard delete)
       final deleteUrl = UrlValidator.buildApiUrl(
         backendUrl,
-        'api/documents/$documentId',
+        'api/documents/$documentId${hardDelete ? '?hardDelete=true' : ''}',
       );
       if (deleteUrl == null) {
         throw Exception('Failed to build delete URL');
       }
 
       AppLogger.info(
-        'Deleting document from backend',
-        data: {'documentId': documentId},
+        hardDelete ? 'Hard deleting document from backend' : 'Soft deleting document from backend',
+        data: {'documentId': documentId, 'hardDelete': hardDelete},
       );
 
       final response = await http
@@ -763,6 +837,146 @@ class DocumentBackendSyncService {
       );
       rethrow;
     }
+  }
+
+  /// Fetches documents updated since a given timestamp (for delta sync).
+  ///
+  /// **Parameters:**
+  /// - `since`: Timestamp to fetch documents updated after
+  ///
+  /// **Returns:**
+  /// - List of DocumentModel objects from backend
+  ///
+  /// **Throws:**
+  /// - `Exception` if fetch fails
+  Future<List<DocumentModel>> getDocumentsSince(DateTime since) async {
+    try {
+      await AuthService.instance.ensureInitialized();
+      final user = AuthService.instance.currentUser;
+
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final session = AuthService.instance.supabase.auth.currentSession;
+      if (session == null) {
+        throw Exception('No active session');
+      }
+
+      var backendUrl = AppEnv.backendApiUrl;
+      
+      // Fix for Android emulator: replace localhost with 10.0.2.2
+      if (backendUrl != null && backendUrl.contains('localhost')) {
+        backendUrl = backendUrl.replaceAll('localhost', '10.0.2.2');
+      }
+      
+      if (backendUrl == null || backendUrl.isEmpty) {
+        AppLogger.warning(
+          'Backend API URL not configured, skipping remote fetch',
+          error: null,
+        );
+        return [];
+      }
+
+      // Check network connectivity
+      final connectivityResults = await _connectivity.checkConnectivity();
+      final isOnline = connectivityResults.any(
+        (result) =>
+            result != ConnectivityResult.none &&
+            result != ConnectivityResult.bluetooth,
+      );
+
+      if (!isOnline) {
+        AppLogger.info('No internet connection, cannot fetch remote documents');
+        return [];
+      }
+
+      // Build URL with since parameter
+      final sinceIso = since.toIso8601String();
+      final url = UrlValidator.buildApiUrl(
+        backendUrl,
+        'api/documents?since=$sinceIso',
+      );
+      if (url == null) {
+        throw Exception('Failed to build API URL');
+      }
+
+      AppLogger.info(
+        'Fetching documents updated since $sinceIso',
+        data: {'since': sinceIso},
+      );
+
+      final response = await http
+          .get(
+            Uri.parse(url),
+            headers: {
+              'Authorization': 'Bearer ${session.accessToken}',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw TimeoutException('Backend API request timed out');
+            },
+          );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> documentsJson = jsonDecode(response.body) as List<dynamic>;
+        final documents = documentsJson
+            .map((json) => _documentFromJson(json as Map<String, dynamic>))
+            .toList();
+
+        AppLogger.info(
+          'Fetched ${documents.length} documents from backend',
+          data: {'count': documents.length},
+        );
+
+        return documents;
+      } else {
+        AppLogger.error(
+          'Failed to fetch documents from backend',
+          data: {
+            'statusCode': response.statusCode,
+            'responseBody': response.body,
+          },
+        );
+        throw Exception(
+          'Failed to fetch documents: ${response.statusCode} - ${response.body}',
+        );
+      }
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to fetch documents since timestamp',
+        error: e,
+        stack: stack,
+        data: {'since': since.toIso8601String()},
+      );
+      rethrow;
+    }
+  }
+
+  /// Converts JSON from backend to DocumentModel
+  DocumentModel _documentFromJson(Map<String, dynamic> json) {
+    return DocumentModel(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      filePath: json['fileUrl'] as String? ?? '',
+      format: json['format'] as String? ?? 'pdf',
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      updatedAt: DateTime.parse(json['updatedAt'] as String),
+      pageCount: json['pageCount'] as int? ?? 0,
+      thumbnailPath: json['thumbnailUrl'] as String? ?? '',
+      scanMode: json['scanMode'] as String? ?? 'document',
+      textContent: json['textContent'] as String?,
+      colorProfile: json['colorProfile'] as String? ?? 'color',
+      tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
+      metadata: (json['metadata'] as Map<String, dynamic>?)?.cast<String, String>() ?? {},
+      isDeleted: json['isDeleted'] as bool? ?? false,
+      deletedAt: json['deletedAt'] != null
+          ? DateTime.parse(json['deletedAt'] as String)
+          : null,
+    );
   }
 }
 

@@ -42,15 +42,45 @@ class SyncStatusIndicator extends StatelessWidget {
         color = Colors.blue;
         tooltip = 'Syncing...';
         break;
+      case DocumentSyncStatus.uploadingFile:
+        iconData = Icons.cloud_upload;
+        color = Colors.blue;
+        tooltip = 'Uploading file...';
+        break;
+      case DocumentSyncStatus.uploadingThumbnail:
+        iconData = Icons.image;
+        color = Colors.blue;
+        tooltip = 'Uploading thumbnail...';
+        break;
+      case DocumentSyncStatus.syncingMetadata:
+        iconData = Icons.sync;
+        color = Colors.blue;
+        tooltip = 'Syncing metadata...';
+        break;
       case DocumentSyncStatus.conflict:
         iconData = Icons.warning;
         color = Colors.red;
         tooltip = 'Conflict detected';
         break;
+      case DocumentSyncStatus.pendingConflictResolution:
+        iconData = Icons.warning;
+        color = Colors.orange;
+        tooltip = 'Conflict - resolution pending';
+        break;
       case DocumentSyncStatus.error:
         iconData = Icons.error;
         color = Colors.red;
         tooltip = 'Sync error';
+        break;
+      case DocumentSyncStatus.failedRetry:
+        iconData = Icons.refresh;
+        color = Colors.orange;
+        tooltip = 'Retrying...';
+        break;
+      case DocumentSyncStatus.failedSyncDelete:
+        iconData = Icons.error;
+        color = Colors.red;
+        tooltip = 'Delete sync failed';
         break;
     }
 

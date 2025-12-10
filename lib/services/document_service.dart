@@ -662,16 +662,16 @@ class DocumentService {
     return doc;
   }
 
-  Future<void> deleteDocument(String id) {
+  Future<void> deleteDocument(String id, {bool hardDelete = false}) {
     return DocumentOperationQueue.instance.enqueue(
       () => PerformanceTracker.track(
         'deleteDocument',
-        () => _deleteDocumentInternal(id),
+        () => _deleteDocumentInternal(id, hardDelete: hardDelete),
       ),
     );
   }
 
-  Future<void> _deleteDocumentInternal(String id) async {
+  Future<void> _deleteDocumentInternal(String id, {bool hardDelete = false}) async {
     final box = Hive.box<DocumentModel>(boxName);
     final doc = box.get(id);
 
@@ -690,6 +690,7 @@ class DocumentService {
         'documentId': id,
         'title': doc.title,
         'filePath': doc.filePath,
+        'hardDelete': hardDelete,
       },
     );
 
@@ -697,6 +698,86 @@ class DocumentService {
     // If filePath is a URL (starts with http/https), it's in Supabase Storage
     final isUploaded = doc.filePath.startsWith('http://') ||
         doc.filePath.startsWith('https://');
+
+    // If hard delete is requested or document is local-only, perform immediate deletion
+    if (hardDelete || !isUploaded) {
+      // Perform hard delete (immediate permanent deletion)
+      await _performHardDelete(id, doc, isUploaded);
+    } else {
+      // Perform soft delete (mark as deleted, keep for retention period)
+      await _performSoftDelete(id, doc);
+    }
+  }
+
+  /// Performs soft delete: marks document as deleted but keeps it for retention period
+  Future<void> _performSoftDelete(String id, DocumentModel doc) async {
+    AppLogger.info(
+      '🗑️ Performing soft delete',
+      data: {'documentId': id, 'title': doc.title},
+    );
+
+    // Mark document as deleted in Hive
+    final softDeletedDoc = doc.copyWith(
+      isDeleted: true,
+      deletedAt: DateTime.now(),
+    );
+    final box = Hive.box<DocumentModel>(boxName);
+    await box.put(id, softDeletedDoc);
+    _markCacheDirty();
+
+    // Request soft delete from backend
+    final isUploaded = doc.filePath.startsWith('http://') ||
+        doc.filePath.startsWith('https://');
+    
+    if (isUploaded) {
+      try {
+        final fileUrl = doc.filePath;
+        final thumbnailUrl = doc.thumbnailPath.isNotEmpty &&
+                (doc.thumbnailPath.startsWith('http://') ||
+                    doc.thumbnailPath.startsWith('https://'))
+            ? doc.thumbnailPath
+            : null;
+
+        await DocumentBackendSyncService.instance.deleteDocument(
+          documentId: id,
+          fileUrl: fileUrl,
+          thumbnailUrl: thumbnailUrl,
+          hardDelete: false, // Request soft delete from backend
+        );
+
+        AppLogger.info(
+          '✅ Document soft deleted on backend',
+          data: {'documentId': id},
+        );
+      } catch (e, stack) {
+        AppLogger.error(
+          '⚠️ Failed to soft delete document on backend (keeping local soft delete)',
+          error: e,
+          stack: stack,
+          data: {'documentId': id},
+        );
+        // Revert local soft delete on backend failure
+        final revertedDoc = softDeletedDoc.copyWith(
+          isDeleted: false,
+          deletedAt: null,
+        );
+        await box.put(id, revertedDoc);
+        _markCacheDirty();
+        DocumentSyncStateService.instance.setSyncStatus(
+          id,
+          DocumentSyncStatus.error,
+          errorMessage: 'Failed to soft delete on backend: ${e.toString()}',
+        );
+      }
+    }
+  }
+
+  /// Performs hard delete: permanently removes document from storage and database
+  Future<void> _performHardDelete(String id, DocumentModel doc, bool isUploaded) async {
+    AppLogger.info(
+      '🗑️ Performing hard delete',
+      data: {'documentId': id, 'title': doc.title},
+    );
 
     // 1. Delete from Supabase Storage and PostgreSQL (if uploaded)
     if (isUploaded) {
@@ -718,6 +799,7 @@ class DocumentService {
           documentId: id,
           fileUrl: fileUrl,
           thumbnailUrl: thumbnailUrl,
+          hardDelete: true, // Request hard delete from backend
         );
 
         AppLogger.info(
@@ -741,7 +823,6 @@ class DocumentService {
       );
     }
 
-    // 2. Delete local files (if they exist)
     try {
       // Only try to delete if it's a local file path (not a URL)
       if (!isUploaded) {
@@ -784,7 +865,7 @@ class DocumentService {
       );
     }
 
-    // 3. Delete all page images (always local files)
+    // Delete all page images (always local files)
     for (final pagePath in doc.pageImagePaths) {
       try {
         final pageFile = File(pagePath);
@@ -799,8 +880,66 @@ class DocumentService {
         );
       }
     }
+  }
 
-    // 4. Clear sync status for this document
+  /// Restores a soft-deleted document
+  Future<void> restoreDocument(String id) async {
+    final box = Hive.box<DocumentModel>(boxName);
+    final doc = box.get(id);
+
+    if (doc == null || !doc.isDeleted) {
+      AppLogger.warning(
+        'Document not found or not deleted',
+        error: null,
+        data: {'documentId': id},
+      );
+      return;
+    }
+
+    final restoredDoc = doc.copyWith(
+      isDeleted: false,
+      deletedAt: null,
+    );
+    await box.put(id, restoredDoc);
+    _markCacheDirty();
+
+    // If document was uploaded, restore it on backend
+    final isUploaded = doc.filePath.startsWith('http://') ||
+        doc.filePath.startsWith('https://');
+    
+    if (isUploaded) {
+      try {
+        // Update document metadata on backend to clear deleted flag
+        await DocumentBackendSyncService.instance.updateDocumentMetadata(restoredDoc);
+        DocumentSyncStateService.instance.setSyncStatus(
+          id,
+          DocumentSyncStatus.synced,
+          lastSyncTime: DateTime.now(),
+        );
+        AppLogger.info(
+          '✅ Document restored on backend',
+          data: {'documentId': id},
+        );
+      } catch (e, stack) {
+        AppLogger.error(
+          '⚠️ Failed to restore document on backend',
+          error: e,
+          stack: stack,
+          data: {'documentId': id},
+        );
+        DocumentSyncStateService.instance.setSyncStatus(
+          id,
+          DocumentSyncStatus.error,
+          errorMessage: 'Failed to restore on backend: ${e.toString()}',
+        );
+      }
+    }
+  }
+
+    // 2. Delete local files (if they exist)
+    await _deleteLocalFiles(doc, isUploaded);
+
+    // 3. Clear sync status for this document
     try {
       DocumentSyncStateService.instance.clearSyncStatus(id);
       AppLogger.info(
@@ -815,18 +954,22 @@ class DocumentService {
       );
     }
 
-    // 5. Delete from local Hive storage
+    // 4. Delete from local Hive storage
+    final box = Hive.box<DocumentModel>(boxName);
     await box.delete(id);
     _markCacheDirty();
 
     AppLogger.info(
-      '✅ Document deletion completed',
+      '✅ Document hard deletion completed',
       data: {
         'documentId': id,
         'wasUploaded': isUploaded,
       },
     );
   }
+
+  /// Deletes local files associated with a document
+  Future<void> _deleteLocalFiles(DocumentModel doc, bool isUploaded) async {
 
   Future<void> renameDocument(String id, String newTitle) {
     return DocumentOperationQueue.instance.enqueue(
@@ -906,7 +1049,8 @@ class DocumentService {
     }
 
     final box = Hive.box<DocumentModel>(boxName);
-    final docs = box.values.toList();
+    // Filter out soft-deleted documents from cache
+    final docs = box.values.where((doc) => !doc.isDeleted).toList();
     _documentsCache
       ..clear()
       ..addEntries(docs.map((doc) => MapEntry(doc.id, doc)));
@@ -1067,6 +1211,137 @@ class DocumentService {
       missingThumbnails: missingThumbnails,
       orphanedFiles: orphanedFiles,
     );
+  }
+
+  /// Pulls remote document changes from backend and updates local storage.
+  ///
+  /// This method is called by BackgroundSyncService but can also be called manually.
+  ///
+  /// **Process:**
+  /// 1. Fetches documents updated since last successful sync
+  /// 2. Updates local Hive storage
+  /// 3. Handles conflicts (last write wins)
+  /// 4. Updates sync status for each document
+  Future<void> pullRemoteChanges() async {
+    try {
+      // Ensure sync state service is initialized
+      if (!DocumentSyncStateService.instance.isInitialized) {
+        await DocumentSyncStateService.instance.initialize();
+      }
+
+      // Get last successful pull sync time
+      final lastSyncTime = DocumentSyncStateService.instance.lastSuccessfulPullSyncTime;
+      final since = lastSyncTime ?? DateTime.now().subtract(const Duration(days: 30));
+
+      AppLogger.info(
+        'Pulling remote changes since ${since.toIso8601String()}',
+        data: {'since': since.toIso8601String()},
+      );
+
+      // Fetch remote documents
+      final remoteDocuments = await DocumentBackendSyncService.instance.getDocumentsSince(since);
+
+      if (remoteDocuments.isEmpty) {
+        AppLogger.info('No remote changes found');
+        DocumentSyncStateService.instance.setLastSuccessfulPullSyncTime(DateTime.now());
+        return;
+      }
+
+      AppLogger.info(
+        'Fetched ${remoteDocuments.length} remote documents',
+        data: {'count': remoteDocuments.length},
+      );
+
+      // Process each remote document
+      final box = Hive.box<DocumentModel>(boxName);
+      int updated = 0;
+      int created = 0;
+      int conflicts = 0;
+
+      for (final remoteDoc in remoteDocuments) {
+        try {
+          final localDoc = box.get(remoteDoc.id);
+
+          if (localDoc == null) {
+            // New document from cloud
+            await box.put(remoteDoc.id, remoteDoc);
+            DocumentSyncStateService.instance.setSyncStatus(
+              remoteDoc.id,
+              DocumentSyncStatus.synced,
+              lastSyncTime: DateTime.now(),
+            );
+            created++;
+          } else if (remoteDoc.isDeleted) {
+            // Document deleted on cloud
+            if (!localDoc.isDeleted) {
+              // Soft delete locally
+              final softDeletedDoc = localDoc.copyWith(
+                isDeleted: true,
+                deletedAt: DateTime.now(),
+              );
+              await box.put(remoteDoc.id, softDeletedDoc);
+              DocumentSyncStateService.instance.setSyncStatus(
+                remoteDoc.id,
+                DocumentSyncStatus.synced,
+                lastSyncTime: DateTime.now(),
+              );
+            }
+          } else if (remoteDoc.updatedAt.isAfter(localDoc.updatedAt)) {
+            // Remote is newer, update local (last write wins)
+            await box.put(remoteDoc.id, remoteDoc);
+            DocumentSyncStateService.instance.setSyncStatus(
+              remoteDoc.id,
+              DocumentSyncStatus.synced,
+              lastSyncTime: DateTime.now(),
+            );
+            updated++;
+          } else if (localDoc.updatedAt.isAfter(remoteDoc.updatedAt)) {
+            // Local is newer, mark as conflict
+            DocumentSyncStateService.instance.setSyncStatus(
+              remoteDoc.id,
+              DocumentSyncStatus.pendingConflictResolution,
+              errorMessage: 'Local version is newer than remote',
+            );
+            conflicts++;
+          } else {
+            // Same timestamp, already synced
+            DocumentSyncStateService.instance.setSyncStatus(
+              remoteDoc.id,
+              DocumentSyncStatus.synced,
+              lastSyncTime: DateTime.now(),
+            );
+          }
+        } catch (e, stack) {
+          AppLogger.error(
+            'Failed to process remote document',
+            error: e,
+            stack: stack,
+            data: {'documentId': remoteDoc.id},
+          );
+        }
+      }
+
+      // Update last successful pull sync time
+      DocumentSyncStateService.instance.setLastSuccessfulPullSyncTime(DateTime.now());
+      _markCacheDirty();
+
+      AppLogger.info(
+        'Remote changes pulled successfully',
+        data: {
+          'total': remoteDocuments.length,
+          'created': created,
+          'updated': updated,
+          'conflicts': conflicts,
+        },
+      );
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to pull remote changes',
+        error: e,
+        stack: stack,
+      );
+      rethrow;
+    }
   }
 
   Future<void> initializeWithHealthCheck({bool autoRepair = true}) async {

@@ -32,13 +32,15 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       pageImagePaths: fields[7] == null ? <String>[] : (fields[7] as List?)?.cast<String>(),
       tags: fields[12] == null ? <String>[] : (fields[12] as List?)?.cast<String>(),
       metadata: fields[13] == null ? <String, String>{} : (fields[13] as Map?)?.cast<String, String>(),
+      isDeleted: fields[14] == null ? false : fields[14] as bool,
+      deletedAt: fields[15] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, DocumentModel obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -66,7 +68,11 @@ class DocumentModelAdapter extends TypeAdapter<DocumentModel> {
       ..writeByte(12)
       ..write(obj._tags)
       ..writeByte(13)
-      ..write(obj._metadata);
+      ..write(obj._metadata)
+      ..writeByte(14)
+      ..write(obj.isDeleted)
+      ..writeByte(15)
+      ..write(obj.deletedAt);
   }
 
   @override

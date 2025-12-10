@@ -16,10 +16,12 @@ import 'package:thyscan/models/document_model.dart';
 enum UploadStatus {
   pending,
   uploading,
+  uploadingFile,
   uploadingThumbnail,
   syncingMetadata,
   completed,
   failed,
+  failedRetry,
 }
 
 /// Upload progress information
@@ -304,7 +306,12 @@ class DocumentUploadService {
     );
 
     try {
-      _emitProgress(documentId, UploadStatus.uploading, progress: 0.0);
+      // Update sync status to uploading file
+      DocumentSyncStateService.instance.setSyncStatus(
+        documentId,
+        DocumentSyncStatus.uploadingFile,
+      );
+      _emitProgress(documentId, UploadStatus.uploadingFile, progress: 0.0);
 
       // 1. Upload PDF/DOCX to Supabase Storage
       final file = File(document.filePath);
@@ -346,6 +353,11 @@ class DocumentUploadService {
           .from(_storageBucket)
           .getPublicUrl(fileName);
 
+      // Update sync status to uploading thumbnail
+      DocumentSyncStateService.instance.setSyncStatus(
+        documentId,
+        DocumentSyncStatus.uploadingThumbnail,
+      );
       _emitProgress(documentId, UploadStatus.uploadingThumbnail, progress: 0.5);
 
       // 2. Upload thumbnail if exists
@@ -379,6 +391,11 @@ class DocumentUploadService {
         }
       }
 
+      // Update sync status to syncing metadata
+      DocumentSyncStateService.instance.setSyncStatus(
+        documentId,
+        DocumentSyncStatus.syncingMetadata,
+      );
       _emitProgress(documentId, UploadStatus.syncingMetadata, progress: 0.75);
 
       // 3. Sync metadata to backend API (create or update)
@@ -409,6 +426,36 @@ class DocumentUploadService {
           data: {'documentId': documentId},
         );
       } catch (syncError, syncStack) {
+        // Handle conflict exception
+        if (syncError is ConflictException) {
+          print('═══════════════════════════════════════════════════════════');
+          print('⚠️ [UPLOAD SERVICE] Conflict detected');
+          print('   Document ID: $documentId');
+          print('   Message: ${syncError.message}');
+          print('═══════════════════════════════════════════════════════════');
+          
+          // Mark document as having a conflict
+          DocumentSyncStateService.instance.setSyncStatus(
+            documentId,
+            DocumentSyncStatus.pendingConflictResolution,
+            errorMessage: syncError.message,
+          );
+          
+          AppLogger.warning(
+            '⚠️ Document conflict detected',
+            error: syncError,
+            data: {
+              'documentId': documentId,
+              'hasRemoteDocument': syncError.remoteDocument != null,
+            },
+          );
+          
+          // For now, we'll use "last write wins" - keep local version
+          // In the future, this could trigger a UI dialog for user resolution
+          // Re-throw to prevent marking as synced
+          rethrow;
+        }
+        
         print('═══════════════════════════════════════════════════════════');
         print('❌ [UPLOAD SERVICE] Metadata sync FAILED');
         print('   Error: $syncError');
@@ -459,15 +506,15 @@ class DocumentUploadService {
       // Max attempts reached, queue for later
       _emitProgress(
         documentId,
-        UploadStatus.failed,
+        UploadStatus.failedRetry,
         error: e.toString(),
         lastAttempt: DateTime.now(),
       );
 
-      // Update sync status to error
+      // Update sync status to failed retry
       DocumentSyncStateService.instance.setSyncStatus(
         documentId,
-        DocumentSyncStatus.error,
+        DocumentSyncStatus.failedRetry,
         errorMessage: e.toString(),
       );
 

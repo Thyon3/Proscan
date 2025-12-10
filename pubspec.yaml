@@ -73,6 +73,7 @@ dependencies:
   google_sign_in: ^6.2.1
   http: ^1.2.2
   connectivity_plus: ^6.0.5
+  workmanager: ^0.5.2
   
 dev_dependencies:
   flutter_test:

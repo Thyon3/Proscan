@@ -63,6 +63,12 @@ class DocumentModel extends HiveObject {
   @HiveField(13, defaultValue: <String, String>{})
   final Map<String, String>? _metadata;
 
+  @HiveField(14, defaultValue: false)
+  final bool isDeleted;
+
+  @HiveField(15, defaultValue: null)
+  final DateTime? deletedAt;
+
   /// Public getter that guarantees non-null list of page image paths.
   /// Returns empty list if null.
   List<String> get pageImagePaths => _pageImagePaths ?? [];
@@ -92,6 +98,8 @@ class DocumentModel extends HiveObject {
     List<String>? pageImagePaths,
     List<String>? tags,
     Map<String, String>? metadata,
+    this.isDeleted = false,
+    this.deletedAt,
   }) : _pageImagePaths = pageImagePaths,
        _tags = tags,
        _metadata = metadata;
@@ -121,6 +129,8 @@ class DocumentModel extends HiveObject {
     String? colorProfile,
     List<String>? tags,
     Map<String, String>? metadata,
+    bool? isDeleted,
+    DateTime? deletedAt,
   }) {
     return DocumentModel(
       id: id ?? this.id,
@@ -137,6 +147,8 @@ class DocumentModel extends HiveObject {
       pageImagePaths: pageImagePaths ?? this.pageImagePaths,
       tags: tags ?? this.tags,
       metadata: metadata ?? this.metadata,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedAt: deletedAt ?? this.deletedAt,
     );
   }
 

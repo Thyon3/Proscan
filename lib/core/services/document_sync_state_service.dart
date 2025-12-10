@@ -25,6 +25,24 @@ enum DocumentSyncStatus {
 
   /// Document is currently being synced
   syncing,
+
+  /// File is currently being uploaded to Supabase Storage
+  uploadingFile,
+
+  /// Thumbnail is currently being uploaded to Supabase Storage
+  uploadingThumbnail,
+
+  /// Metadata is being synced to backend API
+  syncingMetadata,
+
+  /// Upload failed, will retry
+  failedRetry,
+
+  /// Soft delete sync failed
+  failedSyncDelete,
+
+  /// Pending conflict resolution (user intervention required)
+  pendingConflictResolution,
 }
 
 /// Service to track sync status for documents.
@@ -53,6 +71,7 @@ class DocumentSyncStateService {
   static final DocumentSyncStateService instance = DocumentSyncStateService._();
 
   static const String _boxName = 'document_sync_states';
+  static const String _lastPullSyncTimeKey = '_last_pull_sync_time';
   Box<Map>? _box;
   final _statusController =
       StreamController<DocumentSyncStatusUpdate>.broadcast();
@@ -310,6 +329,18 @@ class DocumentSyncStateService {
               case 'syncing':
                 syncing++;
                 break;
+              case 'uploadingFile':
+              case 'uploadingThumbnail':
+              case 'syncingMetadata':
+                syncing++; // Count as syncing
+                break;
+              case 'failedRetry':
+              case 'failedSyncDelete':
+                error++; // Count as error
+                break;
+              case 'pendingConflictResolution':
+                conflict++; // Count as conflict
+                break;
             }
           }
         }
@@ -341,6 +372,37 @@ class DocumentSyncStateService {
         error: 0,
         syncing: 0,
       );
+    }
+  }
+
+  /// Gets the last successful pull sync time (for delta sync)
+  DateTime? get lastSuccessfulPullSyncTime {
+    if (!_isInitialized || _box == null) return null;
+
+    try {
+      final timeData = _box!.get(_lastPullSyncTimeKey) as Map?;
+      if (timeData == null) return null;
+      final timeString = timeData['time'] as String?;
+      if (timeString == null) return null;
+      return DateTime.parse(timeString);
+    } catch (e) {
+      AppLogger.warning('Failed to get last pull sync time', error: e);
+      return null;
+    }
+  }
+
+  /// Sets the last successful pull sync time
+  void setLastSuccessfulPullSyncTime(DateTime time) {
+    if (!_isInitialized || _box == null) return;
+
+    try {
+      _box!.put(_lastPullSyncTimeKey, {'time': time.toIso8601String()});
+      AppLogger.info(
+        'Last pull sync time updated',
+        data: {'time': time.toIso8601String()},
+      );
+    } catch (e) {
+      AppLogger.warning('Failed to set last pull sync time', error: e);
     }
   }
 
@@ -394,6 +456,9 @@ class SyncStatistics {
   /// Whether there are any pending operations
   bool get hasPendingOperations =>
       pendingUpload > 0 || pendingDownload > 0 || syncing > 0;
+
+  /// Whether there are any active upload/sync operations
+  bool get hasActiveOperations => syncing > 0;
 
   /// Whether there are any issues (conflicts or errors)
   bool get hasIssues => conflict > 0 || error > 0;

@@ -19,11 +19,11 @@ class DocumentsNotifier extends StateNotifier<List<DocumentModel>> {
   final Box<DocumentModel> _box;
   StreamSubscription? _subscription;
 
-  DocumentsNotifier(this._box) : super(_box.values.toList()) {
+  DocumentsNotifier(this._box) : super(_box.values.where((doc) => !doc.isDeleted).toList()) {
     // Listen to box changes - watch() returns Stream<BoxEvent>
     _subscription = _box.watch().listen((_) {
-      // Update state immediately when box changes
-      state = _box.values.toList();
+      // Update state immediately when box changes, excluding soft-deleted documents
+      state = _box.values.where((doc) => !doc.isDeleted).toList();
     });
   }
 
@@ -35,6 +35,7 @@ class DocumentsNotifier extends StateNotifier<List<DocumentModel>> {
 }
 
 /// Provider that returns all documents (reactive to Hive changes)
+/// Excludes soft-deleted documents from the main view
 final allDocumentsProvider =
     StateNotifierProvider<DocumentsNotifier, List<DocumentModel>>((ref) {
       final box = ref.watch(hiveBoxProvider);
@@ -49,9 +50,13 @@ final filteredDocumentsProvider = Provider<List<DocumentModel>>((ref) {
   // Watch all documents (reactive to Hive changes)
   final allDocuments = ref.watch(allDocumentsProvider);
 
-  // Apply filter based on scan mode
+  // Apply filter based on scan mode and exclude soft-deleted documents
   final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
   final filteredDocs = allDocuments.where((doc) {
+    // Exclude soft-deleted documents from main view
+    if (doc.isDeleted) {
+      return false;
+    }
     return activeFilter.matches(doc.scanMode);
   }).toList();
 

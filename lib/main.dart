@@ -10,6 +10,7 @@ import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/document_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
+import 'package:thyscan/core/services/background_sync_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -84,6 +85,14 @@ void main() {
           );
         });
 
+        // Initialize background sync service
+        BackgroundSyncService.initialize().catchError((error) {
+          AppLogger.error(
+            'BackgroundSyncService initialization failed',
+            error: error,
+          );
+        });
+
         // Trigger initial sync after auth is ready (non-blocking)
         // SAFE MERGE MODE: Merges backend documents with local storage
         // Never clears local documents - preserves offline work
@@ -99,6 +108,15 @@ void main() {
                 'email': user.email ?? 'N/A',
               },
             );
+            
+            // Register periodic background sync
+            BackgroundSyncService.registerPeriodicSync().catchError((error) {
+              AppLogger.error(
+                'Failed to register periodic background sync',
+                error: error,
+              );
+            });
+            
             AppLogger.info(
               '🔄 Triggering initial document sync for authenticated user (merging with local documents)',
               data: {
@@ -150,7 +168,7 @@ void main() {
         // Optional: Show crash screen
       }
 
-      runApp(const ProviderScope(child: MyApp()));
+      runApp( ProviderScope(child: MyApp()));
     },
     (error, stack) {
       AppLogger.error('Uncaught error', error: error, stack: stack);
