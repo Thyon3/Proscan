@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
+import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:http/http.dart' as http;
 
 /// Download priority levels
@@ -281,14 +282,22 @@ class DocumentDownloadService {
       return;
     }
 
-    // Process queue up to concurrent limit
+    // Process queue up to concurrent limit (using ResourceGuard)
     while (_downloadQueue.isNotEmpty &&
-        _activeDownloads.length < _maxConcurrentDownloads) {
+        _activeDownloads.length < ResourceGuard.maxConcurrentDownloads) {
       final queueItem = _downloadQueue.removeAt(0);
       
       if (_activeDownloads.containsKey(queueItem.documentId)) {
         continue; // Already downloading
       }
+
+      // Acquire download slot
+      await ResourceGuard.instance.acquireDownloadSlot(
+        operationId: queueItem.documentId,
+        priority: queueItem.priority == DownloadPriority.high
+            ? OperationPriority.userInitiated
+            : OperationPriority.background,
+      );
 
       // Start download
       final downloadFuture = _downloadWithRetry(queueItem);
@@ -298,6 +307,8 @@ class DocumentDownloadService {
       downloadFuture.whenComplete(() {
         _activeDownloads.remove(queueItem.documentId);
         _isProcessing.remove(queueItem.documentId);
+        // Release download slot
+        ResourceGuard.instance.releaseDownloadSlot(queueItem.documentId);
         // Continue processing queue
         _processQueue();
       });

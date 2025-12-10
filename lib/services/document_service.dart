@@ -1136,20 +1136,54 @@ class DocumentService {
     } catch (_) {}
   }
 
-  Future<bool> _ensureDiskSpace({required List<String> pageImagePaths}) async {
-    var requiredBytes = 0;
+  /// Calculates total size of page images
+  Future<int> calculateTotalSize(List<String> pageImagePaths) async {
+    var totalBytes = 0;
     for (final path in pageImagePaths) {
       try {
         final file = File(path);
         if (await file.exists()) {
-          requiredBytes += await file.length();
+          totalBytes += await file.length();
         }
       } catch (_) {}
     }
-    requiredBytes = max(requiredBytes, 10 * 1024 * 1024);
+    return totalBytes;
+  }
+
+  /// Validates file size and provides user feedback
+  /// Returns a validation result with warnings if size is large
+  Future<FileSizeValidationResult> validateFileSize(
+    List<String> pageImagePaths,
+  ) async {
+    final totalBytes = await calculateTotalSize(pageImagePaths);
+    final totalSizeMB = totalBytes / (1024 * 1024);
+    const maxRecommendedSizeMB = 50.0;
+
+    if (totalSizeMB > maxRecommendedSizeMB) {
+      return FileSizeValidationResult(
+        isValid: true,
+        totalSizeMB: totalSizeMB,
+        warning: 'Large file detected (${totalSizeMB.toStringAsFixed(1)}MB). '
+            'Processing may take longer. Consider using compression.',
+        requiresCompression: true,
+      );
+    }
+
+    return FileSizeValidationResult(
+      isValid: true,
+      totalSizeMB: totalSizeMB,
+      warning: null,
+      requiresCompression: false,
+    );
+  }
+
+  Future<bool> _ensureDiskSpace({required List<String> pageImagePaths}) async {
+    final requiredBytes = await calculateTotalSize(pageImagePaths);
+    // Add 10MB buffer for processing overhead
+    final requiredBytesWithBuffer = max(requiredBytes, 10 * 1024 * 1024);
 
     return ResourceGuard.instance.hasSufficientDiskSpace(
-      requiredBytes: requiredBytes,
+      requiredBytes: requiredBytesWithBuffer,
     );
   }
 
@@ -1420,6 +1454,21 @@ class DatabaseHealthReport {
       missingDocumentIds.isNotEmpty ||
       missingThumbnails.isNotEmpty ||
       orphanedFiles.isNotEmpty;
+}
+
+/// File size validation result
+class FileSizeValidationResult {
+  final bool isValid;
+  final double totalSizeMB;
+  final String? warning;
+  final bool requiresCompression;
+
+  FileSizeValidationResult({
+    required this.isValid,
+    required this.totalSizeMB,
+    this.warning,
+    required this.requiresCompression,
+  });
 }
 
 List<String> _sortDocumentIdsIsolate(Map<String, dynamic> payload) {

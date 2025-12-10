@@ -10,6 +10,7 @@ import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/rate_limiter_service.dart';
+import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/core/utils/filename_sanitizer.dart';
 import 'package:thyscan/models/document_model.dart';
 
@@ -599,6 +600,23 @@ class DocumentUploadService {
         AppLogger.info('User not authenticated, skipping queue processing');
         return;
       }
+
+      // Check concurrent upload limit using ResourceGuard
+      while (_uploadQueue.isNotEmpty &&
+          _isProcessing.length < ResourceGuard.maxConcurrentUploads) {
+        final upload = _uploadQueue.removeAt(0);
+        
+        if (_isProcessing.containsKey(upload.documentId)) {
+          continue; // Already processing
+        }
+
+        // Acquire upload slot
+        await ResourceGuard.instance.acquireUploadSlot(
+          operationId: upload.documentId,
+          priority: OperationPriority.background,
+        );
+
+        _isProcessing[upload.documentId] = true;
     } catch (e) {
       AppLogger.warning(
         error: null,

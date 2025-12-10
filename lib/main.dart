@@ -12,6 +12,8 @@ import 'package:thyscan/core/services/document_health_check_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/full_text_search_index_service.dart';
+import 'package:thyscan/core/services/image_cache_service.dart';
+import 'package:thyscan/core/services/memory_monitor_service.dart';
 import 'package:thyscan/core/services/recent_searches_service.dart';
 import 'package:thyscan/core/services/background_sync_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
@@ -150,6 +152,21 @@ void main() {
             'FullTextSearchIndexService initialization failed',
             error: error,
           );
+        });
+
+        // Initialize image cache service
+        ImageCacheService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'ImageCacheService initialization failed',
+            error: error,
+          );
+        });
+
+        // Initialize and start memory monitoring
+        MemoryMonitorService.instance.startMonitoring();
+        // Register memory pressure callbacks
+        MemoryMonitorService.instance.registerMemoryPressureCallback(() {
+          ImageCacheService.instance.clearOnMemoryPressure();
         });
 
         // Run document health check in background (non-blocking)
