@@ -645,14 +645,83 @@ class DocumentUploadService {
     );
   }
 
-  /// Gets current upload progress for a document
-  UploadProgress? getProgress(String documentId) {
-    // This would require storing progress state, simplified for now
-    return null;
-  }
-
   /// Gets pending uploads count
   int get pendingCount => _uploadQueue.length;
+  
+  /// Gets list of pending uploads (for UI display)
+  List<PendingUpload> get pendingUploads => List.unmodifiable(_uploadQueue);
+  
+  /// Gets current upload progress for a document
+  UploadProgress? getProgress(String documentId) {
+    // Check if currently uploading
+    if (_isProcessing.containsKey(documentId) && _isProcessing[documentId] == true) {
+      // Return latest progress from stream (would need to track this)
+      // For now, return a pending status
+      return UploadProgress(
+        documentId: documentId,
+        status: UploadStatus.uploading,
+        progress: 0.5, // Approximate
+      );
+    }
+    
+    // Check if in queue
+    final inQueue = _uploadQueue.any((u) => u.documentId == documentId);
+    if (inQueue) {
+      return UploadProgress(
+        documentId: documentId,
+        status: UploadStatus.pending,
+        progress: 0.0,
+      );
+    }
+    
+    return null;
+  }
+  
+  /// Cancels a pending upload
+  Future<void> cancelUpload(String documentId) async {
+    _uploadQueue.removeWhere((u) => u.documentId == documentId);
+    _isProcessing[documentId] = false;
+    
+    AppLogger.info(
+      'Upload cancelled',
+      data: {'documentId': documentId, 'queueSize': _uploadQueue.length},
+    );
+  }
+  
+  /// Retries a failed upload
+  Future<void> retryUpload(String documentId) async {
+    // Find the upload in queue
+    final uploadIndex = _uploadQueue.indexWhere((u) => u.documentId == documentId);
+    if (uploadIndex == -1) {
+      AppLogger.warning(
+        'Cannot retry: upload not in queue',
+        error: null,
+        data: {'documentId': documentId},
+      );
+      return;
+    }
+    
+    // Reset attempts and move to front of queue
+    final upload = _uploadQueue.removeAt(uploadIndex);
+    _uploadQueue.insert(0, upload.copyWith(attempts: 0));
+    
+    AppLogger.info(
+      'Upload retry queued',
+      data: {'documentId': documentId},
+    );
+    
+    // Process queue if online
+    _processQueue();
+  }
+  
+  /// Forces immediate sync of all pending uploads
+  Future<void> syncNow() async {
+    AppLogger.info(
+      'Force sync requested',
+      data: {'queueSize': _uploadQueue.length},
+    );
+    await _processQueue();
+  }
 
   /// Clears failed uploads from queue
   void clearFailedUploads() {

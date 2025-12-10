@@ -24,6 +24,7 @@ import 'package:thyscan/features/scan/presentation/screens/text_editor_screen.da
 import 'package:thyscan/features/scan/presentation/screens/text_document_screen.dart';
 import 'package:thyscan/features/scan/presentation/screens/translation_editor_screen.dart';
 import 'package:thyscan/features/home/presentation/screens/search_screen.dart';
+import 'package:thyscan/features/home/presentation/screens/upload_queue_screen.dart';
 import 'package:thyscan/features/settings/presentation/screens/sync_settings_screen.dart';
 import 'package:thyscan/features/sync/presentation/screens/conflict_resolution_screen.dart';
 import 'package:thyscan/models/document_color_profile.dart';

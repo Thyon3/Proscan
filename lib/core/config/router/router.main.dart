@@ -309,6 +309,11 @@ final GoRouter router = GoRouter(
       builder: (context, state) => const SearchScreen(),
     ),
     GoRoute(
+      path: '/upload-queue',
+      name: 'upload-queue',
+      builder: (context, state) => const UploadQueueScreen(),
+    ),
+    GoRoute(
       path: '/sync-settings',
       name: 'sync-settings',
       builder: (context, state) => const SyncSettingsScreen(),

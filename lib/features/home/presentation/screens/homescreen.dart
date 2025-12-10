@@ -17,6 +17,7 @@ import 'package:thyscan/features/home/presentation/widgets/corrupted_document_ti
 import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
 import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
+import 'package:thyscan/features/home/presentation/widgets/upload_queue_badge.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';

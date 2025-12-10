@@ -16,6 +16,7 @@ import 'package:thyscan/features/home/presentation/widgets/corrupted_document_ti
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_filter_bar.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/library_scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/librarywidgets/document_shimmer_placeholder.dart';
+import 'package:thyscan/features/home/presentation/widgets/upload_queue_badge.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -647,6 +648,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Upload queue badge
+                          const UploadQueueBadge(),
+                          const SizedBox(width: 8),
                           IconButton(
                             onPressed: () {},
                             style: IconButton.styleFrom(
