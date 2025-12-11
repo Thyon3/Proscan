@@ -8,8 +8,8 @@ part 'greeting_provider.g.dart';
 
 /// Provider that provides the current greeting text with user's name (if logged in).
 /// Updates automatically when:
-/// - Time crosses greeting boundaries (5:00, 12:00, 17:00, 21:00)
-/// - User logs in/out (via auth state changes)
+/// - Time crosses greeting boundaries (5:00, 12:00, 17:00, 21:00).
+/// - User logs in/out (via auth state changes).
 @riverpod
 Stream<String> greeting(Ref ref) async* {
   // Watch auth state to get current user (reactive to login/logout)
