@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/legacy.dart'
     show StateNotifier, StateNotifierProvider;
 import 'package:thyscan/services/timestamp_service.dart';
 
-/// Simple provider exposing the [TimestampService].
+/// Simple provider exposing the [TimestampService]
 final timestampServiceProvider = Provider<TimestampService>((ref) {
   return TimestampService();
 });
