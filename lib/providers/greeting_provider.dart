@@ -12,8 +12,8 @@ part 'greeting_provider.g.dart';
 /// - User logs in/out (via auth state changes).
 @riverpod
 Stream<String> greeting(Ref ref) async* {
-  // Watch auth state to get current user (reactive to login/logout)
-  // This ensures greeting updates immediately when user logs in/out
+  // Watch auth state to get current user (reactive to login/logout).
+  // This ensures greeting updates immediately when user logs in/out.
   final authState = ref.watch(authControllerProvider);
   final userName = authState.user?.name;
   
