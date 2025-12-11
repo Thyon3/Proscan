@@ -19,7 +19,7 @@ final pdfBuilderProvider = Provider<PdfBuilder>((ref) {
   return PdfBuilder.instance;
 });
 
-/// Provider for document save options state.
+/// Provider for document save options state
 final documentSaveOptionsProvider = Provider<DocumentSaveOptions>((ref) {
   return const DocumentSaveOptions();
 });
