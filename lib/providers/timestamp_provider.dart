@@ -32,7 +32,7 @@ class TimestampController extends StateNotifier<bool> {
 /// Riverpod provider exposing the [TimestampController] and its loading state.
 ///
 /// The state (`bool`) represents whether timestamp processing is currently
-/// running; use the notifier to trigger processing.
+/// running; use the notifier to trigger processing
 final timestampControllerProvider =
     StateNotifierProvider<TimestampController, bool>((ref) {
       final service = ref.read(timestampServiceProvider);
