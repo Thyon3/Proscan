@@ -4,7 +4,7 @@ import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart'
 import 'package:thyscan/services/pdf_builder.dart';
 import 'package:thyscan/services/pdf_preprocessor.dart';
 
-/// Provider for the PDF generation service (isolate-based).
+/// Provider for the PDF generation service (isolate-based)
 final pdfGenerationProvider = Provider<PdfGenerationService>((ref) {
   return PdfGenerationService.instance;
 });
