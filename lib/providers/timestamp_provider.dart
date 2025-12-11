@@ -9,7 +9,7 @@ final timestampServiceProvider = Provider<TimestampService>((ref) {
   return TimestampService();
 });
 
-/// Notifier managing timestamp image processing and exposing a loading state.
+/// Notifier managing timestamp image processing and exposing a loading state
 class TimestampController extends StateNotifier<bool> {
   TimestampController(this._service) : super(false);
 
