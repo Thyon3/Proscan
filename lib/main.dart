@@ -1,4 +1,5 @@
 // main.dart — FINAL, BULLETPROOF VERSION
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,7 +36,7 @@ void main() {
       };
 
       // Set global error widget builder (catches rendering errors)
-      // This prevents one corrupted widget from crashing the entire app
+      // This prevents one corrupted widget from crashing the entire app.
       ErrorWidget.builder = (details) {
         AppLogger.error(
           'ErrorWidget caught error',
@@ -76,8 +77,8 @@ void main() {
       };
 
       try {
-        // OFFLINE-FIRST: Start AuthService.init() in background (non-blocking)
-        // App opens instantly, auth initializes silently in background
+        // OFFLINE-FIRST: Start AuthService.init() in background (non-blocking).
+        // App opens instantly, auth initializes silently in background.
         final authInitFuture = AuthService.instance.init().catchError((error) {
           AppLogger.error(
             'AuthService initialization failed (continuing in guest mode)',

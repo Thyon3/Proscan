@@ -1,6 +1,6 @@
 // core/config/app_env.dart
 import 'package:envied/envied.dart';
-part 'app_env.g.dart';
+part '  app_env.g.dart';
 
 /// Production-grade environment configuration using compile-time obfuscation.
 ///
@@ -25,6 +25,10 @@ abstract class AppEnv {
   @EnviedField(varName: 'BACKEND_API_URL', obfuscate: true, optional: true)
   static String? backendApiUrl = _AppEnv.backendApiUrl;
 
-  @EnviedField(varName: 'REQUEST_SIGNATURE_SECRET', obfuscate: true, optional: true)
+  @EnviedField(
+    varName: 'REQUEST_SIGNATURE_SECRET',
+    obfuscate: true,
+    optional: true,
+  )
   static String? requestSignatureSecret = _AppEnv.requestSignatureSecret;
 }

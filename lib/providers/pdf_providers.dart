@@ -4,22 +4,22 @@ import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart'
 import 'package:thyscan/services/pdf_builder.dart';
 import 'package:thyscan/services/pdf_preprocessor.dart';
 
-/// Provider for the PDF generation service (isolate-based).
+/// Provider for the PDF generation service (isolate-based)
 final pdfGenerationProvider = Provider<PdfGenerationService>((ref) {
   return PdfGenerationService.instance;
 });
 
-/// Provider for the PDF preprocessor service.
+/// Provider for the PDF preprocessor service
 final pdfPreprocessorProvider = Provider<PdfPreprocessor>((ref) {
   return PdfPreprocessor.instance;
 });
 
-/// Provider for the PDF builder service.
+/// Provider for the PDF builder service
 final pdfBuilderProvider = Provider<PdfBuilder>((ref) {
   return PdfBuilder.instance;
 });
 
-/// Provider for document save options state.
+/// Provider for document save options state
 final documentSaveOptionsProvider = Provider<DocumentSaveOptions>((ref) {
   return const DocumentSaveOptions();
 });

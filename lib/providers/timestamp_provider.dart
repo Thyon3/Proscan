@@ -1,16 +1,15 @@
 import 'dart:typed_data';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart'
     show StateNotifier, StateNotifierProvider;
 import 'package:thyscan/services/timestamp_service.dart';
 
-/// Simple provider exposing the [TimestampService].
+/// Simple provider exposing the [TimestampService]
 final timestampServiceProvider = Provider<TimestampService>((ref) {
   return TimestampService();
 });
 
-/// Notifier managing timestamp image processing and exposing a loading state.
+/// Notifier managing timestamp image processing and exposing a loading state
 class TimestampController extends StateNotifier<bool> {
   TimestampController(this._service) : super(false);
 
@@ -33,7 +32,7 @@ class TimestampController extends StateNotifier<bool> {
 /// Riverpod provider exposing the [TimestampController] and its loading state.
 ///
 /// The state (`bool`) represents whether timestamp processing is currently
-/// running; use the notifier to trigger processing.
+/// running; use the notifier to trigger processing
 final timestampControllerProvider =
     StateNotifierProvider<TimestampController, bool>((ref) {
       final service = ref.read(timestampServiceProvider);

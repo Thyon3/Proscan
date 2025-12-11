@@ -172,17 +172,17 @@ class AuthController extends _$AuthController {
 
   /// Extracts a user-friendly error message from an exception
   String _extractErrorMessage(dynamic error) {
-    // Check if it's an AuthFailure (or any Failure) and extract the message
+    // Check if it's an AuthFailure (or any Failure) and extract the message.
     if (error is AuthFailure) {
       return error.message;
     }
-    
-    // Check if it's a generic Failure
+
+    // Check if it's a generic Failure.
     if (error is Failure) {
       return error.message;
     }
-    
-    // For other exceptions, try to extract meaningful message
+
+    // For other exceptions, try to extract meaningful message.
     final errorString = error.toString();
     
     // Remove common prefixes
@@ -203,6 +203,5 @@ class AuthController extends _$AuthController {
   void clearError() {
     state = state.copyWith(error: null);
   }
-
 }
 
