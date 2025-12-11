@@ -23,12 +23,12 @@ Stream<String> greeting(Ref ref) async* {
 
   // Then emit periodic updates every minute to catch time boundary crossings.
   await for (final _ in Stream.periodic(const Duration(minutes: 1))) {
-    // Re-read auth state on each emission to catch login/logout
+    // Re-read auth state on each emission to catch login/logout.
     final currentAuthState = ref.read(authControllerProvider);
     final currentUserName = currentAuthState.user?.name;
     final newGreeting = GreetingUtils.getFullGreeting(userName: currentUserName);
-    
-    // Only yield if greeting changed (distinct)
+
+    // Only yield if greeting changed (distinct).
     if (newGreeting != lastGreeting) {
       lastGreeting = newGreeting;
       yield newGreeting;
