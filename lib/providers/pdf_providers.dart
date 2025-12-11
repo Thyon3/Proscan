@@ -9,12 +9,12 @@ final pdfGenerationProvider = Provider<PdfGenerationService>((ref) {
   return PdfGenerationService.instance;
 });
 
-/// Provider for the PDF preprocessor service.
+/// Provider for the PDF preprocessor service
 final pdfPreprocessorProvider = Provider<PdfPreprocessor>((ref) {
   return PdfPreprocessor.instance;
 });
 
-/// Provider for the PDF builder service.
+/// Provider for the PDF builder service
 final pdfBuilderProvider = Provider<PdfBuilder>((ref) {
   return PdfBuilder.instance;
 });
