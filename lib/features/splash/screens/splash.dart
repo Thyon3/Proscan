@@ -51,21 +51,21 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Check authentication and navigate accordingly
+    // Check authentication and navigate accordingly.
     _checkAuthAndNavigate();
   }
 
-  /// Checks authentication state and navigates to appropriate screen
-  /// OFFLINE-FIRST: Always goes to HomeScreen, never blocks on login
+  /// Checks authentication state and navigates to appropriate screen.
+  /// OFFLINE-FIRST: Always goes to HomeScreen, never blocks on login.
   Future<void> _checkAuthAndNavigate() async {
     // Wait for minimum splash duration (1.8 seconds for animation)
     await Future.delayed(const Duration(milliseconds: 1800));
 
     if (!mounted) return;
 
-    // OFFLINE-FIRST: Always go to HomeScreen (never block on login)
-    // AuthService will silently initialize in background and auto-login if online
-    // If offline or no session, user stays in Guest Mode
+    // OFFLINE-FIRST: Always go to HomeScreen (never block on login).
+    // AuthService will silently initialize in background and auto-login if online.
+    // If offline or no session, user stays in Guest Mode.
     AppLogger.info('Splash: Navigating to HomeScreen (offline-first, no blocking)');
     if (mounted) {
       context.go('/appmainscreen');

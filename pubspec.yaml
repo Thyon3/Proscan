@@ -75,7 +75,7 @@ dependencies:
   connectivity_plus: ^6.0.5
   workmanager: ^0.5.2
   crypto: ^3.0.5
-  
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -137,5 +137,6 @@ flutter:
   #       - asset: fonts/TrajanPro_Bold.ttf
   #         weight: 700
   #
-  # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package
+# For details regarding fonts from package dependencies,
+# see https://flutter.dev/to/font-from-package
+
