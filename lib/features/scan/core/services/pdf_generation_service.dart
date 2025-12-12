@@ -87,6 +87,7 @@ class PdfGenerationService {
               keywords: config.metadata!.keywords,
               creator: config.metadata!.creator,
             ),
+      isPreprocessed: config.isPreprocessed,
     );
 
     final isolate = await Isolate.spawn<_PdfIsolatePayload>(
@@ -145,6 +146,7 @@ class _PdfIsolatePayload {
     required this.pageHeight,
     required this.margin,
     this.metadata,
+    this.isPreprocessed = false,
   });
 
   final SendPort sendPort;
@@ -159,6 +161,7 @@ class _PdfIsolatePayload {
   final double pageHeight;
   final double margin;
   final _PdfMetadataPayload? metadata;
+  final bool isPreprocessed;
 }
 
 class _PdfProgressMessage {
@@ -219,6 +222,7 @@ Future<void> _pdfGenerationEntry(_PdfIsolatePayload payload) async {
         batchId: payload.batchId,
         pageIndex: i,
         maxBytes: payload.maxPageSizeBytes,
+        isPreprocessed: payload.isPreprocessed,
       );
       optimizedPaths.add(optimizedPath);
 
@@ -266,11 +270,26 @@ Future<String> _compressAndSave({
   required String batchId,
   required int pageIndex,
   required int maxBytes,
+  bool isPreprocessed = false,
 }) async {
   final file = File(sourcePath);
   if (!await file.exists()) {
     throw Exception('Source image missing: $sourcePath');
   }
+
+  // If images are already preprocessed, just copy them to the optimized directory
+  // without re-compressing. This prevents double optimization.
+  if (isPreprocessed) {
+    final optimizedName = '${documentId}_${batchId}_page_$pageIndex.jpg';
+    final optimizedPath = p.join(optimizedDirPath, optimizedName);
+    final optimizedFile = File(optimizedPath);
+    
+    // Copy the preprocessed file directly
+    await file.copy(optimizedPath);
+    return optimizedPath;
+  }
+
+  // Original compression logic for non-preprocessed images
   final inputBytes = await file.readAsBytes();
   final decodedImage = img.decodeImage(inputBytes);
   if (decodedImage == null) {

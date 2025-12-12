@@ -20,13 +20,33 @@ android {
         jvmTarget = "17"
     }
 
+    // Force all androidx.work dependencies to use a consistent version
+    // This resolves duplicate class errors with workmanager
+    configurations.all {
+        resolutionStrategy {
+            eachDependency {
+                if (requested.group == "androidx.work") {
+                    // Force all modules in the androidx.work group to a consistent version
+                    useVersion("2.9.0")
+                }
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.thyscan"
-        // Minimum SDK 23 (Android 6.0) for production compatibility
+        // Minimum SDK 23 (Android 6.0) required for WorkManager 2.9.0
         minSdk = flutter.minSdkVersion
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    // Add packaging options for 16 KB page size support
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 
     buildTypes {

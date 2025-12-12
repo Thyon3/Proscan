@@ -62,7 +62,7 @@ class DocumentSyncService {
   // Track active download subscriptions to prevent memory leaks
   final Map<String, StreamSubscription<DownloadProgress>> _downloadSubscriptions = {};
   
-  // Sync queue to handle concurrent sync requests
+  // Sync queue to handle concurrent sync requests (properly serialized)
   final _syncQueue = <_SyncRequest>[];
   static const Duration _syncRequestTimeout = Duration(minutes: 10);
   
@@ -221,16 +221,28 @@ class DocumentSyncService {
     bool replaceLocal = false,
     int retryAttempt = 0,
   }) async {
+    // Use a queue-based approach to serialize sync operations and prevent race conditions
     if (_isSyncing) {
-      AppLogger.info('Sync already in progress, skipping');
-      return SyncResult(
-        success: false,
-        message: 'Sync already in progress',
-        documentsAdded: 0,
-        documentsUpdated: 0,
-        documentsSkipped: 0,
-        documentsReplaced: 0,
+      // Queue the sync request instead of returning immediately
+      final completer = Completer<SyncResult>();
+      final request = _SyncRequest(
+        completer: completer,
+        forceFullSync: forceFullSync,
+        replaceLocal: replaceLocal,
+        retryAttempt: retryAttempt,
+        createdAt: DateTime.now(),
       );
+      _syncQueue.add(request);
+      
+      AppLogger.info(
+        'Sync already in progress, queuing request',
+        data: {
+          'queueLength': _syncQueue.length,
+          'forceFullSync': forceFullSync,
+        },
+      );
+      
+      return completer.future;
     }
 
     try {
@@ -580,6 +592,10 @@ class DocumentSyncService {
         replaced = localCountBeforeClear;
       }
 
+      // Batch Hive operations for better atomicity and performance
+      final batchUpdates = <String, DocumentModel>{};
+      final batchSyncStatuses = <String, Map<String, dynamic>>{};
+      
       // Process backend documents with enhanced merge strategy
       for (final docJson in allDocumentsJson) {
         try {
@@ -607,20 +623,19 @@ class DocumentSyncService {
             if (needsDownload) {
               _startBackgroundDownload(remoteDoc, box);
               // Mark as pending download - status will be updated when download completes
-              DocumentSyncStateService.instance.setSyncStatus(
-                remoteDoc.id,
-                DocumentSyncStatus.pendingDownload,
-              );
+              batchSyncStatuses[remoteDoc.id] = {
+                'status': DocumentSyncStatus.pendingDownload,
+              };
             } else {
               // No download needed - document is already synced
-              DocumentSyncStateService.instance.setSyncStatus(
-                remoteDoc.id,
-                DocumentSyncStatus.synced,
-                lastSyncTime: DateTime.now(),
-              );
+              batchSyncStatuses[remoteDoc.id] = {
+                'status': DocumentSyncStatus.synced,
+                'lastSyncTime': DateTime.now(),
+              };
             }
 
-            await box.put(remoteDoc.id, finalDoc);
+            // Batch the update instead of immediate put
+            batchUpdates[remoteDoc.id] = finalDoc;
             added++;
             
             // Emit document created event
@@ -654,7 +669,8 @@ class DocumentSyncService {
                 _startBackgroundDownload(remoteDoc, box);
               }
 
-              await box.put(remoteDoc.id, finalDoc);
+              // Batch the update instead of immediate put
+              batchUpdates[remoteDoc.id] = finalDoc;
               updated++;
             } else {
               // MERGE MODE: Smart conflict resolution
@@ -685,15 +701,15 @@ class DocumentSyncService {
                   _startBackgroundDownload(remoteDoc, box);
                 }
 
-                // Update sync status
-                DocumentSyncStateService.instance.setSyncStatus(
-                  remoteDoc.id,
-                  needsDownload
+                // Batch sync status update
+                batchSyncStatuses[remoteDoc.id] = {
+                  'status': needsDownload
                       ? DocumentSyncStatus.pendingDownload
                       : DocumentSyncStatus.synced,
-                );
+                };
 
-              await box.put(remoteDoc.id, finalDoc);
+              // Batch the update instead of immediate put
+              batchUpdates[remoteDoc.id] = finalDoc;
               updated++;
               
               // Emit document updated event
@@ -709,11 +725,10 @@ class DocumentSyncService {
               );
               } else if (remoteUpdatedAt.isBefore(localUpdatedAt)) {
                 // Local version is newer - keep local (will be uploaded by upload service)
-                // Update sync status to pending upload
-                DocumentSyncStateService.instance.setSyncStatus(
-                  remoteDoc.id,
-                  DocumentSyncStatus.pendingUpload,
-                );
+                // Batch sync status update
+                batchSyncStatuses[remoteDoc.id] = {
+                  'status': DocumentSyncStatus.pendingUpload,
+                };
                 skipped++;
                 AppLogger.info(
                   '⏭️ Skipped backend document (local is newer, will upload)',
@@ -729,11 +744,10 @@ class DocumentSyncService {
                 if (contentDiffers) {
                   // Same timestamp but different content - potential conflict
                   conflicts++;
-                  // Mark as conflict in sync state
-                  DocumentSyncStateService.instance.setSyncStatus(
-                    remoteDoc.id,
-                    DocumentSyncStatus.conflict,
-                  );
+                  // Batch sync status update
+                  batchSyncStatuses[remoteDoc.id] = {
+                    'status': DocumentSyncStatus.conflict,
+                  };
                   AppLogger.warning(
                     '⚠️ Conflict detected: Same timestamp but different content',
                     error: null,
@@ -747,12 +761,11 @@ class DocumentSyncService {
                   skipped++;
                 } else {
                   // Identical - already synced
-                  // Mark as synced since local and backend are identical
-                  DocumentSyncStateService.instance.setSyncStatus(
-                    remoteDoc.id,
-                    DocumentSyncStatus.synced,
-                    lastSyncTime: DateTime.now(),
-                  );
+                  // Batch sync status update
+                  batchSyncStatuses[remoteDoc.id] = {
+                    'status': DocumentSyncStatus.synced,
+                    'lastSyncTime': DateTime.now(),
+                  };
                   skipped++;
                   AppLogger.info(
                     '✅ Document already synced (identical)',
@@ -788,11 +801,10 @@ class DocumentSyncService {
 
             if (hasLocalFiles) {
               // Preserve local-only documents (pending upload)
-              // Update sync status to pending upload
-              DocumentSyncStateService.instance.setSyncStatus(
-                localDoc.id,
-                DocumentSyncStatus.pendingUpload,
-              );
+              // Batch sync status update
+              batchSyncStatuses[localDoc.id] = {
+                'status': DocumentSyncStatus.pendingUpload,
+              };
               AppLogger.info(
                 '📱 Preserving local-only document (pending upload)',
                 data: {
@@ -828,6 +840,26 @@ class DocumentSyncService {
         AppLogger.warning('Failed to save last sync time', error: e);
       }
 
+      // Apply all batched Hive updates atomically
+      if (batchUpdates.isNotEmpty) {
+        AppLogger.info(
+          'Applying batched Hive updates',
+          data: {'count': batchUpdates.length},
+        );
+        // Use putAll for better atomicity (Hive batches these internally)
+        await box.putAll(batchUpdates);
+      }
+      
+      // Apply all batched sync status updates
+      for (final entry in batchSyncStatuses.entries) {
+        final statusData = entry.value;
+        DocumentSyncStateService.instance.setSyncStatus(
+          entry.key,
+          statusData['status'] as DocumentSyncStatus,
+          lastSyncTime: statusData['lastSyncTime'] as DateTime?,
+        );
+      }
+      
       // Update sync status for all processed documents
       // Mark remaining local documents as pending upload if they weren't in backend
       if (!replaceLocal) {

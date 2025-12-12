@@ -150,6 +150,11 @@ class DocumentService {
       final generationInputs = preprocessedPaths.isNotEmpty
           ? preprocessedPaths
           : pageImagePaths;
+      
+      // Mark config as preprocessed if we used preprocessed images
+      final finalConfig = preprocessedPaths.isNotEmpty
+          ? appliedConfig.copyWith(isPreprocessed: true)
+          : appliedConfig;
 
       pdfResult = await PdfGenerationService.instance.generate(
         imagePaths: generationInputs,
@@ -157,7 +162,7 @@ class DocumentService {
         optimizedDirPath: pagesDir.path,
         documentId: id,
         batchId: timestamp.toString(),
-        config: appliedConfig,
+        config: finalConfig,
         onProgress: onProgress,
       );
 
@@ -202,7 +207,9 @@ class DocumentService {
 
       // Use repository for async write (never blocks main thread)
       await DocumentRepository.instance.saveDocument(doc);
-      _markCacheDirty();
+      
+      // Immediately refresh cache so document appears in UI right away
+      await _refreshCache(forceRefresh: true);
       
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(id);
@@ -278,9 +285,77 @@ class DocumentService {
   /// Returns a list of valid [DocumentModel]s.
   Future<List<DocumentModel>> getAllDocumentsSafe() async {
     await _refreshCache(forceRefresh: true);
-    final docs = _documentsCache.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return docs;
+    final allDocs = _documentsCache.values.toList();
+    final validDocs = <DocumentModel>[];
+
+    // Verify file integrity for each document
+    for (final doc in allDocs) {
+      try {
+        // Skip cloud documents (URLs) - they can be re-downloaded
+        if (doc.isCloudDocument) {
+          validDocs.add(doc);
+          continue;
+        }
+
+        // Verify local file exists and is readable
+        final file = File(doc.filePath);
+        if (await file.exists()) {
+          final stat = await file.stat();
+          if (stat.size > 0) {
+            // File exists and has content - verify it's readable
+            try {
+              final raf = await file.open();
+              try {
+                await raf.readByte();
+                validDocs.add(doc);
+              } finally {
+                await raf.close();
+              }
+            } catch (e) {
+              AppLogger.warning(
+                'Document file is corrupted, excluding from list',
+                error: e,
+                data: {
+                  'documentId': doc.id,
+                  'filePath': doc.filePath,
+                },
+              );
+            }
+          } else {
+            AppLogger.warning(
+              'Document file is empty, excluding from list',
+              error: null,
+              data: {
+                'documentId': doc.id,
+                'filePath': doc.filePath,
+              },
+            );
+          }
+        } else {
+          AppLogger.warning(
+            'Document file missing, excluding from list',
+            error: null,
+            data: {
+              'documentId': doc.id,
+              'filePath': doc.filePath,
+            },
+          );
+        }
+      } catch (e, stack) {
+        AppLogger.error(
+          'Error verifying document file integrity',
+          error: e,
+          stack: stack,
+          data: {
+            'documentId': doc.id,
+            'filePath': doc.filePath,
+          },
+        );
+      }
+    }
+
+    validDocs.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return validDocs;
   }
 
   @Deprecated('Use getDocumentsPaginated or getAllDocumentsSafe instead.')
@@ -418,6 +493,11 @@ class DocumentService {
       final generationInputs = preprocessedPaths.isNotEmpty
           ? preprocessedPaths
           : pageImagePaths;
+      
+      // Mark config as preprocessed if we used preprocessed images
+      final finalConfig = preprocessedPaths.isNotEmpty
+          ? appliedConfig.copyWith(isPreprocessed: true)
+          : appliedConfig;
 
       pdfResult = await PdfGenerationService.instance.generate(
         imagePaths: generationInputs,
@@ -425,7 +505,7 @@ class DocumentService {
         optimizedDirPath: pagesDir.path,
         documentId: documentId,
         batchId: timestamp.toString(),
-        config: appliedConfig,
+        config: finalConfig,
         onProgress: onProgress,
       );
 
@@ -510,7 +590,9 @@ class DocumentService {
 
       // Use repository for async write (never blocks main thread)
       await DocumentRepository.instance.updateDocument(updatedDoc);
-      _markCacheDirty();
+      
+      // Immediately refresh cache so document appears in UI right away
+      await _refreshCache(forceRefresh: true);
       
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(documentId);
@@ -657,7 +739,9 @@ class DocumentService {
 
     // Use repository for async write (never blocks main thread)
     await DocumentRepository.instance.saveDocument(doc);
-    _markCacheDirty();
+    
+    // Immediately refresh cache so document appears in UI right away
+    await _refreshCache(forceRefresh: true);
     
     // Invalidate search cache
     DocumentSearchService.instance.invalidateCacheForDocument(id);
@@ -858,7 +942,9 @@ class DocumentService {
     // 4. Delete from local storage using repository
     // Use repository for async delete (never blocks main thread)
     await DocumentRepository.instance.deleteDocument(id);
-    _markCacheDirty();
+    
+    // Immediately refresh cache so document disappears from UI right away
+    await _refreshCache(forceRefresh: true);
     
     // Invalidate search cache
     DocumentSearchService.instance.invalidateCacheForDocument(id);

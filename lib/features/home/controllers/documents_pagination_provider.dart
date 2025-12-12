@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import 'package:thyscan/features/home/controllers/filtered_documents_provider.dart';
 import 'package:thyscan/features/home/controllers/home_state_provider.dart';
 import 'package:thyscan/features/home/models/document_filter.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -67,14 +68,21 @@ class PaginatedDocumentsState {
 /// - Loads only 3 pages at a time (current + 1 before + 1 after)
 /// - Disposes pages when user scrolls far away
 /// - Keeps max 150 documents in memory
+/// - Automatically refreshes when documents are saved/updated/deleted
 class PaginatedDocumentsNotifier
     extends StateNotifier<PaginatedDocumentsState> {
   final String? scanMode;
   final SortCriteria sortBy;
+  final Ref _ref;
   Timer? _disposeTimer;
+  int _lastDocumentCount = 0;
 
-  PaginatedDocumentsNotifier({required this.scanMode, required this.sortBy})
-    : super(
+  PaginatedDocumentsNotifier({
+    required this.scanMode,
+    required this.sortBy,
+    required Ref ref,
+  }) : _ref = ref,
+       super(
         PaginatedDocumentsState(
           documents: const [],
           currentPage: 0,
@@ -84,6 +92,74 @@ class PaginatedDocumentsNotifier
         ),
       ) {
     _loadInitialPage();
+    _watchForDocumentChanges();
+  }
+
+  /// Watches for document changes and refreshes when documents are saved/updated/deleted
+  void _watchForDocumentChanges() {
+    // Watch allDocumentsProvider to detect when documents change
+    // This will automatically clean up when the notifier is disposed
+    _ref.listen<AsyncValue<List<DocumentModel>>>(
+      allDocumentsProvider,
+      (previous, next) {
+        next.whenData((documents) {
+          // Check if document count changed (new document saved or deleted)
+          final currentCount = documents.length;
+          if (currentCount != _lastDocumentCount) {
+            _lastDocumentCount = currentCount;
+            // Documents changed - refresh current page to show new/updated documents
+            _refreshCurrentPageSilently();
+          }
+        });
+      },
+    );
+  }
+  
+  /// Silently refreshes the current page without showing loading state
+  Future<void> _refreshCurrentPageSilently() async {
+    try {
+      // Clear cache for current page to force reload
+      final newCache = Map<int, List<DocumentModel>>.from(state.pageCache);
+      final newLoadedPages = Set<int>.from(state.loadedPages);
+      
+      newCache.remove(state.currentPage);
+      newLoadedPages.remove(state.currentPage);
+      
+      state = state.copyWith(pageCache: newCache, loadedPages: newLoadedPages);
+      
+      // Reload current page with forceRefresh to get latest data
+      final result = await DocumentService.instance.getDocumentsPaginated(
+        page: state.currentPage,
+        pageSize: _pageSize,
+        sortBy: _sortByToString(sortBy),
+        descending: true,
+        forceRefresh: true, // Force refresh to get latest documents
+      );
+
+      // Filter by scan mode if specified
+      final filteredDocs = _filterDocuments(result.items);
+
+      // Update cache
+      final updatedCache = Map<int, List<DocumentModel>>.from(state.pageCache);
+      final updatedLoadedPages = Set<int>.from(state.loadedPages);
+      
+      updatedCache[state.currentPage] = filteredDocs;
+      updatedLoadedPages.add(state.currentPage);
+
+      // Merge documents from windowed pages
+      final windowedDocs = _mergeWindowedPages(state.currentPage, updatedCache);
+
+      state = state.copyWith(
+        documents: windowedDocs,
+        totalItems: result.totalItems,
+        hasMore: result.hasMore,
+        pageCache: updatedCache,
+        loadedPages: updatedLoadedPages,
+      );
+    } catch (e) {
+      // Silently fail - don't show error state for background refresh
+      // The user can manually refresh if needed
+    }
   }
 
   /// Loads initial page (page 0)
@@ -95,8 +171,11 @@ class PaginatedDocumentsNotifier
         pageSize: _pageSize,
         sortBy: _sortByToString(sortBy),
         descending: true,
-        forceRefresh: false,
+        forceRefresh: true, // Force refresh on initial load to ensure fresh data
       );
+      
+      // Track initial document count
+      _lastDocumentCount = result.totalItems;
 
       // Filter by scan mode if specified
       final filteredDocs = _filterDocuments(result.items);
@@ -296,12 +375,14 @@ class PaginatedDocumentsNotifier
   @override
   void dispose() {
     _disposeTimer?.cancel();
+    // ref.listen automatically cleans up when notifier is disposed
     super.dispose();
   }
 }
 
 /// Provider for paginated documents with windowed loading
 /// Automatically filters by active filter and sort criteria
+/// Watches for document changes and refreshes automatically
 final paginatedDocumentsProvider =
     StateNotifierProvider.family<
       PaginatedDocumentsNotifier,
@@ -311,6 +392,7 @@ final paginatedDocumentsProvider =
       return PaginatedDocumentsNotifier(
         scanMode: params.scanMode,
         sortBy: params.sortBy,
+        ref: ref,
       );
     });
 

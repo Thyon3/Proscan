@@ -16,6 +16,7 @@ import 'package:thyscan/core/services/image_cache_service.dart';
 import 'package:thyscan/core/services/memory_monitor_service.dart';
 import 'package:thyscan/core/services/recent_searches_service.dart';
 import 'package:thyscan/core/services/background_sync_service.dart';
+import 'package:thyscan/core/services/hive_migration_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -90,6 +91,10 @@ void main() {
         // The UI will show these documents right away, even before sync completes
         await Hive.initFlutter();
         Hive.registerAdapter(DocumentModelAdapter());
+        
+        // Run migrations before opening boxes
+        await HiveMigrationService.instance.migrateIfNeeded();
+        
         await Hive.openBox<DocumentModel>(DocumentService.boxName);
         
         AppLogger.info(
@@ -135,6 +140,14 @@ void main() {
         BackgroundSyncService.initialize().catchError((error) {
           AppLogger.error(
             'BackgroundSyncService initialization failed',
+            error: error,
+          );
+        });
+
+        // Initialize offline-first service
+        OfflineFirstService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'OfflineFirstService initialization failed',
             error: error,
           );
         });

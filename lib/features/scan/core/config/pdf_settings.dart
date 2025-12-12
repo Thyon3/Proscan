@@ -108,6 +108,7 @@ class PdfGenerationConfig {
     this.margin = 24,
     this.addWhiteBackground = true,
     this.metadata,
+    this.isPreprocessed = false,
   });
 
   final double maxPageSizeMb;
@@ -116,6 +117,9 @@ class PdfGenerationConfig {
   final double margin;
   final bool addWhiteBackground;
   final PdfDocumentMetadata? metadata;
+  /// Indicates if images are already preprocessed (resized and compressed).
+  /// When true, compression in PdfGenerationService will be skipped.
+  final bool isPreprocessed;
 
   PdfGenerationConfig copyWith({
     double? maxPageSizeMb,
@@ -124,6 +128,7 @@ class PdfGenerationConfig {
     double? margin,
     bool? addWhiteBackground,
     PdfDocumentMetadata? metadata,
+    bool? isPreprocessed,
   }) {
     return PdfGenerationConfig(
       maxPageSizeMb: maxPageSizeMb ?? this.maxPageSizeMb,
@@ -132,6 +137,7 @@ class PdfGenerationConfig {
       margin: margin ?? this.margin,
       addWhiteBackground: addWhiteBackground ?? this.addWhiteBackground,
       metadata: metadata ?? this.metadata,
+      isPreprocessed: isPreprocessed ?? this.isPreprocessed,
     );
   }
 }

@@ -13,44 +13,101 @@ import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
 /// Provider that watches Hive box for real-time document updates (async, non-blocking)
-final hiveBoxProvider = Provider<Box<DocumentModel>>((ref) {
-  return Hive.box<DocumentModel>(DocumentService.boxName);
+/// Uses the box from DocumentRepository to ensure it's kept open for watch() to work
+/// Note: Box should already be open from main.dart, this just gets a reference
+/// This is a FutureProvider to handle cases where box might not be ready yet
+final hiveBoxProvider = FutureProvider<Box<DocumentModel>>((ref) async {
+  // Box should already be open from main.dart initialization
+  // Try to get it synchronously first (non-blocking if already open)
+  try {
+    final box = Hive.box<DocumentModel>(DocumentService.boxName);
+    if (box.isOpen) {
+      return box;
+    }
+  } catch (e) {
+    // Box not accessible yet, will get from repository
+  }
+  
+  // Fallback: Get box from repository (which will use the already-open box)
+  // This is async but should be fast since box is already open
+  return await DocumentRepository.instance.getBox();
 });
 
 /// StateNotifier that watches Hive box and emits document list updates (async, non-blocking)
 class DocumentsNotifier extends StateNotifier<AsyncValue<List<DocumentModel>>> {
-  final Box<DocumentModel> _box;
+  final Future<Box<DocumentModel>> _boxFuture;
+  Box<DocumentModel>? _box;
   StreamSubscription? _subscription;
+  bool _isInitialized = false;
 
-  DocumentsNotifier(this._box) : super(const AsyncValue.loading()) {
+  DocumentsNotifier(this._boxFuture) : super(const AsyncValue.loading()) {
     _initialize();
   }
 
   Future<void> _initialize() async {
+    if (_isInitialized) return;
+    
     try {
+      // Get box from future (should be fast since box is already open from main.dart)
+      _box = await _boxFuture;
+      
+      // Ensure box is open (should already be open from main.dart)
+      if (!_box!.isOpen) {
+        AppLogger.warning(
+          'Box is not open in DocumentsNotifier, waiting for initialization',
+          error: null,
+        );
+        // Wait a bit for box to be initialized
+        await Future.delayed(const Duration(milliseconds: 100));
+        _box = await _boxFuture;
+        if (!_box!.isOpen) {
+          AppLogger.error(
+            'Box still not open after wait, cannot initialize DocumentsNotifier',
+            error: null,
+          );
+          state = AsyncValue.error(
+            Exception('Hive box not initialized'),
+            StackTrace.current,
+          );
+          return;
+        }
+      }
+      
       // Initial load (async, in isolate - never blocks main thread)
       final docs = await DocumentRepository.instance.getAllDocuments(
         includeDeleted: false,
       );
       state = AsyncValue.data(docs);
+      _isInitialized = true;
 
       // Listen to box changes - watch() returns Stream<BoxEvent>
-      _subscription = _box.watch().listen((_) async {
+      // This will trigger whenever a document is saved/updated/deleted
+      _subscription = _box!.watch().listen((event) async {
         // Reload async when box changes (never blocks main thread)
+        // This ensures UI updates immediately when documents are saved
         try {
           final updatedDocs = await DocumentRepository.instance.getAllDocuments(
             includeDeleted: false,
           );
-          state = AsyncValue.data(updatedDocs);
+          if (mounted) {
+            state = AsyncValue.data(updatedDocs);
+          }
         } catch (e, stack) {
           AppLogger.error(
             'Error reloading documents in DocumentsNotifier',
             error: e,
             stack: stack,
           );
-          state = AsyncValue.error(e, stack);
+          if (mounted) {
+            state = AsyncValue.error(e, stack);
+          }
         }
       });
+      
+      AppLogger.info(
+        'DocumentsNotifier initialized and watching box for changes',
+        data: {'initialDocumentCount': docs.length},
+      );
     } catch (e, stack) {
       AppLogger.error(
         'Error initializing DocumentsNotifier',
@@ -74,8 +131,8 @@ final allDocumentsProvider =
     StateNotifierProvider<DocumentsNotifier, AsyncValue<List<DocumentModel>>>((
       ref,
     ) {
-      final box = ref.watch(hiveBoxProvider);
-      return DocumentsNotifier(box);
+      final boxFuture = ref.watch(hiveBoxProvider.future);
+      return DocumentsNotifier(boxFuture);
     });
 
 /// Provider that returns filtered and sorted documents based on current home state

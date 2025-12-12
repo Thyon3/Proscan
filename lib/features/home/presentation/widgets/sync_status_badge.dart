@@ -6,6 +6,7 @@ import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
+import 'package:thyscan/features/sync/widgets/conflict_resolution_dialog.dart';
 import 'package:thyscan/models/document_model.dart';
 
 /// Sync status badge shown in the corner of document thumbnails
@@ -204,6 +205,13 @@ class SyncStatusBadge extends StatelessWidget {
   }
 
   Future<void> _showStatusDialog(BuildContext context, DocumentSyncStatus status) async {
+    // If conflict, show conflict resolution dialog
+    if (status == DocumentSyncStatus.conflict || 
+        status == DocumentSyncStatus.pendingConflictResolution) {
+      await _showConflictResolutionDialog(context);
+      return;
+    }
+
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final statusLabel = _getStatusLabel(status);
@@ -430,6 +438,44 @@ class SyncStatusBadge extends StatelessWidget {
       return '${difference.inMinutes} minute${difference.inMinutes == 1 ? '' : 's'} ago';
     } else {
       return 'Just now';
+    }
+  }
+
+  Future<void> _showConflictResolutionDialog(BuildContext context) async {
+    if (document == null) {
+      // Try to get document from repository
+      try {
+        final doc = await DocumentRepository.instance.getDocumentById(documentId);
+        if (doc == null) {
+          _showError(context, 'Document not found');
+          return;
+        }
+        await _showConflictDialog(context, doc);
+      } catch (e) {
+        _showError(context, 'Failed to load document: ${e.toString()}');
+      }
+    } else {
+      await _showConflictDialog(context, document!);
+    }
+  }
+
+  Future<void> _showConflictDialog(BuildContext context, DocumentModel localDoc) async {
+    // Show conflict resolution dialog (it will fetch remote version internally)
+    final resolution = await showDialog<ConflictResolution>(
+      context: context,
+      builder: (context) => ConflictResolutionDialog(
+        localDocument: localDoc,
+      ),
+    );
+
+    if (resolution != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Conflict resolution applied'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 }
