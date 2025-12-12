@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/constants/app_directories.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/atomic_file_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 
 /// Service for managing organized document storage in ThyScan folder structure.
@@ -167,8 +168,11 @@ class AppStorageService {
         await finalFile.delete();
       }
 
-      // Move the file (preserves disk space vs. copy)
-      await tempFile.rename(finalPath);
+      // Use atomic move for crash safety
+      await AtomicFileService.instance.moveAtomically(
+        sourcePath: tempFilePath,
+        targetPath: finalPath,
+      );
 
       AppLogger.info(
         'Moved document to organized folder',
