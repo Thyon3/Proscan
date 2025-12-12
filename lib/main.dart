@@ -17,6 +17,8 @@ import 'package:thyscan/core/services/memory_monitor_service.dart';
 import 'package:thyscan/core/services/recent_searches_service.dart';
 import 'package:thyscan/core/services/background_sync_service.dart';
 import 'package:thyscan/core/services/hive_migration_service.dart';
+import 'package:thyscan/core/services/offline_first_service.dart';
+import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -151,6 +153,10 @@ void main() {
             error: error,
           );
         });
+
+        // Start memory monitoring for resource management
+        ResourceGuard.instance.startMemoryMonitoring();
+        AppLogger.info('Memory monitoring started');
 
         RecentSearchesService.instance.initialize().catchError((error) {
           AppLogger.error(

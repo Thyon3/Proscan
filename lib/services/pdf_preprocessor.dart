@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
@@ -16,6 +18,10 @@ class PdfPreprocessor {
   PdfPreprocessor._();
 
   static final PdfPreprocessor instance = PdfPreprocessor._();
+
+  // Cache for preprocessed images: key = cache key (source path + params), value = cached file path
+  final LinkedHashMap<String, String> _preprocessedCache = LinkedHashMap();
+  static const int _maxCacheEntries = 50; // Limit cache size
 
   Future<List<String>> preprocess({
     required List<String> imagePaths,
@@ -33,39 +39,139 @@ class PdfPreprocessor {
 
     final tempDir = await getTemporaryDirectory();
 
-    // Batch process all images in a single isolate for better performance
-    if (imagePaths.length == 1) {
+    // Check cache for each image before preprocessing
+    final cachedPaths = <String?>[];
+    final pathsToProcess = <String>[];
+    final processIndices = <int>[];
+
+    for (int i = 0; i < imagePaths.length; i++) {
+      final cacheKey = _getCacheKey(imagePaths[i], dpiCap, quality);
+      final cachedPath = _preprocessedCache[cacheKey];
+
+      if (cachedPath != null && await File(cachedPath).exists()) {
+        // Check if cached file is still valid (source hasn't changed)
+        try {
+          final sourceFile = File(imagePaths[i]);
+          final cachedFile = File(cachedPath);
+          if (await sourceFile.exists() && await cachedFile.exists()) {
+            final sourceModified = await sourceFile.lastModified();
+            final cachedModified = await cachedFile.lastModified();
+            // Use cache if cached file is newer or same age as source
+            if (cachedModified.isAfter(sourceModified) ||
+                cachedModified.isAtSameMomentAs(sourceModified)) {
+              cachedPaths.add(cachedPath);
+              // Move to end of cache (LRU)
+              _preprocessedCache.remove(cacheKey);
+              _preprocessedCache[cacheKey] = cachedPath;
+              continue;
+            }
+          }
+        } catch (e) {
+          // If we can't verify, reprocess to be safe
+          AppLogger.warning(
+            'Could not verify cached preprocessed image, reprocessing',
+            error: e,
+            data: {'sourcePath': imagePaths[i], 'cachedPath': cachedPath},
+          );
+        }
+      }
+
+      // Need to process this image
+      cachedPaths.add(null);
+      pathsToProcess.add(imagePaths[i]);
+      processIndices.add(i);
+    }
+
+    // If all images are cached, return immediately
+    if (pathsToProcess.isEmpty) {
+      onProgress?.call(imagePaths.length, imagePaths.length);
+      return cachedPaths.cast<String>();
+    }
+
+    // Process images that aren't cached
+    List<String> processedPaths;
+    if (pathsToProcess.length == 1) {
       // Single image - use compute for simplicity
       try {
         final processedPath = await compute<_PreprocessPayload, String>(
           _preprocessImage,
           _PreprocessPayload(
-            sourcePath: imagePaths[0],
+            sourcePath: pathsToProcess[0],
             outputDir: tempDir.path,
             maxDimension: dpiCap,
             jpegQuality: quality,
           ),
         );
-        _cleanupOldPreprocessedFiles(tempDir);
-        return [processedPath];
+        processedPaths = [processedPath];
+        // Cache the result
+        final cacheKey = _getCacheKey(pathsToProcess[0], dpiCap, quality);
+        _addToCache(cacheKey, processedPath);
       } on ImageProcessingException catch (e) {
-        throw PreprocessingException('Failed to preprocess ${imagePaths[0]}', cause: e);
+        throw PreprocessingException('Failed to preprocess ${pathsToProcess[0]}', cause: e);
       } catch (e) {
         throw PreprocessingException(
-          'Unknown preprocessing error for ${imagePaths[0]}',
+          'Unknown preprocessing error for ${pathsToProcess[0]}',
           cause: e,
         );
       }
+    } else {
+      // Multiple images - batch process in single isolate
+      processedPaths = await _batchPreprocess(
+        imagePaths: pathsToProcess,
+        outputDir: tempDir.path,
+        maxDimension: dpiCap,
+        jpegQuality: quality,
+        onProgress: (processed, total) {
+          // Adjust progress to account for cached images
+          final totalProcessed = cachedPaths.where((p) => p != null).length + processed;
+          onProgress?.call(totalProcessed, imagePaths.length);
+        },
+      );
+      // Cache the results
+      for (int i = 0; i < processedPaths.length; i++) {
+        final cacheKey = _getCacheKey(pathsToProcess[i], dpiCap, quality);
+        _addToCache(cacheKey, processedPaths[i]);
+      }
     }
 
-    // Multiple images - batch process in single isolate
-    return await _batchPreprocess(
-      imagePaths: imagePaths,
-      outputDir: tempDir.path,
-      maxDimension: dpiCap,
-      jpegQuality: quality,
-      onProgress: onProgress,
-    );
+    // Combine cached and newly processed paths in correct order
+    final result = <String>[];
+    int processedIndex = 0;
+    for (int i = 0; i < imagePaths.length; i++) {
+      if (cachedPaths[i] != null) {
+        result.add(cachedPaths[i]!);
+      } else {
+        result.add(processedPaths[processedIndex++]);
+      }
+    }
+
+    _cleanupOldPreprocessedFiles(tempDir);
+    return result;
+  }
+
+  /// Generates a cache key for a source image path and processing parameters
+  String _getCacheKey(String sourcePath, int maxDimension, int quality) {
+    final key = '$sourcePath|$maxDimension|$quality';
+    return sha256.convert(key.codeUnits).toString();
+  }
+
+  /// Adds a preprocessed image to the cache (LRU eviction)
+  void _addToCache(String cacheKey, String processedPath) {
+    // Remove if already exists (move to end)
+    _preprocessedCache.remove(cacheKey);
+    _preprocessedCache[cacheKey] = processedPath;
+
+    // Evict oldest entries if cache is too large
+    while (_preprocessedCache.length > _maxCacheEntries) {
+      final oldestKey = _preprocessedCache.keys.first;
+      _preprocessedCache.remove(oldestKey);
+    }
+  }
+
+  /// Clears the preprocessed image cache
+  void clearCache() {
+    _preprocessedCache.clear();
+    AppLogger.info('Preprocessed image cache cleared');
   }
 
   /// Batch processes multiple images in a single isolate for better performance.
