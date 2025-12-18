@@ -281,10 +281,8 @@ class _SyncStatusDialogState extends State<_SyncStatusDialog> {
                 : () async {
                     setState(() => _isRetrying = true);
                     try {
-                      // Retry failed uploads
-                      await DocumentUploadService.instance.processQueue();
-                      // Retry failed downloads
-                      await DocumentDownloadService.instance.processQueue();
+                      // Retry failed uploads via syncNow
+                      await DocumentUploadService.instance.syncNow();
                       // Retry sync
                       await DocumentSyncService.instance.syncDocuments(
                         forceFullSync: false,
@@ -347,6 +345,10 @@ class _SyncStatusDialogState extends State<_SyncStatusDialog> {
   }
 
   Widget _buildPendingOperationsSection(BuildContext context, ColorScheme colorScheme) {
+    final pendingUploads = DocumentUploadService.instance.pendingUploads;
+    final pendingUploadCount = pendingUploads.length;
+    final pendingDownloadCount = DocumentDownloadService.instance.queueLength;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -357,60 +359,49 @@ class _SyncStatusDialogState extends State<_SyncStatusDialog> {
               ),
         ),
         const SizedBox(height: 8),
-        StreamBuilder<List<DocumentModel>>(
-          stream: OfflineFirstService.instance.pendingUploadsStream,
-          builder: (context, snapshot) {
-            final pendingUploads = snapshot.data ?? [];
-            return StreamBuilder<List<DocumentModel>>(
-              stream: OfflineFirstService.instance.pendingDownloadsStream,
-              builder: (context, snapshot) {
-                final pendingDownloads = snapshot.data ?? [];
-                if (pendingUploads.isEmpty && pendingDownloads.isEmpty) {
-                  return const Text('No pending operations');
-                }
-                return Column(
-                  children: [
-                    ...pendingUploads.take(5).map((doc) => ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.cloud_upload, size: 20),
-                          title: Text(
-                            doc.title,
-                            style: const TextStyle(fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )),
-                    ...pendingDownloads.take(5).map((doc) => ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.cloud_download, size: 20),
-                          title: Text(
-                            doc.title,
-                            style: const TextStyle(fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )),
-                    if (pendingUploads.length + pendingDownloads.length > 10)
-                      Text(
-                        '... and ${pendingUploads.length + pendingDownloads.length - 10} more',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
+        if (pendingUploadCount == 0 && pendingDownloadCount == 0)
+          const Text('No pending operations')
+        else
+          Column(
+            children: [
+              ...pendingUploads.take(5).map((upload) => ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.cloud_upload, size: 20),
+                    title: Text(
+                      upload.document.title,
+                      style: const TextStyle(fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )),
+              if (pendingDownloadCount > 0)
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.cloud_download, size: 20),
+                  title: Text(
+                    '$pendingDownloadCount document(s) pending download',
+                    style: const TextStyle(fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              if (pendingUploadCount + pendingDownloadCount > 10)
+                Text(
+                  '... and ${pendingUploadCount + pendingDownloadCount - 10} more',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ],
+          ),
         const SizedBox(height: 16),
       ],
     );

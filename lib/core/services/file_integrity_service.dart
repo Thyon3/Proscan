@@ -1,9 +1,19 @@
 // core/services/file_integrity_service.dart
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+
+/// Accumulator sink for collecting digest results
+class AccumulatorSink<T> implements Sink<T> {
+  final List<T> events = [];
+
+  @override
+  void add(T event) => events.add(event);
+
+  @override
+  void close() {}
+}
 
 /// Service for file integrity checks using checksums.
 ///
@@ -41,15 +51,15 @@ class FileIntegrityService {
 
       // Read file in chunks to avoid loading large files into memory
       final fileStream = file.openRead();
-      final hash = sha256;
-      final sink = hash.startChunkedConversion(hash.newDigestSink());
+      final output = AccumulatorSink<Digest>();
+      final input = sha256.startChunkedConversion(output);
 
       await for (final chunk in fileStream) {
-        sink.add(chunk);
+        input.add(chunk);
       }
 
-      sink.close();
-      final digest = sink.current;
+      input.close();
+      final digest = output.events.single;
       final checksum = digest.toString();
 
       AppLogger.info(

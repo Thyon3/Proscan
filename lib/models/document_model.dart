@@ -282,4 +282,64 @@ class DocumentModel extends HiveObject {
   /// Checks if file needs re-download (cloud document with missing local file)
   bool get needsRedownload =>
       isCloudDocument && !hasValidFile;
+
+  /// Converts the document model to JSON for backend API
+  /// 
+  /// **Note:** This is different from Hive serialization (document_model.g.dart)
+  /// This method is used for REST API communication with the backend
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'fileUrl': filePath,
+      'thumbnailUrl': thumbnailPath,
+      'format': format,
+      'pageCount': pageCount,
+      'scanMode': scanMode,
+      'colorProfile': colorProfile,
+      'textContent': textContent,
+      'tags': tags,
+      'metadata': metadata,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'isDeleted': isDeleted,
+      'deletedAt': deletedAt?.toIso8601String(),
+    };
+  }
+
+  /// Creates a DocumentModel from JSON received from backend API
+  /// 
+  /// **Note:** This is different from Hive deserialization (document_model.g.dart)
+  /// This factory is used for REST API communication with the backend
+  factory DocumentModel.fromJson(Map<String, dynamic> json) {
+    return DocumentModel(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      filePath: json['fileUrl'] as String? ?? json['filePath'] as String? ?? '',
+      format: json['format'] as String? ?? 'pdf',
+      createdAt: json['createdAt'] != null 
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : DateTime.now(),
+      pageCount: json['pageCount'] as int? ?? 0,
+      thumbnailPath: json['thumbnailUrl'] as String? ?? json['thumbnailPath'] as String? ?? '',
+      scanMode: json['scanMode'] as String? ?? 'document',
+      textContent: json['textContent'] as String?,
+      colorProfile: json['colorProfile'] as String? ?? 'color',
+      tags: json['tags'] != null
+          ? (json['tags'] as List<dynamic>).map((e) => e.toString()).toList()
+          : null,
+      metadata: json['metadata'] != null
+          ? (json['metadata'] as Map<String, dynamic>).map(
+              (key, value) => MapEntry(key, value.toString()),
+            )
+          : null,
+      isDeleted: json['isDeleted'] as bool? ?? false,
+      deletedAt: json['deletedAt'] != null
+          ? DateTime.parse(json['deletedAt'] as String)
+          : null,
+    );
+  }
 }

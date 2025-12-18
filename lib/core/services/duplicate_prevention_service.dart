@@ -2,6 +2,7 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/file_integrity_service.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -27,7 +28,8 @@ import 'package:thyscan/services/document_service.dart';
 /// ```
 class DuplicatePreventionService {
   DuplicatePreventionService._();
-  static final DuplicatePreventionService instance = DuplicatePreventionService._();
+  static final DuplicatePreventionService instance =
+      DuplicatePreventionService._();
 
   final _fileIntegrityService = FileIntegrityService.instance;
 
@@ -72,7 +74,9 @@ class DuplicatePreventionService {
         }
 
         // Calculate checksum of existing document
-        final existingChecksum = await _fileIntegrityService.calculateChecksum(doc.filePath);
+        final existingChecksum = await _fileIntegrityService.calculateChecksum(
+          doc.filePath,
+        );
         if (existingChecksum == null) {
           continue;
         }
@@ -218,4 +222,3 @@ class DuplicatePreventionService {
     return true;
   }
 }
-

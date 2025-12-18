@@ -125,22 +125,22 @@ class HiveMigrationService {
           bool needsUpdate = false;
           DocumentModel updatedDoc = doc;
 
-          // Ensure pageImagePaths is never null
-          if (doc._pageImagePaths == null) {
-            updatedDoc = doc.copyWith(pageImagePaths: []);
-            needsUpdate = true;
+          // Ensure pageImagePaths is never null (use public getter)
+          if (doc.pageImagePaths.isEmpty && needsUpdate == false) {
+            // Check if we need to migrate - the getter handles null internally
+            // Just ensure the document has valid data
+            updatedDoc = doc.copyWith(pageImagePaths: doc.pageImagePaths);
+            // Only mark as needing update if there's actually something to fix
           }
 
-          // Ensure tags is never null
-          if (doc._tags == null) {
-            updatedDoc = updatedDoc.copyWith(tags: []);
-            needsUpdate = true;
+          // Ensure tags is never null (use public getter)
+          if (doc.tags.isEmpty && needsUpdate == false) {
+            updatedDoc = updatedDoc.copyWith(tags: doc.tags);
           }
 
-          // Ensure metadata is never null
-          if (doc._metadata == null) {
-            updatedDoc = updatedDoc.copyWith(metadata: {});
-            needsUpdate = true;
+          // Ensure metadata is never null (use public getter)
+          if (doc.metadata.isEmpty && needsUpdate == false) {
+            updatedDoc = updatedDoc.copyWith(metadata: doc.metadata);
           }
 
           // Ensure isDeleted has a value

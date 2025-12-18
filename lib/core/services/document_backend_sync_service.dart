@@ -164,7 +164,7 @@ class DocumentBackendSyncService {
 
       // Prepare request body with all document metadata
       // Ensure all fields are included, even if empty/null
-      final body = jsonEncode({
+      final requestData = {
         'id': document.id,
         'title': document.title,
         'fileUrl': fileUrl,
@@ -173,10 +173,17 @@ class DocumentBackendSyncService {
         'pageCount': document.pageCount,
         'scanMode': document.scanMode,
         'colorProfile': document.colorProfile,
-        'textContent': document.textContent ?? null,
-        'tags': document.tags.isNotEmpty ? document.tags : [],
-        'metadata': document.metadata.isNotEmpty ? document.metadata : {},
-      });
+        'textContent': document.textContent,
+        'tags': document.tags,
+        'metadata': document.metadata,
+        'createdAt': document.createdAt.toIso8601String(),
+        'updatedAt': document.updatedAt.toIso8601String(),
+      };
+
+      // Remove null values to avoid backend validation errors
+      requestData.removeWhere((key, value) => value == null);
+
+      final body = jsonEncode(requestData);
 
       AppLogger.info(
         documentExists
@@ -241,11 +248,10 @@ class DocumentBackendSyncService {
         );
 
         // Generate request signature for critical operation
-        final requestBody = jsonDecode(body) as Map<String, dynamic>;
         final signature = RequestSignatureService.instance.generateSignature(
           method: 'PUT',
           path: '/api/documents/${document.id}',
-          body: requestBody,
+          body: requestData,
         );
 
         final headers = {
@@ -833,7 +839,7 @@ class DocumentBackendSyncService {
         thumbnailUrl = document.thumbnailPath;
       }
 
-      final body = jsonEncode({
+      final requestData = {
         'title': document.title,
         'fileUrl': fileUrl,
         'thumbnailUrl': thumbnailUrl,
@@ -844,7 +850,13 @@ class DocumentBackendSyncService {
         'textContent': document.textContent,
         'tags': document.tags,
         'metadata': document.metadata,
-      });
+        'updatedAt': document.updatedAt.toIso8601String(),
+      };
+
+      // Remove null values to avoid backend validation errors
+      requestData.removeWhere((key, value) => value == null);
+
+      final body = jsonEncode(requestData);
 
       AppLogger.info(
         'Updating document metadata in backend',
@@ -852,11 +864,10 @@ class DocumentBackendSyncService {
       );
 
       // Generate request signature for critical operation
-      final requestBody = jsonDecode(body) as Map<String, dynamic>;
       final signature = RequestSignatureService.instance.generateSignature(
         method: 'PUT',
         path: '/api/documents/${document.id}',
-        body: requestBody,
+        body: requestData,
       );
 
       final headers = {
@@ -1316,27 +1327,22 @@ class DocumentBackendSyncService {
   }
 
   /// Converts JSON from backend to DocumentModel
+  /// Converts JSON from backend API to DocumentModel
+  /// 
+  /// Uses the DocumentModel.fromJson factory method for consistent deserialization
   DocumentModel _documentFromJson(Map<String, dynamic> json) {
-    return DocumentModel(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      filePath: json['fileUrl'] as String? ?? '',
-      format: json['format'] as String? ?? 'pdf',
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: DateTime.parse(json['updatedAt'] as String),
-      pageCount: json['pageCount'] as int? ?? 0,
-      thumbnailPath: json['thumbnailUrl'] as String? ?? '',
-      scanMode: json['scanMode'] as String? ?? 'document',
-      textContent: json['textContent'] as String?,
-      colorProfile: json['colorProfile'] as String? ?? 'color',
-      tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
-      metadata:
-          (json['metadata'] as Map<String, dynamic>?)?.cast<String, String>() ??
-          {},
-      isDeleted: json['isDeleted'] as bool? ?? false,
-      deletedAt: json['deletedAt'] != null
-          ? DateTime.parse(json['deletedAt'] as String)
-          : null,
-    );
+    try {
+      return DocumentModel.fromJson(json);
+    } catch (e, stack) {
+      AppLogger.error(
+        'Failed to parse document from JSON',
+        error: e,
+        stack: stack,
+        data: {
+          'json': json.toString().substring(0, json.toString().length > 200 ? 200 : json.toString().length),
+        },
+      );
+      rethrow;
+    }
   }
 }

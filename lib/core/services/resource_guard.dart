@@ -354,12 +354,18 @@ class ResourceGuard {
     _processImageProcessingQueue();
   }
 
+  /// Gets the current max concurrent uploads limit
+  int get maxConcurrentUploads => _maxConcurrentUploads;
+
+  /// Gets the current max concurrent downloads limit
+  int get maxConcurrentDownloads => _maxConcurrentDownloads;
+
   /// Acquires a slot for upload operation
   Future<void> acquireUploadSlot({
     required String operationId,
     OperationPriority priority = OperationPriority.background,
   }) async {
-    if (_activeUploads.length < maxConcurrentUploads) {
+    if (_activeUploads.length < _maxConcurrentUploads) {
       _activeUploads.add(operationId);
       return;
     }
@@ -397,7 +403,7 @@ class ResourceGuard {
     required String operationId,
     OperationPriority priority = OperationPriority.background,
   }) async {
-    if (_activeDownloads.length < maxConcurrentDownloads) {
+    if (_activeDownloads.length < _maxConcurrentDownloads) {
       _activeDownloads.add(operationId);
       return;
     }

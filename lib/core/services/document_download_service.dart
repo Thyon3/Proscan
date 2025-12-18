@@ -284,7 +284,7 @@ class DocumentDownloadService {
 
     // Process queue up to concurrent limit (using ResourceGuard)
     while (_downloadQueue.isNotEmpty &&
-        _activeDownloads.length < ResourceGuard.maxConcurrentDownloads) {
+        _activeDownloads.length < ResourceGuard.instance.maxConcurrentDownloads) {
       final queueItem = _downloadQueue.removeAt(0);
       
       if (_activeDownloads.containsKey(queueItem.documentId)) {

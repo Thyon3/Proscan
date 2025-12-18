@@ -612,7 +612,7 @@ class DocumentUploadService {
 
       // Check concurrent upload limit using ResourceGuard
       while (_uploadQueue.isNotEmpty &&
-          _isProcessing.length < ResourceGuard.maxConcurrentUploads) {
+          _isProcessing.length < ResourceGuard.instance.maxConcurrentUploads) {
         final upload = _uploadQueue.removeAt(0);
         
         if (_isProcessing.containsKey(upload.documentId)) {

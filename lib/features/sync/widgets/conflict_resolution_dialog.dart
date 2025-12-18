@@ -11,6 +11,18 @@ import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
+/// Resolution choice for document conflicts
+enum ConflictResolution {
+  /// Keep the local version (upload it to overwrite remote)
+  keepLocal,
+
+  /// Keep the remote version (replace local with remote)
+  keepRemote,
+
+  /// Merge both versions (currently uses remote, future: smart merge)
+  merge,
+}
+
 /// Dialog for resolving document conflicts between local and remote versions.
 ///
 /// Shows both versions and lets the user choose which one to keep, or merge them.
@@ -21,7 +33,6 @@ import 'package:thyscan/services/document_service.dart';
 ///   context: context,
 ///   builder: (context) => ConflictResolutionDialog(
 ///     localDocument: localDoc,
-///     remoteDocument: remoteDoc,
 ///   ),
 /// );
 ///
@@ -107,11 +118,6 @@ class _ConflictResolutionDialogState extends State<ConflictResolutionDialog> {
 
     final remoteDocument = _remoteDocument ?? widget.localDocument;
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
@@ -132,7 +138,7 @@ class _ConflictResolutionDialogState extends State<ConflictResolutionDialog> {
                     color: Colors.orange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
+                  child: const Icon(
                     Icons.warning_amber_rounded,
                     color: Colors.orange,
                     size: 28,
@@ -172,7 +178,7 @@ class _ConflictResolutionDialogState extends State<ConflictResolutionDialog> {
 
             // Document info
             Text(
-              localDocument.title,
+              widget.localDocument.title,
               style: GoogleFonts.inter(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -218,7 +224,7 @@ class _ConflictResolutionDialogState extends State<ConflictResolutionDialog> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
+                    const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -490,7 +496,7 @@ class _ConflictResolutionDialogState extends State<ConflictResolutionDialog> {
         Navigator.of(context).pop(resolution);
         
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Conflict resolved successfully'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
@@ -520,16 +526,3 @@ class _ConflictResolutionDialogState extends State<ConflictResolutionDialog> {
     }
   }
 }
-
-/// Resolution choice for document conflicts
-enum ConflictResolution {
-  /// Keep the local version (upload it to overwrite remote)
-  keepLocal,
-
-  /// Keep the remote version (replace local with remote)
-  keepRemote,
-
-  /// Merge both versions (currently uses remote, future: smart merge)
-  merge,
-}
-

@@ -45,7 +45,8 @@ class OfflineFirstService {
   Stream<List<PendingOperation>> get queueStream => _queueController.stream;
 
   /// Gets the current offline queue
-  List<PendingOperation> get pendingOperations => List.unmodifiable(_pendingOperations);
+  List<PendingOperation> get pendingOperations =>
+      List.unmodifiable(_pendingOperations);
 
   /// Initializes the offline-first service
   Future<void> initialize() async {
@@ -54,7 +55,9 @@ class OfflineFirstService {
     AppLogger.info('Initializing OfflineFirstService');
 
     // Listen to connectivity changes
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((results) {
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
+      results,
+    ) {
       final isOnline = results.any(
         (result) =>
             result != ConnectivityResult.none &&
@@ -88,9 +91,7 @@ class OfflineFirstService {
   Future<List<DocumentModel>> getDocuments() async {
     // Always read from local storage first (offline-first)
     final box = Hive.box<DocumentModel>(DocumentService.boxName);
-    final localDocs = box.values
-        .where((doc) => !doc.isDeleted)
-        .toList()
+    final localDocs = box.values.where((doc) => !doc.isDeleted).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     AppLogger.info(
@@ -124,13 +125,14 @@ class OfflineFirstService {
   ///
   /// The document is saved to local storage immediately, then queued
   /// for upload when online.
+  /// 
+  /// Note: Use DocumentService.instance.saveDocument() directly for full options.
+  /// This method provides a simplified offline-first wrapper.
   Future<DocumentModel> createDocument({
     required List<String> pageImagePaths,
     String? title,
     String scanMode = 'document',
     String? textContent,
-    DocumentColorProfile colorProfile = DocumentColorProfile.color,
-    DocumentSaveOptions options = const DocumentSaveOptions(),
   }) async {
     // Save to local storage immediately (offline-first)
     final doc = await DocumentService.instance.saveDocument(
@@ -138,17 +140,11 @@ class OfflineFirstService {
       title: title,
       scanMode: scanMode,
       textContent: textContent,
-      colorProfile: colorProfile,
-      options: options,
     );
 
     AppLogger.info(
       'Document created locally (offline-first)',
-      data: {
-        'documentId': doc.id,
-        'title': doc.title,
-        'format': doc.format,
-      },
+      data: {'documentId': doc.id, 'title': doc.title, 'format': doc.format},
     );
 
     // Queue for upload (will happen automatically when online)
@@ -165,13 +161,14 @@ class OfflineFirstService {
   }
 
   /// Updates a document (saved locally, queued for sync).
+  /// 
+  /// Note: Use DocumentService.instance.updateDocument() directly for full options.
+  /// This method provides a simplified offline-first wrapper.
   Future<DocumentModel> updateDocument({
     required String documentId,
     required List<String> pageImagePaths,
     String? title,
     String? scanMode,
-    DocumentColorProfile? colorProfile,
-    DocumentSaveOptions options = const DocumentSaveOptions(),
   }) async {
     // Update in local storage immediately
     final doc = await DocumentService.instance.updateDocument(
@@ -179,16 +176,11 @@ class OfflineFirstService {
       pageImagePaths: pageImagePaths,
       title: title,
       scanMode: scanMode,
-      colorProfile: colorProfile,
-      options: options,
     );
 
     AppLogger.info(
       'Document updated locally (offline-first)',
-      data: {
-        'documentId': doc.id,
-        'title': doc.title,
-      },
+      data: {'documentId': doc.id, 'title': doc.title},
     );
 
     // Queue for upload
@@ -204,13 +196,13 @@ class OfflineFirstService {
   }
 
   /// Deletes a document (deleted locally, queued for backend deletion).
-  Future<void> deleteDocument(String id, {bool hardDelete = false}) async {
+  Future<void> deleteDocument(String id) async {
     // Delete from local storage immediately
-    await DocumentService.instance.deleteDocument(id, hardDelete: hardDelete);
+    await DocumentService.instance.deleteDocument(id);
 
     AppLogger.info(
       'Document deleted locally (offline-first)',
-      data: {'documentId': id, 'hardDelete': hardDelete},
+      data: {'documentId': id},
     );
 
     // Queue for backend deletion
@@ -235,10 +227,7 @@ class OfflineFirstService {
       if (isOnline) {
         // Trigger sync in background (non-blocking)
         DocumentSyncService.instance.syncDocuments().catchError((error) {
-          AppLogger.error(
-            'Background sync failed',
-            error: error,
-          );
+          AppLogger.error('Background sync failed', error: error);
         });
       }
     });
@@ -258,7 +247,7 @@ class OfflineFirstService {
     // Just trigger sync and let services handle their queues
 
     await DocumentSyncService.instance.syncDocuments();
-    
+
     // Clear processed operations
     _pendingOperations.clear();
     _savePendingOperations();
@@ -269,7 +258,8 @@ class OfflineFirstService {
   void _addPendingOperation(PendingOperation operation) {
     // Remove duplicate operations for the same document
     _pendingOperations.removeWhere(
-      (op) => op.documentId == operation.documentId && op.type == operation.type,
+      (op) =>
+          op.documentId == operation.documentId && op.type == operation.type,
     );
 
     _pendingOperations.add(operation);
@@ -287,12 +277,11 @@ class OfflineFirstService {
         _pendingOperations.clear();
         for (final json in operationsJson) {
           try {
-            _pendingOperations.add(PendingOperation.fromJson(json as Map<String, dynamic>));
-          } catch (e) {
-            AppLogger.warning(
-              'Failed to load pending operation',
-              error: e,
+            _pendingOperations.add(
+              PendingOperation.fromJson(json as Map<String, dynamic>),
             );
+          } catch (e) {
+            AppLogger.warning('Failed to load pending operation', error: e);
           }
         }
         AppLogger.info(
@@ -301,10 +290,7 @@ class OfflineFirstService {
         );
       }
     } catch (e) {
-      AppLogger.warning(
-        'Failed to load pending operations',
-        error: e,
-      );
+      AppLogger.warning('Failed to load pending operations', error: e);
     }
   }
 
@@ -312,13 +298,12 @@ class OfflineFirstService {
   Future<void> _savePendingOperations() async {
     try {
       final box = await Hive.openBox('offline_queue');
-      final operationsJson = _pendingOperations.map((op) => op.toJson()).toList();
+      final operationsJson = _pendingOperations
+          .map((op) => op.toJson())
+          .toList();
       await box.put('pending_operations', operationsJson);
     } catch (e) {
-      AppLogger.warning(
-        'Failed to save pending operations',
-        error: e,
-      );
+      AppLogger.warning('Failed to save pending operations', error: e);
     }
   }
 
@@ -331,11 +316,7 @@ class OfflineFirstService {
 }
 
 /// Type of pending operation
-enum OperationType {
-  upload,
-  download,
-  delete,
-}
+enum OperationType { upload, download, delete }
 
 /// Represents a pending operation in the offline queue
 class PendingOperation {
@@ -386,4 +367,3 @@ class PendingOperation {
     );
   }
 }
-
