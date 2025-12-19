@@ -91,6 +91,7 @@ class AppStorageService {
         AppLogger.info(
           'Created scan mode folder from string',
           data: {'scanMode': scanMode, 'path': folderPath.path},
+          tag: '',
         );
       }
 

@@ -103,7 +103,6 @@ class FileIntegrityService {
       if (!isValid) {
         AppLogger.warning(
           'File integrity check failed - checksum mismatch',
-          error: null,
           data: {
             'filePath': filePath,
             'expected': expectedChecksum.substring(0, 16) + '...',

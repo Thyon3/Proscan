@@ -44,14 +44,15 @@ class AtomicFileService {
   }) async {
     final file = File(filePath);
     final directory = file.parent;
-    
+
     // Ensure directory exists
     if (!await directory.exists()) {
       await directory.create(recursive: true);
     }
 
     // Create temp file in same directory (ensures atomic rename works)
-    final tempFileName = '${p.basename(filePath)}.tmp.${DateTime.now().millisecondsSinceEpoch}';
+    final tempFileName =
+        '${p.basename(filePath)}.tmp.${DateTime.now().millisecondsSinceEpoch}';
     final tempFilePath = p.join(directory.path, tempFileName);
     final tempFile = File(tempFilePath);
 
@@ -84,10 +85,7 @@ class AtomicFileService {
 
       AppLogger.info(
         'File written atomically',
-        data: {
-          'filePath': filePath,
-          'size': data.length,
-        },
+        data: {'filePath': filePath, 'size': data.length},
       );
     } catch (e, stack) {
       // Clean up temp file on error
@@ -133,7 +131,8 @@ class AtomicFileService {
     }
 
     // Create temp file in target directory
-    final tempFileName = '${p.basename(targetPath)}.tmp.${DateTime.now().millisecondsSinceEpoch}';
+    final tempFileName =
+        '${p.basename(targetPath)}.tmp.${DateTime.now().millisecondsSinceEpoch}';
     final tempFilePath = p.join(targetDirectory.path, tempFileName);
     final tempFile = File(tempFilePath);
 
@@ -186,10 +185,7 @@ class AtomicFileService {
         'Failed to copy file atomically',
         error: e,
         stack: stack,
-        data: {
-          'sourcePath': sourcePath,
-          'targetPath': targetPath,
-        },
+        data: {'sourcePath': sourcePath, 'targetPath': targetPath},
       );
       rethrow;
     }
@@ -219,10 +215,7 @@ class AtomicFileService {
       AppLogger.warning(
         'Failed to delete source file after atomic move',
         error: e,
-        data: {
-          'sourcePath': sourcePath,
-          'targetPath': targetPath,
-        },
+        data: {'sourcePath': sourcePath, 'targetPath': targetPath},
       );
       // Don't rethrow - target file is already in place
     }
@@ -242,4 +235,3 @@ class AtomicFileService {
     );
   }
 }
-

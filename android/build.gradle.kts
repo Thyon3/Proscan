@@ -4,6 +4,18 @@ import org.gradle.api.file.Directory
 import org.gradle.kotlin.dsl.configure
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Firebase plugins - compatible with AGP 8.9.1 and Kotlin 2.1.0
+        classpath("com.google.gms:google-services:4.4.2")
+        classpath("com.google.firebase:firebase-crashlytics-gradle:3.0.2")
+    }
+}
+
 allprojects {
     repositories {
         google()

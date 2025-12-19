@@ -57,6 +57,7 @@ class AppLogger {
     required String level,
     Object? error,
     StackTrace? stack,
+    String? tag,
     Map<String, dynamic>? data,
   }) {
     final logData = <String, dynamic>{
@@ -79,18 +80,41 @@ class AppLogger {
     if (data != null && data.isNotEmpty) {
       logData['data'] = data;
     }
+    if (tag != null) {
+      logData['tag'] = tag;
+    }
 
     return jsonEncode(logData);
   }
 
+  /// Logs a debug message (lowest priority, for development)
+  static void debug(
+    String message, {
+    Map<String, dynamic>? data,
+    String tag = 'ThyScan',
+  }) {
+    final formatted = _formatLogData(
+      message: message,
+      level: 'DEBUG',
+      tag: tag,
+      data: data,
+    );
+    developer.log(formatted, level: 500, name: tag);
+  }
+
   /// Logs an info message
-  static void info(String message, {Map<String, dynamic>? data}) {
+  static void info(
+    String message, {
+    Map<String, dynamic>? data,
+    String tag = 'ThyScan',
+  }) {
     final formatted = _formatLogData(
       message: message,
       level: 'INFO',
+      tag: tag,
       data: data,
     );
-    developer.log(formatted, level: 800, name: 'ThyScan');
+    developer.log(formatted, level: 800, name: tag);
 
     // Uncomment to send to crash reporting service
     // _crashlytics?.log('INFO: $message');
@@ -99,9 +123,11 @@ class AppLogger {
 
   /// Logs a warning message
   static void warning(
+   
     String message, {
     Map<String, dynamic>? data,
     Object? error,
+    String ? tag, 
   }) {
     final formatted = _formatLogData(
       message: message,
@@ -124,6 +150,7 @@ class AppLogger {
     String message, {
     Object? error,
     StackTrace? stack,
+    String ? tag, 
     Map<String, dynamic>? data,
   }) {
     final formatted = _formatLogData(

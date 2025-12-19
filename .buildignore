@@ -1,0 +1,25 @@
+# Build artifacts and caches to exclude from version control
+# These directories should be cleaned regularly for optimal build performance
+
+# Android Kotlin incremental compilation cache (can cause cross-drive issues)
+android/.kotlin/
+
+# Android Gradle cache
+android/.gradle/
+android/app/.gradle/
+
+# Build outputs
+build/
+android/build/
+android/app/build/
+
+# Flutter build cache
+.dart_tool/
+
+# Firebase config (contains sensitive keys)
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# Local configuration
+android/local.properties
+ios/Flutter/Generated.xcconfig

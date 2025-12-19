@@ -1,0 +1,4 @@
+# Google Services (contains sensitive Firebase config)
+# DO NOT commit this file to version control
+# Download from Firebase Console for each environment
+google-services.json
