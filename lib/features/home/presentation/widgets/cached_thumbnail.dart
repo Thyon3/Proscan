@@ -1,10 +1,12 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:thyscan/core/services/document_download_service.dart';
-import 'package:thyscan/core/services/thumbnail_cache_service.dart';
 
+/// Optimized thumbnail widget with proper placeholder and fast loading
+/// 
+/// Uses FadeInImage for smooth transitions and shows a professional
+/// placeholder while loading instead of generic icons.
 class CachedThumbnail extends StatelessWidget {
   const CachedThumbnail({
     super.key,
@@ -22,68 +24,115 @@ class CachedThumbnail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (path.isEmpty) {
-      return placeholder ?? const SizedBox.shrink();
+      return placeholder ?? _buildDefaultPlaceholder();
     }
 
     // Check if path is a URL
     final isUrl = path.startsWith('http://') || path.startsWith('https://');
 
-    return FutureBuilder<String?>(
-      future: isUrl ? _downloadAndGetLocalPath() : Future.value(path),
-      builder: (context, pathSnapshot) {
-        if (pathSnapshot.connectionState == ConnectionState.waiting) {
-          return placeholder ??
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
-                  borderRadius: borderRadius ?? BorderRadius.circular(12),
-                ),
-              );
+    if (isUrl) {
+      // Handle remote thumbnails
+      return FutureBuilder<String?>(
+        future: _downloadAndGetLocalPath(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return placeholder ?? _buildDefaultPlaceholder();
+          }
+
+          final localPath = snapshot.data;
+          if (localPath == null || localPath.isEmpty) {
+            return placeholder ?? _buildDefaultPlaceholder();
+          }
+
+          return _buildLocalImage(localPath);
+        },
+      );
+    }
+
+    // Handle local thumbnails - direct file loading (fastest)
+    return _buildLocalImage(path);
+  }
+
+  /// Builds local file image with fade-in animation and placeholder
+  Widget _buildLocalImage(String localPath) {
+    final file = File(localPath);
+
+    // Check if file exists synchronously for instant feedback
+    if (!file.existsSync()) {
+      return placeholder ?? _buildDefaultPlaceholder();
+    }
+
+    Widget image = Image.file(
+      file,
+      fit: fit,
+      // Disable gapless playback for better performance
+      gaplessPlayback: false,
+      // Use lower cache dimensions for thumbnails
+      cacheWidth: 400,
+      cacheHeight: 600,
+      errorBuilder: (context, error, stackTrace) {
+        return placeholder ?? _buildDefaultPlaceholder();
+      },
+      // Fade in smoothly when loaded
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded) {
+          return child;
         }
-
-        final localPath = pathSnapshot.data ?? path;
-        if (localPath.isEmpty) {
-          return placeholder ?? const SizedBox.shrink();
+        
+        // Show placeholder until image loads
+        if (frame == null) {
+          return placeholder ?? _buildDefaultPlaceholder();
         }
-
-        return FutureBuilder<Uint8List?>(
-          future: ThumbnailCacheService.instance.load(localPath),
-          builder: (context, snapshot) {
-            if (snapshot.hasData && snapshot.data != null) {
-              final image = Image.memory(snapshot.data!, fit: fit);
-
-              if (borderRadius != null) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: image,
-                );
-              }
-              return image;
-            }
-
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return placeholder ??
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      borderRadius: borderRadius ?? BorderRadius.circular(12),
-                    ),
-                  );
-            }
-
-            // Fallback: show placeholder if decoding failed
-            return placeholder ??
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    borderRadius: borderRadius ?? BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.image_not_supported_outlined),
-                );
-          },
+        
+        // Fade in the image
+        return AnimatedOpacity(
+          opacity: 1.0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          child: child,
         );
       },
     );
+
+    if (borderRadius != null) {
+      image = ClipRRect(
+        borderRadius: borderRadius!,
+        child: image,
+      );
+    }
+
+    return image;
+  }
+
+  /// Professional placeholder using the asset image
+  Widget _buildDefaultPlaceholder() {
+    Widget placeholderImage = Image.asset(
+      'assets/images/thumbnail_placeholder.png',
+      fit: fit,
+      // Use lower resolution for placeholder
+      cacheWidth: 300,
+      cacheHeight: 400,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback if asset is missing
+        return Container(
+          color: const Color(0xFFE8E8E8),
+          child: const Icon(
+            Icons.description_outlined,
+            color: Color(0xFF9E9E9E),
+            size: 32,
+          ),
+        );
+      },
+    );
+
+    if (borderRadius != null) {
+      placeholderImage = ClipRRect(
+        borderRadius: borderRadius!,
+        child: placeholderImage,
+      );
+    }
+
+    return placeholderImage;
   }
 
   Future<String?> _downloadAndGetLocalPath() async {

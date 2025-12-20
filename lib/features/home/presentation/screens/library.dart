@@ -439,71 +439,228 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   Widget _buildPremiumEmptyState(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 120, horizontal: 40),
+      padding: const EdgeInsets.symmetric(vertical: 100, horizontal: 20),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Modern illustration with decorative elements
           Container(
-            width: 120,
-            height: 120,
+            width: 220,
+            height: 220,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  colorScheme.primary.withOpacity(0.1),
-                  colorScheme.primary.withOpacity(0.05),
-                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
+                colors: [
+                  colorScheme.tertiaryContainer.withOpacity(isDark ? 0.3 : 0.2),
+                  colorScheme.primaryContainer.withOpacity(isDark ? 0.2 : 0.15),
+                ],
               ),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: colorScheme.primary.withOpacity(0.2),
-                width: 2,
-              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.primary.withOpacity(isDark ? 0.15 : 0.08),
+                  blurRadius: 50,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 15),
+                ),
+              ],
             ),
-            child: Icon(
-              Icons.folder_open_rounded,
-              size: 50,
-              color: colorScheme.primary.withOpacity(0.6),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Decorative circles
+                Positioned(
+                  top: 35,
+                  left: 40,
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: colorScheme.tertiary.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 45,
+                  right: 45,
+                  child: Container(
+                    width: 35,
+                    height: 35,
+                    decoration: BoxDecoration(
+                      color: colorScheme.secondary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 50,
+                  right: 55,
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                ),
+                // Main icon
+                Container(
+                  width: 110,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        colorScheme.tertiary,
+                        colorScheme.tertiary.withOpacity(0.85),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(26),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colorScheme.tertiary.withOpacity(0.35),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Iconsax.folder_open,
+                    size: 55,
+                    color: colorScheme.onTertiary,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 32),
-          Text(
-            'Your Library is Empty',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-              fontSize: 24,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+          const SizedBox(height: 44),
+          
+          // Title with gradient
+          ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [
+                colorScheme.onSurface,
+                colorScheme.onSurface.withOpacity(0.85),
+              ],
+            ).createShader(bounds),
             child: Text(
-              'Start scanning documents to build your digital library. All your scans will appear here for easy access.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.5,
-                fontSize: 16,
+              'Your Library is Empty',
+              style: GoogleFonts.inter(
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: -1.2,
+                height: 1.1,
               ),
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 32),
-          FilledButton.icon(
-            onPressed: () => context.go('/'),
-            icon: const Icon(Icons.add_rounded, size: 20),
-            label: const Text(
-              'Start Scanning',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+          const SizedBox(height: 18),
+          
+          // Description
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 36),
+            child: Text(
+              'Build your digital library by scanning documents. All your scans will be organized here for quick access.',
+              style: GoogleFonts.inter(
+                fontSize: 16,
+                color: colorScheme.onSurface.withOpacity(0.65),
+                height: 1.65,
+                letterSpacing: 0.3,
               ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 44),
+          
+          // CTA Button
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.tertiary.withOpacity(0.4),
+                  blurRadius: 26,
+                  offset: const Offset(0, 14),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: FilledButton.icon(
+              onPressed: () => context.go('/'),
+              icon: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: colorScheme.onTertiary.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Iconsax.document_text,
+                  size: 20,
+                  color: colorScheme.onTertiary,
+                ),
+              ),
+              label: Text(
+                'Go to Home',
+                style: GoogleFonts.inter(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.tertiary,
+                foregroundColor: colorScheme.onTertiary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 34,
+                  vertical: 20,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // Hint
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: colorScheme.outline.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Iconsax.info_circle,
+                  size: 16,
+                  color: colorScheme.onSurface.withOpacity(0.6),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Scanned documents appear here automatically',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurface.withOpacity(0.6),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

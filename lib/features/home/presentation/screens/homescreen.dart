@@ -301,82 +301,211 @@ class HomeScreen extends ConsumerWidget {
     }
   }
 
-  /// Premium Empty State
+  /// Modern Premium Empty State with illustration
   Widget _buildPremiumEmptyState(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-      padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            colorScheme.primary.withOpacity(0.05),
-            colorScheme.primary.withOpacity(0.02),
-          ],
-        ),
-        border: Border.all(
-          color: colorScheme.outline.withOpacity(0.1),
-          width: 1.5,
-        ),
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Illustration Container with modern design
           Container(
-            width: 100,
-            height: 100,
+            width: 200,
+            height: 200,
             decoration: BoxDecoration(
-              color: colorScheme.primary.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.document_scanner_rounded,
-              size: 48,
-              color: colorScheme.primary.withOpacity(0.5),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'No scans yet',
-            style: GoogleFonts.inter(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: colorScheme.onSurface,
-              letterSpacing: -0.5,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Start scanning documents to see them here.\nYour recent scans will appear in this section.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              color: colorScheme.onSurfaceVariant,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: () => context.push('/camerascreen'),
-            style: FilledButton.styleFrom(
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colorScheme.primaryContainer.withOpacity(isDark ? 0.3 : 0.2),
+                  colorScheme.secondaryContainer.withOpacity(isDark ? 0.2 : 0.15),
+                ],
               ),
-              elevation: 0,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.primary.withOpacity(isDark ? 0.1 : 0.05),
+                  blurRadius: 40,
+                  spreadRadius: 0,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Background decorative circles
+                Positioned(
+                  top: 30,
+                  right: 30,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 40,
+                  left: 35,
+                  child: Container(
+                    width: 25,
+                    height: 25,
+                    decoration: BoxDecoration(
+                      color: colorScheme.secondary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                // Main Icon
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        colorScheme.primary,
+                        colorScheme.primary.withOpacity(0.8),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colorScheme.primary.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Iconsax.document_text_1,
+                    size: 50,
+                    color: colorScheme.onPrimary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 40),
+          
+          // Title with gradient
+          ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [
+                colorScheme.onSurface,
+                colorScheme.onSurface.withOpacity(0.8),
+              ],
+            ).createShader(bounds),
             child: Text(
-              'Start Scanning',
+              'No Documents Yet',
+              style: GoogleFonts.inter(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: -1,
+                height: 1.2,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Description
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              'Start your digital journey by scanning your first document. It\'s quick, easy, and secure.',
+              textAlign: TextAlign.center,
               style: GoogleFonts.inter(
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface.withOpacity(0.65),
+                height: 1.6,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          
+          // Modern CTA Button
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.primary.withOpacity(0.4),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: FilledButton.icon(
+              onPressed: () => context.push('/camerascreen'),
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: colorScheme.onPrimary.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Iconsax.scan,
+                  size: 20,
+                  color: colorScheme.onPrimary,
+                ),
+              ),
+              label: Text(
+                'Start Scanning',
+                style: GoogleFonts.inter(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.primary,
+                foregroundColor: colorScheme.onPrimary,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 18,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                elevation: 0,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          
+          // Secondary action
+          TextButton.icon(
+            onPressed: () => context.push('/help'),
+            icon: Icon(
+              Iconsax.info_circle,
+              size: 18,
+              color: colorScheme.primary.withOpacity(0.8),
+            ),
+            label: Text(
+              'Learn how to scan',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.primary.withOpacity(0.8),
+                letterSpacing: 0.2,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 12,
               ),
             ),
           ),

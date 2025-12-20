@@ -34,7 +34,6 @@ class DocumentThumbnail extends StatefulWidget {
 
 class _DocumentThumbnailState extends State<DocumentThumbnail> {
   late Future<String> _previewFuture;
-  String? _previewPath;
 
   @override
   void initState() {
@@ -79,10 +78,6 @@ class _DocumentThumbnailState extends State<DocumentThumbnail> {
       final previewPath = await PreviewImageService.instance
           .getOrCreatePreviewPath(localPath);
       
-      if (mounted) {
-        setState(() => _previewPath = previewPath);
-      }
-      
       return previewPath;
     } catch (e) {
       // Fallback to original path on error
@@ -118,7 +113,27 @@ class _DocumentThumbnailState extends State<DocumentThumbnail> {
             fit: widget.fit,
             width: widget.width,
             height: widget.height,
-            errorBuilder: (_, __, ___) => _buildPlaceholder(),
+            gaplessPlayback: false,
+            cacheWidth: 400,
+            cacheHeight: 600,
+            errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+            // Smooth fade-in effect
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (wasSynchronouslyLoaded) {
+                return child;
+              }
+              
+              if (frame == null) {
+                return _buildPlaceholder();
+              }
+              
+              return AnimatedOpacity(
+                opacity: 1.0,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                child: child,
+              );
+            },
           );
 
           if (widget.borderRadius != null) {
@@ -142,21 +157,42 @@ class _DocumentThumbnailState extends State<DocumentThumbnail> {
       return widget.placeholder!;
     }
 
-    return Container(
+    // Use professional placeholder asset
+    Widget placeholderImage = Image.asset(
+      'assets/images/thumbnail_placeholder.png',
       width: widget.width,
       height: widget.height,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
-        borderRadius: widget.borderRadius ?? BorderRadius.circular(12),
-      ),
-      child: Icon(
-        Icons.image_outlined,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        size: (widget.width != null && widget.height != null)
-            ? (widget.width! < widget.height! ? widget.width! * 0.3 : widget.height! * 0.3)
-            : 24,
-      ),
+      fit: widget.fit,
+      cacheWidth: 300,
+      cacheHeight: 400,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback if asset is missing
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: widget.borderRadius ?? BorderRadius.circular(12),
+          ),
+          child: Icon(
+            Icons.description_outlined,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            size: (widget.width != null && widget.height != null)
+                ? (widget.width! < widget.height! ? widget.width! * 0.3 : widget.height! * 0.3)
+                : 24,
+          ),
+        );
+      },
     );
+
+    if (widget.borderRadius != null) {
+      placeholderImage = ClipRRect(
+        borderRadius: widget.borderRadius!,
+        child: placeholderImage,
+      );
+    }
+
+    return placeholderImage;
   }
 }
 
