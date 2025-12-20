@@ -18,6 +18,7 @@ import 'package:thyscan/features/home/presentation/widgets/scan_list_item.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
 import 'package:thyscan/features/home/presentation/widgets/tools_section.dart';
 import 'package:thyscan/features/home/presentation/widgets/upload_queue_badge.dart';
+import 'package:thyscan/features/home/presentation/widgets/librarywidgets/document_shimmer_placeholder.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
@@ -67,8 +68,19 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
 
-          // Show empty state or document list
-          if (recentDocs.isEmpty && !homeState.isSelectionMode)
+          // Show skeleton loading, empty state, or document list
+          if (paginatedState.isLoading && recentDocs.isEmpty && !homeState.isSelectionMode)
+            // Show skeleton placeholders while loading initial documents
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => const DocumentShimmerPlaceholder(),
+                  childCount: 3, // Show 3 skeleton items on home screen
+                ),
+              ),
+            )
+          else if (recentDocs.isEmpty && !homeState.isSelectionMode)
             SliverToBoxAdapter(child: _buildPremiumEmptyState(context))
           else if (recentDocs.isNotEmpty)
             SliverPadding(

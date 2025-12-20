@@ -254,12 +254,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
               ),
 
-            // Loading indicator for initial load
+            // Loading indicator for initial load - show skeleton placeholders
             if (paginatedState.isLoading && paginatedState.documents.isEmpty)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.all(48.0),
-                  child: Center(child: CircularProgressIndicator()),
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => const DocumentShimmerPlaceholder(),
+                  childCount: 5, // Show 5 skeleton items during initial load
                 ),
               ),
           ],
