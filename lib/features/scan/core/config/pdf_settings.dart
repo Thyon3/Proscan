@@ -160,6 +160,7 @@ class DocumentSaveOptions {
     this.tags,
     this.addWhiteBackground = true,
     this.dpi = PdfDpi.dpi300,
+    this.skipUpload = false, // NEW: Skip automatic upload to cloud
   });
 
   final PdfCompressionPreset compressionPreset;
@@ -168,6 +169,7 @@ class DocumentSaveOptions {
   final List<String>? tags;
   final bool addWhiteBackground;
   final PdfDpi dpi;
+  final bool skipUpload; // NEW: Control whether to upload automatically
 
   DocumentSaveOptions copyWith({
     PdfCompressionPreset? compressionPreset,
@@ -176,6 +178,7 @@ class DocumentSaveOptions {
     List<String>? tags,
     bool? addWhiteBackground,
     PdfDpi? dpi,
+    bool? skipUpload,
   }) {
     return DocumentSaveOptions(
       compressionPreset: compressionPreset ?? this.compressionPreset,
@@ -184,6 +187,7 @@ class DocumentSaveOptions {
       tags: tags ?? this.tags,
       addWhiteBackground: addWhiteBackground ?? this.addWhiteBackground,
       dpi: dpi ?? this.dpi,
+      skipUpload: skipUpload ?? this.skipUpload,
     );
   }
 
@@ -193,6 +197,7 @@ class DocumentSaveOptions {
     PdfCompressionPreset compressionPreset = PdfCompressionPreset.balanced,
     PdfPaperSize paperSize = PdfPaperSize.a4,
     PdfDpi dpi = PdfDpi.dpi300,
+    bool skipUpload = false, // NEW: Allow controlling upload
   }) {
     return DocumentSaveOptions(
       compressionPreset: compressionPreset,
@@ -206,6 +211,7 @@ class DocumentSaveOptions {
       ),
       tags: tags,
       dpi: dpi,
+      skipUpload: skipUpload,
     );
   }
 

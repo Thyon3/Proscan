@@ -200,20 +200,24 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   }
 
   /// Automatically save document to internal storage and Hive on screen load
+  /// Note: This only saves locally WITHOUT optimization or upload
   Future<void> _autoSaveDocument() async {
     // Wait 800ms to let camera finish before auto-saving
     await Future.delayed(const Duration(milliseconds: 800));
     if (mounted) {
-      await _persistDocument(force: true);
+      // Auto-save with skipUpload=true to prevent duplicate upload
+      await _persistDocument(force: true, skipUpload: true);
     }
   }
 
   /// Update existing document when pages are modified
+  /// Note: This updates locally WITHOUT optimization or upload
   Future<void> _updateExistingDocument() async {
-    await _persistDocument(force: true);
+    // Update with skipUpload=true to prevent duplicate upload
+    await _persistDocument(force: true, skipUpload: true);
   }
 
-  Future<DocumentModel?> _persistDocument({bool force = false}) async {
+  Future<DocumentModel?> _persistDocument({bool force = false, bool skipUpload = false}) async {
     if (_pages.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -242,7 +246,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     try {
       final title = widget.pdfFileName.replaceAll('.pdf', '');
       final scanModeKey = _scanModeKey(_activeScanMode);
-      final options = _buildSaveOptions();
+      final options = _buildSaveOptions(skipUpload: skipUpload);
       void progressHandler(PdfGenerationProgress progress) {
         if (!mounted) return;
         setState(() => _pdfProgress = progress);
@@ -515,6 +519,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   }
 
   /// Saves document and redirects to Home Screen
+  /// This is the FINAL save with optimization and upload
   Future<void> _handleSaveAndHome() async {
     if (_pages.isEmpty) {
       ScaffoldMessenger.of(
@@ -523,7 +528,8 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       return;
     }
 
-    final doc = await _persistDocument(force: true);
+    // Final save with skipUpload=false to trigger optimization and upload
+    final doc = await _persistDocument(force: true, skipUpload: false);
     if (!mounted || doc == null) return;
 
     await _promptShareAfterSave(doc);
@@ -762,13 +768,14 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
 
   String _scanModeKey(ScanMode mode) => mode.toString().split('.').last;
 
-  DocumentSaveOptions _buildSaveOptions() {
+  DocumentSaveOptions _buildSaveOptions({bool skipUpload = false}) {
     final resolvedTitle = widget.pdfFileName.replaceAll('.pdf', '');
     final tagSet = {_scanModeKey(_activeScanMode), _colorProfile.key}
       ..removeWhere((element) => element.isEmpty);
     return DocumentSaveOptions.enterpriseDefaults(
       title: resolvedTitle,
       tags: tagSet.toList(),
+      skipUpload: skipUpload,
     );
   }
 

@@ -240,57 +240,64 @@ class DocumentService {
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(id);
 
-      // Upload to cloud in background (non-blocking)
-      print('═══════════════════════════════════════════════════════════');
-      print('🚀 [DOCUMENT SERVICE] Starting background upload');
-      print('   Document ID: ${doc.id}');
-      print('   Title: ${doc.title}');
-      print('   Format: ${doc.format}');
-      print('   Page Count: ${doc.pageCount}');
-      print('   File Path: ${doc.filePath}');
-      print('═══════════════════════════════════════════════════════════');
-      
-      AppLogger.info(
-        '🚀 Starting background upload for document ${doc.id}',
-        data: {
-          'documentId': doc.id,
-          'title': doc.title,
-          'format': doc.format,
-          'pageCount': doc.pageCount,
-        },
-      );
-      
-      DocumentUploadService.instance.uploadDocument(doc).then((url) {
+      // Upload to cloud in background (non-blocking) - only if not skipped
+      if (!options.skipUpload) {
         print('═══════════════════════════════════════════════════════════');
-        print('✅ [DOCUMENT SERVICE] Upload completed');
+        print('🚀 [DOCUMENT SERVICE] Starting background upload');
         print('   Document ID: ${doc.id}');
-        print('   URL: ${url != null ? url.substring(0, url.length > 60 ? 60 : url.length) + "..." : "NULL (queued)"}');
+        print('   Title: ${doc.title}');
+        print('   Format: ${doc.format}');
+        print('   Page Count: ${doc.pageCount}');
+        print('   File Path: ${doc.filePath}');
         print('═══════════════════════════════════════════════════════════');
-        if (url != null) {
-          AppLogger.info(
-            '✅ Document uploaded successfully: ${doc.id}',
-            data: {'url': url.substring(0, 50) + '...'},
-          );
-        } else {
-          AppLogger.warning(
-            '⚠️ Document upload queued for later: ${doc.id}',
-            error: null,
-          );
-        }
-      }).catchError((error, stack) {
-        print('═══════════════════════════════════════════════════════════');
-        print('❌ [DOCUMENT SERVICE] Upload FAILED');
-        print('   Document ID: ${doc.id}');
-        print('   Error: $error');
-        print('   Stack: ${stack.toString().substring(0, stack.toString().length > 200 ? 200 : stack.toString().length)}');
-        print('═══════════════════════════════════════════════════════════');
-        AppLogger.error(
-          '❌ Background upload failed for document ${doc.id}',
-          error: error,
-          stack: stack,
+        
+        AppLogger.info(
+          '🚀 Starting background upload for document ${doc.id}',
+          data: {
+            'documentId': doc.id,
+            'title': doc.title,
+            'format': doc.format,
+            'pageCount': doc.pageCount,
+          },
         );
-        // Upload will be retried automatically via queue
-      });
+        
+        DocumentUploadService.instance.uploadDocument(doc).then((url) {
+          print('═══════════════════════════════════════════════════════════');
+          print('✅ [DOCUMENT SERVICE] Upload completed');
+          print('   Document ID: ${doc.id}');
+          print('   URL: ${url != null ? url.substring(0, url.length > 60 ? 60 : url.length) + "..." : "NULL (failed)"}');
+          print('═══════════════════════════════════════════════════════════');
+          if (url != null) {
+            AppLogger.info(
+              '✅ Document uploaded successfully: ${doc.id}',
+              data: {'url': url.substring(0, 50) + '...'},
+            );
+          } else {
+            AppLogger.warning(
+              '⚠️ Document upload failed after retries: ${doc.id}',
+              error: null,
+            );
+          }
+        }).catchError((error, stack) {
+          print('═══════════════════════════════════════════════════════════');
+          print('❌ [DOCUMENT SERVICE] Upload FAILED');
+          print('   Document ID: ${doc.id}');
+          print('   Error: $error');
+          print('   Stack: ${stack.toString().substring(0, stack.toString().length > 200 ? 200 : stack.toString().length)}');
+          print('═══════════════════════════════════════════════════════════');
+          AppLogger.error(
+            '❌ Background upload failed for document ${doc.id}',
+            error: error,
+            stack: stack,
+          );
+        });
+      } else {
+        print('⏭️ [DOCUMENT SERVICE] Upload skipped (skipUpload = true)');
+        AppLogger.info(
+          '⏭️ Upload skipped for document ${doc.id}',
+          data: {'documentId': doc.id, 'reason': 'skipUpload flag set'},
+        );
+      }
 
       return doc;
     } catch (e) {
@@ -627,44 +634,50 @@ class DocumentService {
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(documentId);
 
-      // Upload updated file to Supabase Storage and sync metadata to backend
+      // Upload updated file to Supabase Storage and sync metadata to backend - only if not skipped
       // This will replace the old file in storage and update the backend with new metadata
-      AppLogger.info(
-        '🔄 Document updated, uploading new version to Supabase Storage',
-        data: {
-          'documentId': updatedDoc.id,
-          'title': updatedDoc.title,
-          'pageCount': updatedDoc.pageCount,
-          'filePath': updatedDoc.filePath,
-          'format': updatedDoc.format,
-        },
-      );
+      if (!options.skipUpload) {
+        AppLogger.info(
+          '🔄 Document updated, uploading new version to Supabase Storage',
+          data: {
+            'documentId': updatedDoc.id,
+            'title': updatedDoc.title,
+            'pageCount': updatedDoc.pageCount,
+            'filePath': updatedDoc.filePath,
+            'format': updatedDoc.format,
+          },
+        );
 
-      DocumentUploadService.instance.uploadDocument(updatedDoc).then((url) {
-        if (url != null) {
-          AppLogger.info(
-            '✅ Updated document uploaded successfully',
-            data: {
-              'documentId': updatedDoc.id,
-              'url': url.substring(0, url.length > 100 ? 100 : url.length) + '...',
-            },
-          );
-        } else {
-          AppLogger.warning(
-            '⚠️ Updated document upload queued for later',
-            error: null,
+        DocumentUploadService.instance.uploadDocument(updatedDoc).then((url) {
+          if (url != null) {
+            AppLogger.info(
+              '✅ Updated document uploaded successfully',
+              data: {
+                'documentId': updatedDoc.id,
+                'url': url.substring(0, url.length > 100 ? 100 : url.length) + '...',
+              },
+            );
+          } else {
+            AppLogger.warning(
+              '⚠️ Updated document upload failed after retries',
+              error: null,
+              data: {'documentId': updatedDoc.id},
+            );
+          }
+        }).catchError((error, stack) {
+          AppLogger.error(
+            '❌ Failed to upload updated document',
+            error: error,
+            stack: stack,
             data: {'documentId': updatedDoc.id},
           );
-        }
-      }).catchError((error, stack) {
-        AppLogger.error(
-          '❌ Failed to upload updated document',
-          error: error,
-          stack: stack,
-          data: {'documentId': updatedDoc.id},
+        });
+      } else {
+        AppLogger.info(
+          '⏭️ Upload skipped for updated document',
+          data: {'documentId': updatedDoc.id, 'reason': 'skipUpload flag set'},
         );
-        // Upload will be retried automatically via queue
-      });
+      }
 
       return updatedDoc;
     } catch (e) {

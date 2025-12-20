@@ -36,69 +36,69 @@ class SyncStatusIndicator extends StatelessWidget {
 
         switch (status) {
           case DocumentSyncStatus.synced:
-            iconData = Icons.check_circle;
+            iconData = Icons.cloud_done_rounded;
             color = Colors.green;
-            tooltip = 'Synced';
+            tooltip = 'Uploaded to cloud';
             break;
           case DocumentSyncStatus.pendingUpload:
-            iconData = Icons.cloud_upload;
-            color = Colors.orange;
-            tooltip = 'Pending upload';
+            iconData = Icons.cloud_queue_rounded;
+            color = Colors.grey;
+            tooltip = 'Waiting to upload';
             break;
           case DocumentSyncStatus.pendingDownload:
-            iconData = Icons.cloud_download;
+            iconData = Icons.cloud_download_rounded;
             color = Colors.blue;
             tooltip = 'Downloading...';
             break;
           case DocumentSyncStatus.syncing:
-            iconData = Icons.sync;
+            iconData = Icons.sync_rounded;
             color = Colors.blue;
             tooltip = 'Syncing...';
             break;
           case DocumentSyncStatus.uploadingFile:
-            iconData = Icons.cloud_upload;
+            iconData = Icons.cloud_upload_rounded;
             color = Colors.blue;
             tooltip = 'Uploading file...';
             break;
           case DocumentSyncStatus.uploadingThumbnail:
-            iconData = Icons.image;
+            iconData = Icons.cloud_upload_rounded;
             color = Colors.blue;
             tooltip = 'Uploading thumbnail...';
             break;
           case DocumentSyncStatus.syncingMetadata:
-            iconData = Icons.sync;
+            iconData = Icons.cloud_sync_rounded;
             color = Colors.blue;
             tooltip = 'Syncing metadata...';
             break;
           case DocumentSyncStatus.conflict:
-            iconData = Icons.warning;
+            iconData = Icons.warning_rounded;
             color = Colors.red;
             tooltip = 'Conflict detected';
             break;
           case DocumentSyncStatus.pendingConflictResolution:
-            iconData = Icons.warning;
+            iconData = Icons.warning_amber_rounded;
             color = Colors.orange;
             tooltip = 'Conflict - resolution pending';
             break;
           case DocumentSyncStatus.error:
-            iconData = Icons.error;
+            iconData = Icons.error_rounded;
             color = Colors.red;
             tooltip = 'Sync error';
             break;
           case DocumentSyncStatus.failedRetry:
-            iconData = Icons.refresh;
+            iconData = Icons.cloud_off_rounded;
             color = Colors.orange;
-            tooltip = 'Retrying...';
+            tooltip = 'Upload failed (local only)';
             break;
           case DocumentSyncStatus.failedSyncDelete:
-            iconData = Icons.error;
+            iconData = Icons.error_rounded;
             color = Colors.red;
             tooltip = 'Delete sync failed';
             break;
           case DocumentSyncStatus.failed:
-            iconData = Icons.error_outline;
+            iconData = Icons.cloud_off_rounded;
             color = Colors.red;
-            tooltip = 'Sync failed after multiple attempts';
+            tooltip = 'Upload failed (saved locally only)';
             break;
         }
 

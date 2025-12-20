@@ -174,17 +174,17 @@ class DocumentUploadService {
   Future<void> clearAll() async {
     try {
       AppLogger.info('Clearing DocumentUploadService data');
-      
+
       // Clear upload queue
       _uploadQueue.clear();
-      
+
       // Clear processing flags
       _isProcessing.clear();
-      
+
       // Cancel connectivity subscription
       _connectivitySubscription?.cancel();
       _connectivitySubscription = null;
-      
+
       AppLogger.info('DocumentUploadService data cleared');
     } catch (e, stack) {
       AppLogger.error(
@@ -226,7 +226,7 @@ class DocumentUploadService {
     print('   Title: ${document.title}');
     print('   Format: ${document.format}');
     print('═══════════════════════════════════════════════════════════');
-    
+
     AppLogger.info(
       '📤 DocumentUploadService.uploadDocument() called',
       data: {
@@ -235,7 +235,7 @@ class DocumentUploadService {
         'format': document.format,
       },
     );
-    
+
     // Check rate limit
     if (!RateLimiterService.instance.tryAcquire('document_upload')) {
       AppLogger.warning(
@@ -243,18 +243,22 @@ class DocumentUploadService {
         error: null,
         data: {
           'documentId': document.id,
-          'availableTokens': RateLimiterService.instance.getAvailableTokens('document_upload'),
+          'availableTokens': RateLimiterService.instance.getAvailableTokens(
+            'document_upload',
+          ),
         },
       );
       _addToQueue(document);
       return null;
     }
-    
+
     try {
       await AuthService.instance.ensureInitialized();
       final user = AuthService.instance.currentUser;
-      
-      print('🔐 [UPLOAD SERVICE] Auth check: ${user != null ? "AUTHENTICATED (${user.id})" : "NOT AUTHENTICATED"}');
+
+      print(
+        '🔐 [UPLOAD SERVICE] Auth check: ${user != null ? "AUTHENTICATED (${user.id})" : "NOT AUTHENTICATED"}',
+      );
 
       if (user == null) {
         print('❌ [UPLOAD SERVICE] User NOT authenticated - QUEUING');
@@ -282,7 +286,9 @@ class DocumentUploadService {
             result != ConnectivityResult.bluetooth,
       );
 
-      print('🌐 [UPLOAD SERVICE] Network check: ${isOnline ? "ONLINE" : "OFFLINE"}');
+      print(
+        '🌐 [UPLOAD SERVICE] Network check: ${isOnline ? "ONLINE" : "OFFLINE"}',
+      );
       print('   Connectivity results: $connectivityResults');
 
       if (!isOnline) {
@@ -320,9 +326,8 @@ class DocumentUploadService {
   /// - Attempt 1: Immediate
   /// - Attempt 2: 5 seconds delay
   /// - Attempt 3: 10 seconds delay
-  /// - Attempt 4: 20 seconds delay (max)
   ///
-  /// After max attempts, document is queued for manual retry.
+  /// After 3 attempts, document upload fails and storage is rolled back.
   ///
   /// **Parameters:**
   /// - `document`: Document to upload
@@ -330,7 +335,7 @@ class DocumentUploadService {
   ///
   /// **Returns:**
   /// - Public URL on success
-  /// - `null` if max attempts reached (queued for later)
+  /// - `null` if max attempts reached (with rollback)
   Future<String?> _uploadDocumentInternal(
     DocumentModel document, {
     int attempt = 0,
@@ -339,7 +344,7 @@ class DocumentUploadService {
     final userId = AuthService.instance.currentUser!.id;
 
     AppLogger.info(
-      '📤 Starting document upload (attempt ${attempt + 1})',
+      '📤 Starting document upload (attempt ${attempt + 1} of $_maxRetryAttempts)',
       data: {
         'documentId': documentId,
         'userId': userId,
@@ -348,6 +353,10 @@ class DocumentUploadService {
         'filePath': document.filePath,
       },
     );
+
+    String? uploadedFileUrl;
+    String? uploadedThumbnailUrl;
+    bool needsRollback = false;
 
     try {
       // Update sync status to uploading file
@@ -397,6 +406,9 @@ class DocumentUploadService {
           .from(_storageBucket)
           .getPublicUrl(fileName);
 
+      uploadedFileUrl = publicUrl;
+      needsRollback = true; // Now we need to rollback if database sync fails
+
       // Update sync status to uploading thumbnail
       DocumentSyncStateService.instance.setSyncStatus(
         documentId,
@@ -426,6 +438,7 @@ class DocumentUploadService {
             thumbnailUrl = supabase.storage
                 .from(_storageBucket)
                 .getPublicUrl(thumbFileName);
+            uploadedThumbnailUrl = thumbnailUrl;
           }
         } catch (e) {
           AppLogger.warning(
@@ -446,10 +459,12 @@ class DocumentUploadService {
       print('═══════════════════════════════════════════════════════════');
       print('🔄 [UPLOAD SERVICE] Starting metadata sync to backend');
       print('   Document ID: $documentId');
-      print('   File URL: ${publicUrl.substring(0, publicUrl.length > 60 ? 60 : publicUrl.length)}...');
+      print(
+        '   File URL: ${publicUrl.substring(0, publicUrl.length > 60 ? 60 : publicUrl.length)}...',
+      );
       print('   Has Thumbnail: ${thumbnailUrl != null}');
       print('═══════════════════════════════════════════════════════════');
-      
+
       AppLogger.info(
         '🔄 Starting metadata sync to backend',
         data: {
@@ -469,6 +484,8 @@ class DocumentUploadService {
           '✅ Metadata sync completed successfully',
           data: {'documentId': documentId},
         );
+
+        needsRollback = false; // Success! No need to rollback
       } catch (syncError, syncStack) {
         // Handle conflict exception
         if (syncError is ConflictException) {
@@ -477,14 +494,14 @@ class DocumentUploadService {
           print('   Document ID: $documentId');
           print('   Message: ${syncError.message}');
           print('═══════════════════════════════════════════════════════════');
-          
+
           // Mark document as having a conflict
           DocumentSyncStateService.instance.setSyncStatus(
             documentId,
             DocumentSyncStatus.pendingConflictResolution,
             errorMessage: syncError.message,
           );
-          
+
           AppLogger.warning(
             '⚠️ Document conflict detected',
             error: syncError,
@@ -493,7 +510,7 @@ class DocumentUploadService {
               'hasRemoteDocument': syncError.remoteDocument != null,
             },
           );
-          
+
           // For now, we'll use "last write wins" - keep local version
           // In the future, this could trigger a UI dialog for user resolution
           // Emit sync failed event
@@ -503,11 +520,11 @@ class DocumentUploadService {
             isUpload: true,
             retryCount: attempt,
           );
-          
-          // Re-throw to prevent marking as synced
+
+          // Re-throw to trigger rollback and retry
           rethrow;
         }
-        
+
         print('═══════════════════════════════════════════════════════════');
         print('❌ [UPLOAD SERVICE] Metadata sync FAILED');
         print('   Error: $syncError');
@@ -518,7 +535,7 @@ class DocumentUploadService {
           stack: syncStack,
           data: {'documentId': documentId},
         );
-        // Re-throw to trigger retry logic
+        // Re-throw to trigger rollback and retry
         rethrow;
       }
 
@@ -543,11 +560,21 @@ class DocumentUploadService {
         stack: stack,
       );
 
-      // Retry logic
-      if (attempt < _maxRetryAttempts) {
+      // Rollback storage uploads if database sync failed
+      if (needsRollback) {
+        await _rollbackStorageUpload(
+          userId: userId,
+          documentId: documentId,
+          fileUrl: uploadedFileUrl,
+          thumbnailUrl: uploadedThumbnailUrl,
+        );
+      }
+
+      // Retry logic - only retry up to 3 times (attempts 0, 1, 2)
+      if (attempt < _maxRetryAttempts - 1) {
         final delay = _calculateRetryDelay(attempt);
         AppLogger.info(
-          'Retrying upload in ${delay.inSeconds} seconds',
+          'Retrying upload in ${delay.inSeconds} seconds (attempt ${attempt + 2} of $_maxRetryAttempts)',
           data: {'documentId': documentId, 'attempt': attempt + 1},
         );
 
@@ -555,23 +582,106 @@ class DocumentUploadService {
         return _uploadDocumentInternal(document, attempt: attempt + 1);
       }
 
-      // Max attempts reached, queue for later
+      // Max attempts reached, mark as failed
+      print('═══════════════════════════════════════════════════════════');
+      print(
+        '❌ [UPLOAD SERVICE] Upload FAILED after $_maxRetryAttempts attempts',
+      );
+      print('   Document ID: $documentId');
+      print('   Title: ${document.title}');
+      print('   Error: $e');
+      print('═══════════════════════════════════════════════════════════');
+
       _emitProgress(
         documentId,
-        UploadStatus.failedRetry,
+        UploadStatus.failed,
         error: e.toString(),
         lastAttempt: DateTime.now(),
       );
 
-      // Update sync status to failed retry
+      // Update sync status to failed (not queued for retry)
       DocumentSyncStateService.instance.setSyncStatus(
         documentId,
-        DocumentSyncStatus.failedRetry,
-        errorMessage: e.toString(),
+        DocumentSyncStatus.failed,
+        errorMessage:
+            'Upload failed after $_maxRetryAttempts attempts: ${e.toString()}',
       );
 
-      _addToQueue(document);
+      AppLogger.error(
+        '❌ Upload failed after $_maxRetryAttempts attempts',
+        error: e,
+        stack: stack,
+        data: {'documentId': documentId},
+      );
+
       return null;
+    }
+  }
+
+  /// Rolls back storage uploads if database sync fails
+  Future<void> _rollbackStorageUpload({
+    required String userId,
+    required String documentId,
+    String? fileUrl,
+    String? thumbnailUrl,
+  }) async {
+    print('═══════════════════════════════════════════════════════════');
+    print('🔄 [UPLOAD SERVICE] Rolling back storage uploads');
+    print('   Document ID: $documentId');
+    print('   File URL: ${fileUrl != null ? "YES" : "NO"}');
+    print('   Thumbnail URL: ${thumbnailUrl != null ? "YES" : "NO"}');
+    print('═══════════════════════════════════════════════════════════');
+
+    AppLogger.info(
+      '🔄 Rolling back storage uploads due to database sync failure',
+      data: {
+        'documentId': documentId,
+        'hasFileUrl': fileUrl != null,
+        'hasThumbnailUrl': thumbnailUrl != null,
+      },
+    );
+
+    try {
+      final supabase = AuthService.instance.supabase;
+      final filesToDelete = <String>[];
+
+      // Add main file to deletion list
+      if (fileUrl != null) {
+        // Extract file name from document ID
+        final format = fileUrl.contains('.pdf') ? 'pdf' : 'docx';
+        filesToDelete.add('$userId/$documentId.$format');
+      }
+
+      // Add thumbnail to deletion list
+      if (thumbnailUrl != null) {
+        filesToDelete.add('$userId/${documentId}_thumb.jpg');
+      }
+
+      // Delete files from storage
+      if (filesToDelete.isNotEmpty) {
+        await supabase.storage.from(_storageBucket).remove(filesToDelete);
+
+        print(
+          '✅ [UPLOAD SERVICE] Rollback completed - deleted ${filesToDelete.length} files',
+        );
+        AppLogger.info(
+          '✅ Storage rollback completed',
+          data: {
+            'documentId': documentId,
+            'filesDeleted': filesToDelete.length,
+          },
+        );
+      }
+    } catch (e, stack) {
+      print('⚠️ [UPLOAD SERVICE] Rollback failed (non-critical)');
+      print('   Error: $e');
+      AppLogger.warning(
+        '⚠️ Failed to rollback storage uploads (files may remain in storage)',
+        error: e,
+
+        data: {'documentId': documentId},
+      );
+      // Don't throw - rollback failure is non-critical
     }
   }
 
@@ -614,7 +724,7 @@ class DocumentUploadService {
       while (_uploadQueue.isNotEmpty &&
           _isProcessing.length < ResourceGuard.instance.maxConcurrentUploads) {
         final upload = _uploadQueue.removeAt(0);
-        
+
         if (_isProcessing.containsKey(upload.documentId)) {
           continue; // Already processing
         }
@@ -717,14 +827,15 @@ class DocumentUploadService {
 
   /// Gets pending uploads count
   int get pendingCount => _uploadQueue.length;
-  
+
   /// Gets list of pending uploads (for UI display)
   List<PendingUpload> get pendingUploads => List.unmodifiable(_uploadQueue);
-  
+
   /// Gets current upload progress for a document
   UploadProgress? getProgress(String documentId) {
     // Check if currently uploading
-    if (_isProcessing.containsKey(documentId) && _isProcessing[documentId] == true) {
+    if (_isProcessing.containsKey(documentId) &&
+        _isProcessing[documentId] == true) {
       // Return latest progress from stream (would need to track this)
       // For now, return a pending status
       return UploadProgress(
@@ -733,7 +844,7 @@ class DocumentUploadService {
         progress: 0.5, // Approximate
       );
     }
-    
+
     // Check if in queue
     final inQueue = _uploadQueue.any((u) => u.documentId == documentId);
     if (inQueue) {
@@ -743,25 +854,27 @@ class DocumentUploadService {
         progress: 0.0,
       );
     }
-    
+
     return null;
   }
-  
+
   /// Cancels a pending upload
   Future<void> cancelUpload(String documentId) async {
     _uploadQueue.removeWhere((u) => u.documentId == documentId);
     _isProcessing[documentId] = false;
-    
+
     AppLogger.info(
       'Upload cancelled',
       data: {'documentId': documentId, 'queueSize': _uploadQueue.length},
     );
   }
-  
+
   /// Retries a failed upload
   Future<void> retryUpload(String documentId) async {
     // Find the upload in queue
-    final uploadIndex = _uploadQueue.indexWhere((u) => u.documentId == documentId);
+    final uploadIndex = _uploadQueue.indexWhere(
+      (u) => u.documentId == documentId,
+    );
     if (uploadIndex == -1) {
       AppLogger.warning(
         'Cannot retry: upload not in queue',
@@ -770,20 +883,17 @@ class DocumentUploadService {
       );
       return;
     }
-    
+
     // Reset attempts and move to front of queue
     final upload = _uploadQueue.removeAt(uploadIndex);
     _uploadQueue.insert(0, upload.copyWith(attempts: 0));
-    
-    AppLogger.info(
-      'Upload retry queued',
-      data: {'documentId': documentId},
-    );
-    
+
+    AppLogger.info('Upload retry queued', data: {'documentId': documentId});
+
     // Process queue if online
     _processQueue();
   }
-  
+
   /// Forces immediate sync of all pending uploads
   Future<void> syncNow() async {
     AppLogger.info(

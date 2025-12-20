@@ -203,6 +203,12 @@ class _PdfMetadataPayload {
 Future<void> _pdfGenerationEntry(_PdfIsolatePayload payload) async {
   final sendPort = payload.sendPort;
   try {
+    print('\n🔨 PDF Generation Isolate Started');
+    print('   📄 Pages: ${payload.imagePaths.length}');
+    print('   🔄 Preprocessed: ${payload.isPreprocessed ? "YES ✅" : "NO ❌"}');
+    print('   📏 Max page size: ${(payload.maxPageSizeBytes / 1024).round()}KB');
+    
+    final startTime = DateTime.now();
     final optimizedPaths = <String>[];
     final metadata = payload.metadata;
     final document = pw.Document(
@@ -249,7 +255,18 @@ Future<void> _pdfGenerationEntry(_PdfIsolatePayload payload) async {
     }
 
     final file = File(payload.outputPdfPath);
-    await file.writeAsBytes(await document.save(), flush: true);
+    final pdfBytes = await document.save();
+    await file.writeAsBytes(pdfBytes, flush: true);
+    
+    final elapsed = DateTime.now().difference(startTime);
+    final pdfSizeMB = (pdfBytes.length / (1024 * 1024)).toStringAsFixed(2);
+    
+    print('\n✅ PDF Generation Complete!');
+    print('   ⏱️  Total time: ${elapsed.inMilliseconds}ms (${(elapsed.inMilliseconds / payload.imagePaths.length).round()}ms/page)');
+    print('   📦 PDF size: ${pdfSizeMB}MB');
+    print('   📄 Pages: ${payload.imagePaths.length}');
+    print('   🔄 Mode: ${payload.isPreprocessed ? "Preprocessed (fast)" : "Direct compression"}');
+    
     sendPort.send(
       _PdfProgressMessage(
         payload.imagePaths.length,
@@ -278,16 +295,23 @@ Future<String> _compressAndSave({
   }
 
   // If images are already preprocessed, just copy them to the optimized directory
-  // without re-compressing. This prevents double optimization.
+  // without re-compressing. This prevents double optimization and speeds up PDF generation.
   if (isPreprocessed) {
+    print('✅ Page $pageIndex: Using preprocessed image (skipping compression)');
     final optimizedName = '${documentId}_${batchId}_page_$pageIndex.jpg';
     final optimizedPath = p.join(optimizedDirPath, optimizedName);
     final optimizedFile = File(optimizedPath);
     
-    // Copy the preprocessed file directly
+    // Copy the preprocessed file directly (fast, no compression)
     await file.copy(optimizedPath);
+    
+    final fileSize = await optimizedFile.length();
+    print('   📄 Copied ${(fileSize / 1024).round()}KB (no additional compression)');
     return optimizedPath;
   }
+
+  // Images not preprocessed - need to compress them now
+  print('⚠️  Page $pageIndex: Image NOT preprocessed, compressing now...');
 
   // Original compression logic for non-preprocessed images
   final inputBytes = await file.readAsBytes();

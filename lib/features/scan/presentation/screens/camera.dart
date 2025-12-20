@@ -436,50 +436,98 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     }
   }
 
+  /// Initializes the camera with production-ready error handling
+  /// 
+  /// CRITICAL: Uses ResolutionPreset.high (not max) to ensure compatibility
+  /// with devices that have limited camera hardware capabilities
   Future<void> _initCamera({required bool preserveIndex}) async {
-    _cameras = await availableCameras();
-
-    if (!preserveIndex || _cameraIndex >= _cameras.length) {
-      final backIdx = _cameras.indexWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-      );
-      _cameraIndex = backIdx != -1 ? backIdx : 0;
-    }
-
-    // Use high instead of max to reduce frame size and improve
-    // live analysis (edge detection / barcode) performance.
-    _controller = CameraController(
-      _cameras[_cameraIndex],
-      ResolutionPreset.high,
-      enableAudio: false,
-      imageFormatGroup: Platform.isAndroid
-          ? ImageFormatGroup.jpeg
-          : ImageFormatGroup.bgra8888,
-    );
-
-    await _controller!.initialize();
-
-    // Initialize edge detector (lightweight, doesn't start processing yet)
-    await _edgeDetector.ensureInitialized();
-
-    // Only start image stream if the current mode needs live analysis
-    // This prevents unnecessary ML processing for modes like translate/extractText
-    if (_modeNeedsLiveAnalysis(_currentMode) && mounted) {
-      await _startImageStream();
-    }
-
-    final isFront =
-        _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
-    _flashMode = isFront ? FlashMode.off : _flashMode;
-
     try {
-      await _controller!.setFlashMode(_flashMode);
-    } catch (_) {
-      _flashMode = FlashMode.off;
-    }
+      _cameras = await availableCameras();
 
-    await _applyModeSettings();
-    if (mounted) setState(() {});
+      if (_cameras.isEmpty) {
+        throw CameraException(
+          'NoCamerasAvailable',
+          'No cameras found on this device',
+        );
+      }
+
+      if (!preserveIndex || _cameraIndex >= _cameras.length) {
+        final backIdx = _cameras.indexWhere(
+          (c) => c.lensDirection == CameraLensDirection.back,
+        );
+        _cameraIndex = backIdx != -1 ? backIdx : 0;
+      }
+
+      // PRODUCTION FIX: Use high instead of max to reduce frame size and improve
+      // live analysis (edge detection / barcode) performance.
+      // This also prevents "too many use cases" error on devices with limited
+      // camera hardware by reducing memory pressure and surface combinations.
+      _controller = CameraController(
+        _cameras[_cameraIndex],
+        ResolutionPreset.high, // NOT max - critical for compatibility
+        enableAudio: false,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.jpeg
+            : ImageFormatGroup.bgra8888,
+      );
+
+      await _controller!.initialize();
+
+      // Check if controller was disposed during initialization (memory pressure)
+      if (!mounted || _controller == null || !_controller!.value.isInitialized) {
+        return;
+      }
+
+      // Initialize edge detector (lightweight, doesn't start processing yet)
+      await _edgeDetector.ensureInitialized();
+
+      // CRITICAL: Add delay before starting image stream to ensure camera is fully ready
+      // This prevents the "too many use cases" error by allowing camera to complete
+      // initialization before adding image analysis surface
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Check again after delay
+      if (!mounted || _controller == null || !_controller!.value.isInitialized) {
+        return;
+      }
+
+      // Only start image stream if the current mode needs live analysis
+      // This prevents unnecessary ML processing for modes like translate/extractText
+      if (_modeNeedsLiveAnalysis(_currentMode) && mounted) {
+        await _startImageStream();
+      }
+
+      final isFront =
+          _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
+      _flashMode = isFront ? FlashMode.off : _flashMode;
+
+      try {
+        await _controller!.setFlashMode(_flashMode);
+      } catch (_) {
+        _flashMode = FlashMode.off;
+      }
+
+      await _applyModeSettings();
+      if (mounted) setState(() {});
+    } catch (e) {
+      // Production-ready error handling
+      print('[Camera] Initialization error: $e');
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Camera initialization failed: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () {
+                _initFuture = _initCamera(preserveIndex: preserveIndex);
+              },
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _applyModeSettings() async {
@@ -732,8 +780,12 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     }
   }
 
+  /// Switches between front and back cameras with production-ready error handling
+  /// 
+  /// PRODUCTION FIX: Properly disposes old controller and adds delay before
+  /// starting image stream to prevent "too many use cases" error
   Future<void> _switchCamera() async {
-    if (_cameras.isEmpty) return;
+    if (_cameras.isEmpty || !mounted) return;
 
     try {
       final currentLens = _cameras[_cameraIndex].lensDirection;
@@ -743,26 +795,49 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       final idx = _cameras.indexWhere((c) => c.lensDirection == desired);
       final newIndex = idx != -1 ? idx : (_cameraIndex + 1) % _cameras.length;
 
+      // Stop image stream and dispose old controller
       await _stopImageStreamIfNeeded();
       await _controller?.dispose();
+      _controller = null;
 
-      // Use high instead of max to reduce frame size and improve
+      if (!mounted) return;
+
+      // PRODUCTION FIX: Use high instead of max to reduce frame size and improve
       // live analysis (edge detection / barcode) performance.
+      // This also prevents "too many use cases" error.
       _controller = CameraController(
         _cameras[newIndex],
-        ResolutionPreset.high,
+        ResolutionPreset.high, // NOT max - critical for compatibility
         enableAudio: false,
         imageFormatGroup: Platform.isAndroid
             ? ImageFormatGroup.jpeg
             : ImageFormatGroup.bgra8888,
       );
       _cameraIndex = newIndex;
+      
       await _controller!.initialize();
-      await _startImageStream();
+
+      if (!mounted || _controller == null || !_controller!.value.isInitialized) {
+        return;
+      }
+
+      // CRITICAL: Add delay before starting image stream
+      // This prevents the "too many use cases" error
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (!mounted || _controller == null || !_controller!.value.isInitialized) {
+        return;
+      }
+
+      // Only start stream if mode needs it
+      if (_modeNeedsLiveAnalysis(_currentMode)) {
+        await _startImageStream();
+      }
 
       final isFront =
           _cameras[_cameraIndex].lensDirection == CameraLensDirection.front;
       _flashMode = isFront ? FlashMode.off : FlashMode.auto;
+      
       try {
         await _controller!.setFlashMode(_flashMode);
       } catch (_) {
@@ -772,10 +847,17 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       await _applyModeSettings();
       if (mounted) setState(() {});
     } catch (e) {
+      print('[Camera] Switch camera error: $e');
+      
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Switch failed: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text('Failed to switch camera: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     }
   }
@@ -855,14 +937,28 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     }
   }
 
+  /// Builds camera preview with color filter and proper state checks
+  /// 
+  /// PRODUCTION FIX: Checks if controller is disposed before calling buildPreview
+  /// This prevents "buildPreview() was called on a disposed CameraController" error
   Widget _buildFilteredPreview() {
-    if (_controller == null) {
+    // Check if controller exists and is initialized
+    if (_controller == null || !_controller!.value.isInitialized) {
       return const SizedBox.shrink();
     }
-    final preview = CameraPreview(_controller!);
-    final filter = _previewFilterForProfile(_colorProfile);
-    if (filter == null) return preview;
-    return ColorFiltered(colorFilter: filter, child: preview);
+    
+    // CRITICAL: Additional check to prevent disposed controller errors
+    // This happens when memory pressure causes controller disposal during rebuild
+    try {
+      final preview = CameraPreview(_controller!);
+      final filter = _previewFilterForProfile(_colorProfile);
+      if (filter == null) return preview;
+      return ColorFiltered(colorFilter: filter, child: preview);
+    } catch (e) {
+      // Controller was disposed during build - return empty widget
+      print('[Camera] Preview build failed (controller disposed): $e');
+      return const SizedBox.shrink();
+    }
   }
 
   @override
@@ -946,17 +1042,68 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
       ),
       body: Stack(
         children: [
-          // Camera Preview
+          // Camera Preview with production-ready error handling
           FutureBuilder(
             future: _initFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done ||
-                  _controller == null ||
-                  !_controller!.value.isInitialized) {
+              // Show loading while initializing
+              if (snapshot.connectionState != ConnectionState.done) {
                 return const Center(
                   child: CircularProgressIndicator(color: Colors.white),
                 );
               }
+
+              // Show error if initialization failed
+              if (snapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Camera initialization failed',
+                        style: GoogleFonts.inter(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Please try again',
+                        style: GoogleFonts.inter(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _initFuture = _initCamera(preserveIndex: false);
+                          });
+                        },
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              // PRODUCTION FIX: Additional null and initialization checks
+              // This prevents crashes when controller is disposed due to memory pressure
+              if (_controller == null || !_controller!.value.isInitialized) {
+                return const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                );
+              }
+
+              // Build preview with error handling
               return SizedBox.expand(
                 child: FittedBox(
                   fit: BoxFit.cover,

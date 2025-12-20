@@ -30,12 +30,27 @@ class PdfPreprocessor {
   }) async {
     if (imagePaths.isEmpty) return const [];
 
+    final startTime = DateTime.now();
+    AppLogger.info(
+      '🚀 Starting image preprocessing',
+      data: {
+        'imageCount': imagePaths.length,
+        'dpi': dpi.toString(),
+      },
+    );
+
+    // Optimized settings for speed vs quality balance
     final memorySafe = !ResourceGuard.instance.hasSufficientMemory(
       minFreeMb: dpi == PdfDpi.dpi300 ? 400 : 250,
     );
-    final maxDimension = memorySafe ? 2000 : 2500;
-    final dpiCap = dpi == PdfDpi.dpi150 ? 2000 : maxDimension;
-    final quality = memorySafe ? 82 : 90;
+    
+    // OPTIMIZED: Reduced max dimensions for faster processing
+    // 2000px is more than enough for PDF quality at 300 DPI (6.7 inches)
+    final maxDimension = memorySafe ? 1800 : 2000;
+    final dpiCap = dpi == PdfDpi.dpi150 ? 1600 : maxDimension;
+    
+    // OPTIMIZED: Balanced quality for speed (85 is sweet spot)
+    final quality = memorySafe ? 80 : 85;
 
     final tempDir = await getTemporaryDirectory();
 
@@ -84,9 +99,28 @@ class PdfPreprocessor {
 
     // If all images are cached, return immediately
     if (pathsToProcess.isEmpty) {
+      final elapsed = DateTime.now().difference(startTime);
+      AppLogger.info(
+        '✅ All images served from cache (super fast!)',
+        data: {
+          'cachedCount': imagePaths.length,
+          'duration': '${elapsed.inMilliseconds}ms',
+        },
+      );
       onProgress?.call(imagePaths.length, imagePaths.length);
       return cachedPaths.cast<String>();
     }
+
+    AppLogger.info(
+      '📊 Cache statistics',
+      data: {
+        'totalImages': imagePaths.length,
+        'cachedImages': cachedPaths.where((p) => p != null).length,
+        'toProcess': pathsToProcess.length,
+        'maxDimension': dpiCap,
+        'quality': quality,
+      },
+    );
 
     // Process images that aren't cached
     List<String> processedPaths;
@@ -144,6 +178,20 @@ class PdfPreprocessor {
         result.add(processedPaths[processedIndex++]);
       }
     }
+
+    final elapsed = DateTime.now().difference(startTime);
+    AppLogger.info(
+      '✅ Preprocessing complete',
+      data: {
+        'totalImages': imagePaths.length,
+        'processedImages': pathsToProcess.length,
+        'cachedImages': cachedPaths.where((p) => p != null).length,
+        'totalDuration': '${elapsed.inMilliseconds}ms',
+        'avgPerImage': pathsToProcess.isEmpty 
+            ? '0ms' 
+            : '${(elapsed.inMilliseconds / pathsToProcess.length).round()}ms',
+      },
+    );
 
     _cleanupOldPreprocessedFiles(tempDir);
     return result;
@@ -353,6 +401,7 @@ String _preprocessImage(_PreprocessPayload payload) {
 
   img.Image image = img.bakeOrientation(decoded);
 
+  // OPTIMIZED: Fast resizing using cubic interpolation (good quality, faster than lanczos)
   final longest = image.width > image.height ? image.width : image.height;
   if (longest > payload.maxDimension) {
     final scale = payload.maxDimension / longest;
@@ -360,11 +409,12 @@ String _preprocessImage(_PreprocessPayload payload) {
       image,
       width: (image.width * scale).round(),
       height: (image.height * scale).round(),
-      interpolation: img.Interpolation.average,
+      interpolation: img.Interpolation.cubic, // Faster than average, good quality
     );
   }
 
-  final clampedQuality = payload.jpegQuality.clamp(70, 95);
+  // OPTIMIZED: Quality clamped to sweet spot for speed (70-90 range)
+  final clampedQuality = payload.jpegQuality.clamp(70, 90);
   Uint8List encoded;
   try {
     encoded = Uint8List.fromList(img.encodeJpg(image, quality: clampedQuality));
@@ -406,6 +456,7 @@ Future<void> _batchPreprocessEntry(_BatchPreprocessPayload payload) async {
 
         img.Image image = img.bakeOrientation(decoded);
 
+        // OPTIMIZED: Fast resizing with cubic interpolation
         final longest = image.width > image.height ? image.width : image.height;
         if (longest > payload.maxDimension) {
           final scale = payload.maxDimension / longest;
@@ -413,11 +464,11 @@ Future<void> _batchPreprocessEntry(_BatchPreprocessPayload payload) async {
             image,
             width: (image.width * scale).round(),
             height: (image.height * scale).round(),
-            interpolation: img.Interpolation.average,
+            interpolation: img.Interpolation.cubic, // Faster, good quality
           );
         }
 
-        final clampedQuality = payload.jpegQuality.clamp(70, 95);
+        final clampedQuality = payload.jpegQuality.clamp(70, 90);
         Uint8List encoded;
         try {
           encoded = Uint8List.fromList(
