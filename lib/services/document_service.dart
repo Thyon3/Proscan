@@ -19,6 +19,13 @@ import 'package:thyscan/core/services/document_operation_queue.dart';
 import 'package:thyscan/core/services/document_search_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
+import 'package:thyscan/core/services/document_update_service.dart';
+import 'package:thyscan/core/services/conflict_detection_service.dart';
+import 'package:thyscan/core/models/document_snapshot.dart';
+import 'package:thyscan/core/models/update_progress.dart';
+import 'package:thyscan/core/exceptions/conflict_exception.dart'
+    hide ConflictException;
+import 'package:thyscan/core/exceptions/update_exceptions.dart';
 import 'package:thyscan/core/services/duplicate_prevention_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
@@ -152,7 +159,7 @@ class DocumentService {
       final generationInputs = preprocessedPaths.isNotEmpty
           ? preprocessedPaths
           : pageImagePaths;
-      
+
       // Mark config as preprocessed if we used preprocessed images
       final finalConfig = preprocessedPaths.isNotEmpty
           ? appliedConfig.copyWith(isPreprocessed: true)
@@ -175,10 +182,9 @@ class DocumentService {
 
       // Check for duplicates before saving (optional - can be disabled for performance)
       // This prevents accidental duplicate saves
-      final duplicate = await DuplicatePreventionService.instance.findDuplicateByContent(
-        filePath: tempFilePath,
-      );
-      
+      final duplicate = await DuplicatePreventionService.instance
+          .findDuplicateByContent(filePath: tempFilePath);
+
       if (duplicate != null) {
         AppLogger.warning(
           'Duplicate document detected, skipping save',
@@ -233,10 +239,10 @@ class DocumentService {
 
       // Use repository for async write (never blocks main thread)
       await DocumentRepository.instance.saveDocument(doc);
-      
+
       // Immediately refresh cache so document appears in UI right away
       await _refreshCache(forceRefresh: true);
-      
+
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(id);
 
@@ -250,7 +256,7 @@ class DocumentService {
         print('   Page Count: ${doc.pageCount}');
         print('   File Path: ${doc.filePath}');
         print('═══════════════════════════════════════════════════════════');
-        
+
         AppLogger.info(
           '🚀 Starting background upload for document ${doc.id}',
           data: {
@@ -260,37 +266,52 @@ class DocumentService {
             'pageCount': doc.pageCount,
           },
         );
-        
-        DocumentUploadService.instance.uploadDocument(doc).then((url) {
-          print('═══════════════════════════════════════════════════════════');
-          print('✅ [DOCUMENT SERVICE] Upload completed');
-          print('   Document ID: ${doc.id}');
-          print('   URL: ${url != null ? url.substring(0, url.length > 60 ? 60 : url.length) + "..." : "NULL (failed)"}');
-          print('═══════════════════════════════════════════════════════════');
-          if (url != null) {
-            AppLogger.info(
-              '✅ Document uploaded successfully: ${doc.id}',
-              data: {'url': url.substring(0, 50) + '...'},
-            );
-          } else {
-            AppLogger.warning(
-              '⚠️ Document upload failed after retries: ${doc.id}',
-              error: null,
-            );
-          }
-        }).catchError((error, stack) {
-          print('═══════════════════════════════════════════════════════════');
-          print('❌ [DOCUMENT SERVICE] Upload FAILED');
-          print('   Document ID: ${doc.id}');
-          print('   Error: $error');
-          print('   Stack: ${stack.toString().substring(0, stack.toString().length > 200 ? 200 : stack.toString().length)}');
-          print('═══════════════════════════════════════════════════════════');
-          AppLogger.error(
-            '❌ Background upload failed for document ${doc.id}',
-            error: error,
-            stack: stack,
-          );
-        });
+
+        DocumentUploadService.instance
+            .uploadDocument(doc)
+            .then((url) {
+              print(
+                '═══════════════════════════════════════════════════════════',
+              );
+              print('✅ [DOCUMENT SERVICE] Upload completed');
+              print('   Document ID: ${doc.id}');
+              print(
+                '   URL: ${url != null ? url.substring(0, url.length > 60 ? 60 : url.length) + "..." : "NULL (failed)"}',
+              );
+              print(
+                '═══════════════════════════════════════════════════════════',
+              );
+              if (url != null) {
+                AppLogger.info(
+                  '✅ Document uploaded successfully: ${doc.id}',
+                  data: {'url': url.substring(0, 50) + '...'},
+                );
+              } else {
+                AppLogger.warning(
+                  '⚠️ Document upload failed after retries: ${doc.id}',
+                  error: null,
+                );
+              }
+            })
+            .catchError((error, stack) {
+              print(
+                '═══════════════════════════════════════════════════════════',
+              );
+              print('❌ [DOCUMENT SERVICE] Upload FAILED');
+              print('   Document ID: ${doc.id}');
+              print('   Error: $error');
+              print(
+                '   Stack: ${stack.toString().substring(0, stack.toString().length > 200 ? 200 : stack.toString().length)}',
+              );
+              print(
+                '═══════════════════════════════════════════════════════════',
+              );
+              AppLogger.error(
+                '❌ Background upload failed for document ${doc.id}',
+                error: error,
+                stack: stack,
+              );
+            });
       } else {
         print('⏭️ [DOCUMENT SERVICE] Upload skipped (skipUpload = true)');
         AppLogger.info(
@@ -348,30 +369,21 @@ class DocumentService {
               AppLogger.warning(
                 'Document file is corrupted, excluding from list',
                 error: e,
-                data: {
-                  'documentId': doc.id,
-                  'filePath': doc.filePath,
-                },
+                data: {'documentId': doc.id, 'filePath': doc.filePath},
               );
             }
           } else {
             AppLogger.warning(
               'Document file is empty, excluding from list',
               error: null,
-              data: {
-                'documentId': doc.id,
-                'filePath': doc.filePath,
-              },
+              data: {'documentId': doc.id, 'filePath': doc.filePath},
             );
           }
         } else {
           AppLogger.warning(
             'Document file missing, excluding from list',
             error: null,
-            data: {
-              'documentId': doc.id,
-              'filePath': doc.filePath,
-            },
+            data: {'documentId': doc.id, 'filePath': doc.filePath},
           );
         }
       } catch (e, stack) {
@@ -379,10 +391,7 @@ class DocumentService {
           'Error verifying document file integrity',
           error: e,
           stack: stack,
-          data: {
-            'documentId': doc.id,
-            'filePath': doc.filePath,
-          },
+          data: {'documentId': doc.id, 'filePath': doc.filePath},
         );
       }
     }
@@ -439,259 +448,267 @@ class DocumentService {
     PdfProgressCallback? onProgress,
     required DocumentSaveOptions options,
   }) async {
-    if (pageImagePaths.isEmpty) {
-      throw ArgumentError('pageImagePaths cannot be empty');
-    }
+    // ATOMIC UPDATE WITH ROLLBACK AND RETRY
+    return await DocumentUpdateService.instance.updateWithRollback(
+      documentId: documentId,
+      updateFn: () async {
+        // ===== STEP 1: VALIDATION & CONFLICT CHECK =====
+        if (pageImagePaths.isEmpty) {
+          throw ArgumentError('pageImagePaths cannot be empty');
+        }
 
-    // Use repository for async read (never blocks main thread)
-    final existingDoc = await DocumentRepository.instance.getDocumentById(documentId);
+        // Get existing document
+        final existingDoc = await DocumentRepository.instance.getDocumentById(
+          documentId,
+        );
+        if (existingDoc == null) {
+          throw DocumentStorageException(
+            message: 'Document not found',
+            documentId: documentId,
+            type: StorageErrorType.notFound,
+          );
+        }
 
-    if (existingDoc == null) {
-      throw DocumentStorageException(
-        message: 'Document not found',
-        documentId: documentId,
-        type: StorageErrorType.notFound,
-      );
-    }
+        // Check for conflicts (NEW: Prevents overwriting changes from other devices)
+        try {
+          _emitUpdateProgress(documentId, UpdateStage.preparingUpdate, 0.0);
+          await ConflictDetectionService.instance.checkForConflicts(
+            localDocument: existingDoc,
+            force: options.skipUpload, // Skip if offline update
+          );
+          _emitUpdateProgress(documentId, UpdateStage.preparingUpdate, 1.0);
+        } on ConflictException catch (e) {
+          AppLogger.warning('Conflict detected during update', error: e);
+          rethrow; // Let updateWithRollback handle retry/rollback
+        }
 
-    final appDocsDir = await getApplicationDocumentsDirectory();
-    final documentsDir = Directory(
-      p.join(appDocsDir.path, 'scanned_documents'),
-    );
-    final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
-    final pagesDir = Directory(p.join(appDocsDir.path, 'page_images'));
+        // ===== STEP 2: YOUR EXISTING UPDATE LOGIC (KEEP AS-IS) =====
+        // Copy ALL your existing code from lines 447-700 here
+        // Just add progress emissions at key points
 
-    await _ensureDir(documentsDir);
-    await _ensureDir(thumbsDir);
-    await _ensureDir(pagesDir);
+        final appDocsDir = await getApplicationDocumentsDirectory();
+        final documentsDir = Directory(
+          p.join(appDocsDir.path, 'scanned_documents'),
+        );
+        final thumbsDir = Directory(p.join(appDocsDir.path, 'thumbnails'));
+        final pagesDir = Directory(p.join(appDocsDir.path, 'page_images'));
 
-    final hasDisk = await _ensureDiskSpace(pageImagePaths: pageImagePaths);
-    if (!hasDisk) {
-      throw DiskSpaceException(
-        message: 'Insufficient disk space for update',
-        documentId: documentId,
-      );
-    }
+        await _ensureDir(documentsDir);
+        await _ensureDir(thumbsDir);
+        await _ensureDir(pagesDir);
 
-    final pageCount = pageImagePaths.length;
-    options.validate(pageCount: pageCount);
-    final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
-    final newScanMode = scanMode ?? existingDoc.scanMode;
-    final newColorProfile =
-        colorProfile ?? DocumentColorProfile.fromKey(existingDoc.colorProfile);
-    final resolvedTags = options.tags ?? existingDoc.tags;
-    final baseMetadata = options.metadata ?? _metadataFromDocument(existingDoc);
-    final resolvedMetadata = baseMetadata.withFallbacks(
-      title: docTitle,
-      fallbackKeywords: resolvedTags,
-    );
-    final baseConfig = PdfGenerationConfig(
-      maxPageSizeMb: options.compressionPreset.maxPageSizeMb,
-      pageWidth: options.paperSize.format.width,
-      pageHeight: options.paperSize.format.height,
-      margin: options.paperSize.suggestedMargin,
-      addWhiteBackground: options.addWhiteBackground,
-      metadata: resolvedMetadata.toPdfDocumentMetadata(),
-    );
-    final appliedConfig =
-        ResourceGuard.instance.hasSufficientMemory(minFreeMb: 250)
-        ? baseConfig
-        : baseConfig.copyWith(
-            maxPageSizeMb: max(0.8, baseConfig.maxPageSizeMb * 0.75),
+        final hasDisk = await _ensureDiskSpace(pageImagePaths: pageImagePaths);
+        if (!hasDisk) {
+          throw DiskSpaceException(
+            message: 'Insufficient disk space for update',
+            documentId: documentId,
+          );
+        }
+
+        final pageCount = pageImagePaths.length;
+        options.validate(pageCount: pageCount);
+        final docTitle = title?.isNotEmpty == true ? title! : existingDoc.title;
+        final newScanMode = scanMode ?? existingDoc.scanMode;
+        final newColorProfile =
+            colorProfile ??
+            DocumentColorProfile.fromKey(existingDoc.colorProfile);
+        final resolvedTags = options.tags ?? existingDoc.tags;
+        final baseMetadata =
+            options.metadata ?? _metadataFromDocument(existingDoc);
+        final resolvedMetadata = baseMetadata.withFallbacks(
+          title: docTitle,
+          fallbackKeywords: resolvedTags,
+        );
+
+        final baseConfig = PdfGenerationConfig(
+          maxPageSizeMb: options.compressionPreset.maxPageSizeMb,
+          pageWidth: options.paperSize.format.width,
+          pageHeight: options.paperSize.format.height,
+          margin: options.paperSize.suggestedMargin,
+          addWhiteBackground: options.addWhiteBackground,
+          metadata: resolvedMetadata.toPdfDocumentMetadata(),
+        );
+
+        final appliedConfig =
+            ResourceGuard.instance.hasSufficientMemory(minFreeMb: 250)
+            ? baseConfig
+            : baseConfig.copyWith(
+                maxPageSizeMb: max(0.8, baseConfig.maxPageSizeMb * 0.75),
+              );
+
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final tempFilePath = p.join(
+          documentsDir.path,
+          'doc_${documentId}_$timestamp.tmp.pdf',
+        );
+        final tempThumbPath = _buildThumbnailPath(
+          thumbsDir.path,
+          documentId,
+          timestamp,
+        );
+
+        PdfGenerationResult? pdfResult;
+        String? committedFilePath;
+        String? committedThumbPath;
+        List<String> preprocessedPaths = const [];
+
+        try {
+          // PROGRESS: Generating PDF
+          _emitUpdateProgress(documentId, UpdateStage.generatingPdf, 0.0);
+
+          preprocessedPaths = await PdfPreprocessor.instance.preprocess(
+            imagePaths: pageImagePaths,
+            dpi: options.dpi,
           );
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
+          final generationInputs = preprocessedPaths.isNotEmpty
+              ? preprocessedPaths
+              : pageImagePaths;
+          final finalConfig = preprocessedPaths.isNotEmpty
+              ? appliedConfig.copyWith(isPreprocessed: true)
+              : appliedConfig;
 
-    final tempFilePath = p.join(
-      documentsDir.path,
-      'doc_${documentId}_$timestamp.tmp.pdf',
-    );
-    final tempThumbPath = _buildThumbnailPath(
-      thumbsDir.path,
-      documentId,
-      timestamp,
-    );
+          pdfResult = await PdfGenerationService.instance.generate(
+            imagePaths: generationInputs,
+            outputPdfPath: tempFilePath,
+            optimizedDirPath: pagesDir.path,
+            documentId: documentId,
+            batchId: timestamp.toString(),
+            config: finalConfig,
+            onProgress: onProgress,
+          );
 
-    PdfGenerationResult? pdfResult;
-    String? committedFilePath;
-    String? committedThumbPath;
-    List<String> preprocessedPaths = const [];
+          final tempFile = File(tempFilePath);
+          if (!await tempFile.exists()) {
+            throw StorageFailure('Temporary PDF file missing after generation');
+          }
 
-    try {
-      preprocessedPaths = await PdfPreprocessor.instance.preprocess(
-        imagePaths: pageImagePaths,
-        dpi: options.dpi,
-      );
+          _emitUpdateProgress(documentId, UpdateStage.generatingPdf, 1.0);
 
-      final generationInputs = preprocessedPaths.isNotEmpty
-          ? preprocessedPaths
-          : pageImagePaths;
-      
-      // Mark config as preprocessed if we used preprocessed images
-      final finalConfig = preprocessedPaths.isNotEmpty
-          ? appliedConfig.copyWith(isPreprocessed: true)
-          : appliedConfig;
-
-      pdfResult = await PdfGenerationService.instance.generate(
-        imagePaths: generationInputs,
-        outputPdfPath: tempFilePath,
-        optimizedDirPath: pagesDir.path,
-        documentId: documentId,
-        batchId: timestamp.toString(),
-        config: finalConfig,
-        onProgress: onProgress,
-      );
-
-      final tempFile = File(tempFilePath);
-      if (!await tempFile.exists()) {
-        throw StorageFailure('Temporary PDF file missing after generation');
-      }
-
-      // Delete old file if it exists in a different location or if scan mode changed
-      final oldFilePath = existingDoc.filePath;
-      if (oldFilePath.isNotEmpty) {
-        try {
-          final oldFile = File(oldFilePath);
-          if (await oldFile.exists()) {
-            // Only delete if scan mode changed or file is in old location
-            final isOldLocation = oldFilePath.contains('scanned_documents');
-            if (newScanMode != existingDoc.scanMode || isOldLocation) {
-              await oldFile.delete();
-              AppLogger.info(
-                'Deleted old document file',
-                data: {'oldPath': oldFilePath, 'documentId': documentId},
-              );
+          // Delete old file
+          final oldFilePath = existingDoc.filePath;
+          if (oldFilePath.isNotEmpty) {
+            try {
+              final oldFile = File(oldFilePath);
+              if (await oldFile.exists()) {
+                final isOldLocation = oldFilePath.contains('scanned_documents');
+                if (newScanMode != existingDoc.scanMode || isOldLocation) {
+                  await oldFile.delete();
+                  AppLogger.info(
+                    'Deleted old document file',
+                    data: {'oldPath': oldFilePath},
+                  );
+                }
+              }
+            } catch (e) {
+              AppLogger.warning('Failed to delete old document file', error: e);
             }
           }
-        } catch (e) {
-          AppLogger.warning(
-            'Failed to delete old document file',
-            data: {'oldPath': oldFilePath, 'error': e.toString()},
-            error: null,
+
+          // PROGRESS: Uploading to storage
+          _emitUpdateProgress(documentId, UpdateStage.uploadingToStorage, 0.0);
+
+          final savedPdfPath = await AppStorageService.instance.moveToAppFolder(
+            tempFilePath: tempFilePath,
+            documentId: documentId,
+            scanMode: newScanMode,
+            format: 'pdf',
           );
-          // Continue even if deletion fails
-        }
-      }
+          committedFilePath = savedPdfPath;
 
-      // Move PDF from temp location to organized folder structure
-      final savedPdfPath = await AppStorageService.instance.moveToAppFolder(
-        tempFilePath: tempFilePath,
-        documentId: documentId,
-        scanMode: newScanMode,
-        format: 'pdf',
-      );
-      committedFilePath = savedPdfPath;
-
-      if (pdfResult.optimizedImagePaths.isNotEmpty) {
-        final firstPageFile = File(pdfResult.optimizedImagePaths.first);
-        if (await firstPageFile.exists()) {
-          // Use atomic copy for thumbnail
-          await AtomicFileService.instance.copyAtomically(
-            sourcePath: pdfResult.optimizedImagePaths.first,
-            targetPath: tempThumbPath,
-          );
-          committedThumbPath = tempThumbPath;
-        }
-      }
-
-      if (existingDoc.thumbnailPath.isNotEmpty &&
-          existingDoc.thumbnailPath != committedThumbPath) {
-        await _deleteIfExists(existingDoc.thumbnailPath);
-      }
-
-      for (final oldPagePath in existingDoc.pageImagePaths) {
-        try {
-          if (!pdfResult.optimizedImagePaths.contains(oldPagePath)) {
-            final pageFile = File(oldPagePath);
-            if (await pageFile.exists()) await pageFile.delete();
+          if (pdfResult.optimizedImagePaths.isNotEmpty) {
+            final firstPageFile = File(pdfResult.optimizedImagePaths.first);
+            if (await firstPageFile.exists()) {
+              await AtomicFileService.instance.copyAtomically(
+                sourcePath: pdfResult.optimizedImagePaths.first,
+                targetPath: tempThumbPath,
+              );
+              committedThumbPath = tempThumbPath;
+            }
           }
-        } catch (_) {}
-      }
 
-      final updatedDoc = DocumentModel(
-        id: documentId,
-        title: docTitle,
-        filePath: savedPdfPath,
-        thumbnailPath: committedThumbPath ?? existingDoc.thumbnailPath,
-        format: 'pdf',
-        pageCount: pageCount,
-        createdAt: existingDoc.createdAt,
-        updatedAt: DateTime.now(),
-        pageImagePaths: pdfResult.optimizedImagePaths,
-        scanMode: newScanMode,
-        colorProfile: newColorProfile.key,
-        textContent: existingDoc.textContent,
-        tags: resolvedTags,
-        metadata: resolvedMetadata.toDocumentMap(),
-      );
+          if (existingDoc.thumbnailPath.isNotEmpty &&
+              existingDoc.thumbnailPath != committedThumbPath) {
+            await _deleteIfExists(existingDoc.thumbnailPath);
+          }
 
-      // Use repository for async write (never blocks main thread)
-      await DocumentRepository.instance.updateDocument(updatedDoc);
-      
-      // Immediately refresh cache so document appears in UI right away
-      await _refreshCache(forceRefresh: true);
-      
-      // Invalidate search cache
-      DocumentSearchService.instance.invalidateCacheForDocument(documentId);
+          for (final oldPagePath in existingDoc.pageImagePaths) {
+            try {
+              if (!pdfResult.optimizedImagePaths.contains(oldPagePath)) {
+                final pageFile = File(oldPagePath);
+                if (await pageFile.exists()) await pageFile.delete();
+              }
+            } catch (_) {}
+          }
 
-      // Upload updated file to Supabase Storage and sync metadata to backend - only if not skipped
-      // This will replace the old file in storage and update the backend with new metadata
-      if (!options.skipUpload) {
-        AppLogger.info(
-          '🔄 Document updated, uploading new version to Supabase Storage',
-          data: {
-            'documentId': updatedDoc.id,
-            'title': updatedDoc.title,
-            'pageCount': updatedDoc.pageCount,
-            'filePath': updatedDoc.filePath,
-            'format': updatedDoc.format,
-          },
-        );
+          final updatedDoc = DocumentModel(
+            id: documentId,
+            title: docTitle,
+            filePath: savedPdfPath,
+            thumbnailPath: committedThumbPath ?? existingDoc.thumbnailPath,
+            format: 'pdf',
+            pageCount: pageCount,
+            createdAt: existingDoc.createdAt,
+            updatedAt: DateTime.now(),
+            pageImagePaths: pdfResult.optimizedImagePaths,
+            scanMode: newScanMode,
+            colorProfile: newColorProfile.key,
+            textContent: existingDoc.textContent,
+            tags: resolvedTags,
+            metadata: resolvedMetadata.toDocumentMap(),
+          );
 
-        DocumentUploadService.instance.uploadDocument(updatedDoc).then((url) {
-          if (url != null) {
+          // PROGRESS: Updating local database
+          _emitUpdateProgress(documentId, UpdateStage.updatingLocal, 0.0);
+
+          await DocumentRepository.instance.updateDocument(updatedDoc);
+          await _refreshCache(forceRefresh: true);
+          DocumentSearchService.instance.invalidateCacheForDocument(documentId);
+
+          _emitUpdateProgress(documentId, UpdateStage.updatingLocal, 1.0);
+
+          // PROGRESS: Uploading to cloud (if not skipped)
+          if (!options.skipUpload) {
+            _emitUpdateProgress(documentId, UpdateStage.committingUpdate, 0.0);
+
             AppLogger.info(
-              '✅ Updated document uploaded successfully',
-              data: {
-                'documentId': updatedDoc.id,
-                'url': url.substring(0, url.length > 100 ? 100 : url.length) + '...',
-              },
-            );
-          } else {
-            AppLogger.warning(
-              '⚠️ Updated document upload failed after retries',
-              error: null,
+              '🔄 Document updated, uploading new version to Supabase Storage',
               data: {'documentId': updatedDoc.id},
             );
-          }
-        }).catchError((error, stack) {
-          AppLogger.error(
-            '❌ Failed to upload updated document',
-            error: error,
-            stack: stack,
-            data: {'documentId': updatedDoc.id},
-          );
-        });
-      } else {
-        AppLogger.info(
-          '⏭️ Upload skipped for updated document',
-          data: {'documentId': updatedDoc.id, 'reason': 'skipUpload flag set'},
-        );
-      }
 
-      return updatedDoc;
-    } catch (e) {
-      await _deleteIfExists(tempFilePath);
-      if (committedFilePath != null) {
-        await _deleteIfExists(committedFilePath);
-      }
-      if (committedThumbPath != null) {
-        await _deleteIfExists(committedThumbPath);
-      }
-      rethrow;
-    } finally {
-      await _cleanupTempFiles(preprocessedPaths);
-    }
+            DocumentUploadService.instance
+                .uploadDocument(updatedDoc)
+                .then((url) {
+                  if (url != null) {
+                    AppLogger.info('✅ Updated document uploaded successfully');
+                  }
+                })
+                .catchError((error, stack) {
+                  AppLogger.error(
+                    '❌ Failed to upload updated document',
+                    error: error,
+                  );
+                });
+
+            _emitUpdateProgress(documentId, UpdateStage.committingUpdate, 1.0);
+          }
+
+          // PROGRESS: Completed
+          _emitUpdateProgress(documentId, UpdateStage.completed, 1.0);
+
+          return updatedDoc;
+        } catch (e) {
+          await _deleteIfExists(tempFilePath);
+          if (committedFilePath != null)
+            await _deleteIfExists(committedFilePath);
+          if (committedThumbPath != null)
+            await _deleteIfExists(committedThumbPath);
+          rethrow;
+        } finally {
+          await _cleanupTempFiles(preprocessedPaths);
+        }
+      },
+    );
   }
 
   Future<DocumentModel> saveTextDocument({
@@ -782,10 +799,10 @@ class DocumentService {
 
     // Use repository for async write (never blocks main thread)
     await DocumentRepository.instance.saveDocument(doc);
-    
+
     // Immediately refresh cache so document appears in UI right away
     await _refreshCache(forceRefresh: true);
-    
+
     // Invalidate search cache
     DocumentSearchService.instance.invalidateCacheForDocument(id);
 
@@ -811,7 +828,10 @@ class DocumentService {
     );
   }
 
-  Future<void> _deleteDocumentInternal(String id, {bool hardDelete = false}) async {
+  Future<void> _deleteDocumentInternal(
+    String id, {
+    bool hardDelete = false,
+  }) async {
     // Use repository for async read (never blocks main thread)
     final doc = await DocumentRepository.instance.getDocumentById(id);
 
@@ -836,7 +856,8 @@ class DocumentService {
 
     // Check if document is uploaded to Supabase Storage
     // If filePath is a URL (starts with http/https), it's in Supabase Storage
-    final isUploaded = doc.filePath.startsWith('http://') ||
+    final isUploaded =
+        doc.filePath.startsWith('http://') ||
         doc.filePath.startsWith('https://');
 
     // If hard delete is requested or document is local-only, perform immediate deletion
@@ -866,13 +887,15 @@ class DocumentService {
     _markCacheDirty();
 
     // Request soft delete from backend
-    final isUploaded = doc.filePath.startsWith('http://') ||
+    final isUploaded =
+        doc.filePath.startsWith('http://') ||
         doc.filePath.startsWith('https://');
-    
+
     if (isUploaded) {
       try {
         final fileUrl = doc.filePath;
-        final thumbnailUrl = doc.thumbnailPath.isNotEmpty &&
+        final thumbnailUrl =
+            doc.thumbnailPath.isNotEmpty &&
                 (doc.thumbnailPath.startsWith('http://') ||
                     doc.thumbnailPath.startsWith('https://'))
             ? doc.thumbnailPath
@@ -914,7 +937,11 @@ class DocumentService {
   }
 
   /// Performs hard delete: permanently removes document from storage and database
-  Future<void> _performHardDelete(String id, DocumentModel doc, bool isUploaded) async {
+  Future<void> _performHardDelete(
+    String id,
+    DocumentModel doc,
+    bool isUploaded,
+  ) async {
     AppLogger.info(
       '🗑️ Performing hard delete',
       data: {'documentId': id, 'title': doc.title},
@@ -930,7 +957,8 @@ class DocumentService {
 
         // Extract fileUrl and thumbnailUrl from filePath and thumbnailPath
         final fileUrl = doc.filePath;
-        final thumbnailUrl = doc.thumbnailPath.isNotEmpty &&
+        final thumbnailUrl =
+            doc.thumbnailPath.isNotEmpty &&
                 (doc.thumbnailPath.startsWith('http://') ||
                     doc.thumbnailPath.startsWith('https://'))
             ? doc.thumbnailPath
@@ -985,19 +1013,16 @@ class DocumentService {
     // 4. Delete from local storage using repository
     // Use repository for async delete (never blocks main thread)
     await DocumentRepository.instance.deleteDocument(id);
-    
+
     // Immediately refresh cache so document disappears from UI right away
     await _refreshCache(forceRefresh: true);
-    
+
     // Invalidate search cache
     DocumentSearchService.instance.invalidateCacheForDocument(id);
 
     AppLogger.info(
       '✅ Document hard deletion completed',
-      data: {
-        'documentId': id,
-        'wasUploaded': isUploaded,
-      },
+      data: {'documentId': id, 'wasUploaded': isUploaded},
     );
   }
 
@@ -1015,22 +1040,22 @@ class DocumentService {
       return;
     }
 
-    final restoredDoc = doc.copyWith(
-      isDeleted: false,
-      deletedAt: null,
-    );
+    final restoredDoc = doc.copyWith(isDeleted: false, deletedAt: null);
     // Use repository for async write (never blocks main thread)
     await DocumentRepository.instance.updateDocument(restoredDoc);
     _markCacheDirty();
 
     // If document was uploaded, restore it on backend
-    final isUploaded = doc.filePath.startsWith('http://') ||
+    final isUploaded =
+        doc.filePath.startsWith('http://') ||
         doc.filePath.startsWith('https://');
-    
+
     if (isUploaded) {
       try {
         // Update document metadata on backend to clear deleted flag
-        await DocumentBackendSyncService.instance.updateDocumentMetadata(restoredDoc);
+        await DocumentBackendSyncService.instance.updateDocumentMetadata(
+          restoredDoc,
+        );
         DocumentSyncStateService.instance.setSyncStatus(
           id,
           DocumentSyncStatus.synced,
@@ -1150,7 +1175,7 @@ class DocumentService {
       // Use repository for async write (never blocks main thread)
       await DocumentRepository.instance.updateDocument(updatedDoc);
       _markCacheDirty();
-      
+
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(id);
     }
@@ -1199,7 +1224,9 @@ class DocumentService {
     }
 
     // Use repository for async Hive access (never blocks main thread)
-    final docs = await DocumentRepository.instance.getAllDocuments(includeDeleted: false);
+    final docs = await DocumentRepository.instance.getAllDocuments(
+      includeDeleted: false,
+    );
     _documentsCache
       ..clear()
       ..addEntries(docs.map((doc) => MapEntry(doc.id, doc)));
@@ -1295,7 +1322,8 @@ class DocumentService {
       return FileSizeValidationResult(
         isValid: true,
         totalSizeMB: totalSizeMB,
-        warning: 'Large file detected (${totalSizeMB.toStringAsFixed(1)}MB). '
+        warning:
+            'Large file detected (${totalSizeMB.toStringAsFixed(1)}MB). '
             'Processing may take longer. Consider using compression.',
         requiresCompression: true,
       );
@@ -1396,6 +1424,21 @@ class DocumentService {
     );
   }
 
+  /// Emits update progress for UI tracking
+  void _emitUpdateProgress(
+    String documentId,
+    UpdateStage stage,
+    double progress,
+  ) {
+    DocumentUpdateService.instance.emitProgress(
+      UpdateProgress.stage(
+        documentId: documentId,
+        stage: stage,
+        progress: progress,
+      ),
+    );
+  }
+
   /// Pulls remote document changes from backend and updates local storage.
   ///
   /// This method is called by BackgroundSyncService but can also be called manually.
@@ -1413,8 +1456,10 @@ class DocumentService {
       }
 
       // Get last successful pull sync time
-      final lastSyncTime = DocumentSyncStateService.instance.lastSuccessfulPullSyncTime;
-      final since = lastSyncTime ?? DateTime.now().subtract(const Duration(days: 30));
+      final lastSyncTime =
+          DocumentSyncStateService.instance.lastSuccessfulPullSyncTime;
+      final since =
+          lastSyncTime ?? DateTime.now().subtract(const Duration(days: 30));
 
       AppLogger.info(
         'Pulling remote changes since ${since.toIso8601String()}',
@@ -1422,11 +1467,14 @@ class DocumentService {
       );
 
       // Fetch remote documents
-      final remoteDocuments = await DocumentBackendSyncService.instance.getDocumentsSince(since);
+      final remoteDocuments = await DocumentBackendSyncService.instance
+          .getDocumentsSince(since);
 
       if (remoteDocuments.isEmpty) {
         AppLogger.info('No remote changes found');
-        DocumentSyncStateService.instance.setLastSuccessfulPullSyncTime(DateTime.now());
+        DocumentSyncStateService.instance.setLastSuccessfulPullSyncTime(
+          DateTime.now(),
+        );
         return;
       }
 
@@ -1505,7 +1553,9 @@ class DocumentService {
       }
 
       // Update last successful pull sync time
-      DocumentSyncStateService.instance.setLastSuccessfulPullSyncTime(DateTime.now());
+      DocumentSyncStateService.instance.setLastSuccessfulPullSyncTime(
+        DateTime.now(),
+      );
       _markCacheDirty();
 
       AppLogger.info(
@@ -1518,11 +1568,7 @@ class DocumentService {
         },
       );
     } catch (e, stack) {
-      AppLogger.error(
-        'Failed to pull remote changes',
-        error: e,
-        stack: stack,
-      );
+      AppLogger.error('Failed to pull remote changes', error: e, stack: stack);
       rethrow;
     }
   }

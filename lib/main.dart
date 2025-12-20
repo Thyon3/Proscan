@@ -12,6 +12,7 @@ import 'package:thyscan/core/services/document_health_check_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/document_upload_notification_service.dart';
+import 'package:thyscan/core/services/document_update_notification_service.dart';
 import 'package:thyscan/core/services/full_text_search_index_service.dart';
 import 'package:thyscan/core/services/image_cache_service.dart';
 import 'package:thyscan/core/services/memory_monitor_service.dart';
@@ -288,11 +289,12 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeControllerProvider);
 
-    // Initialize upload notification service with context
+    // Initialize upload and update notification services with context
     // This needs to be called after the first frame is rendered
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (context.mounted) {
         DocumentUploadNotificationService.instance.initialize(context);
+        DocumentUpdateNotificationService.instance.initialize(context);
       }
     });
 
