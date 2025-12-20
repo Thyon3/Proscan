@@ -131,15 +131,20 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_stopImageStreamIfNeeded());
-    _controller?.dispose();
-    _edgeDetector.dispose();
-    unawaited(_barcodeScannerService.dispose());
     _edgeGuidanceDebounce?.cancel();
     // Reset analysis state on dispose
     _isAnalyzing = false;
     _lastAnalysisTime = null;
     _frameSkipCounter = 0;
+    
+    // Stop image stream and dispose resources in proper order
+    _stopImageStreamIfNeeded().then((_) {
+      _controller?.dispose();
+      _controller = null;
+    });
+    
+    _edgeDetector.dispose();
+    unawaited(_barcodeScannerService.dispose());
     super.dispose();
   }
 
@@ -420,18 +425,29 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     if (state == AppLifecycleState.inactive || 
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      unawaited(_stopImageStreamIfNeeded());
-      
-      // Dispose controller if app is going away completely
-      if (state == AppLifecycleState.inactive && c != null && c.value.isInitialized) {
-        unawaited(c.dispose());
-      }
+      _stopImageStreamIfNeeded().then((_) {
+        // Dispose controller if app is going to background/paused
+        if (state == AppLifecycleState.paused && 
+            c != null && 
+            c.value.isInitialized &&
+            mounted) {
+          c.dispose().then((_) {
+            if (mounted) {
+              setState(() {
+                _controller = null;
+              });
+            }
+          });
+        }
+      });
     } 
     // Only restart camera when app resumes AND we're still mounted
     else if (state == AppLifecycleState.resumed && mounted) {
       // Reinitialize camera only if it was disposed
-      if (c == null || !c.value.isInitialized) {
-        _initFuture = _initCamera(preserveIndex: true);
+      if (_controller == null || !_controller!.value.isInitialized) {
+        setState(() {
+          _initFuture = _initCamera(preserveIndex: true);
+        });
       }
     }
   }
@@ -950,13 +966,23 @@ class _SmartCameraScreenState extends ConsumerState<SmartCameraScreen>
     // CRITICAL: Additional check to prevent disposed controller errors
     // This happens when memory pressure causes controller disposal during rebuild
     try {
+      // ADDITIONAL CHECK: Verify controller is not disposed by checking if value is accessible
+      // A disposed controller will throw when accessing .value properties
+      if (!_controller!.value.isInitialized) {
+        return const SizedBox.shrink();
+      }
+      
       final preview = CameraPreview(_controller!);
       final filter = _previewFilterForProfile(_colorProfile);
       if (filter == null) return preview;
       return ColorFiltered(colorFilter: filter, child: preview);
-    } catch (e) {
+    } on CameraException catch (e) {
       // Controller was disposed during build - return empty widget
       print('[Camera] Preview build failed (controller disposed): $e');
+      return const SizedBox.shrink();
+    } catch (e) {
+      // Any other error - return empty widget
+      print('[Camera] Preview build failed: $e');
       return const SizedBox.shrink();
     }
   }
