@@ -26,6 +26,9 @@ import 'package:thyscan/core/models/update_progress.dart';
 import 'package:thyscan/core/exceptions/conflict_exception.dart'
     hide ConflictException;
 import 'package:thyscan/core/exceptions/update_exceptions.dart';
+import 'package:thyscan/core/services/page_diff_service.dart';
+import 'package:thyscan/core/services/incremental_pdf_service.dart';
+import 'package:thyscan/core/models/page_modification.dart';
 import 'package:thyscan/core/services/duplicate_prevention_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/services/resource_guard.dart';

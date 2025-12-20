@@ -81,6 +81,7 @@ dependencies:
   firebase_crashlytics: ^4.2.3
   firebase_analytics: ^11.3.8
   shimmer: ^3.0.0
+  syncfusion_flutter_pdf: ^24.1.41
   
 dev_dependencies:
   flutter_test:
