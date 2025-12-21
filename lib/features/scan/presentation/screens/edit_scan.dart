@@ -321,6 +321,40 @@ class _EditScanScreenState extends State<EditScanScreen> {
           curve: Curves.easeOut,
         );
       }
+
+      // Auto-sync changes to backend if editing existing document
+      if (widget.documentId != null) {
+        try {
+          await DocumentService.instance.updateDocument(
+            documentId: widget.documentId!,
+            pageImagePaths: _pages,
+            title: _pdfFileName,
+            scanMode: _scanModeKey(widget.initialMode),
+            colorProfile: _colorProfile,
+            options: _buildSaveOptions(skipUpload: false), // Sync to backend
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Page added and synced to cloud'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Page added locally (sync failed: $e)'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -568,12 +602,13 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
   String _scanModeKey(ScanMode mode) => mode.toString().split('.').last;
 
-  DocumentSaveOptions _buildSaveOptions() {
+  DocumentSaveOptions _buildSaveOptions({bool skipUpload = false}) {
     final tagSet = {_scanModeKey(widget.initialMode), _colorProfile.key}
       ..removeWhere((element) => element.isEmpty);
     return DocumentSaveOptions.enterpriseDefaults(
       title: _pdfFileName,
       tags: tagSet.toList(),
+      skipUpload: skipUpload,
     );
   }
 
@@ -1243,7 +1278,7 @@ class _EditScanScreenState extends State<EditScanScreen> {
     }
   }
 
-  void _removePageAt(int index) {
+  void _removePageAt(int index) async {
     if (_pages.length <= 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Keep at least one page in the document')),
@@ -1259,6 +1294,40 @@ class _EditScanScreenState extends State<EditScanScreen> {
     });
     if (_pageController.hasClients) {
       _pageController.jumpToPage(_currentIndex);
+    }
+
+    // Auto-sync changes to backend if editing existing document
+    if (widget.documentId != null) {
+      try {
+        await DocumentService.instance.updateDocument(
+          documentId: widget.documentId!,
+          pageImagePaths: _pages,
+          title: _pdfFileName,
+          scanMode: _scanModeKey(widget.initialMode),
+          colorProfile: _colorProfile,
+          options: _buildSaveOptions(skipUpload: false), // Sync to backend
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Page deleted and synced to cloud'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Page deleted locally (sync failed: $e)'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
   }
 

@@ -13,6 +13,8 @@ import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/rate_limiter_service.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/core/utils/filename_sanitizer.dart';
+import 'package:thyscan/core/utils/file_type_validator.dart';
+import 'package:thyscan/core/config/file_upload_config.dart';
 import 'package:thyscan/models/document_model.dart';
 
 /// Upload status for a document
@@ -366,17 +368,50 @@ class DocumentUploadService {
       );
       _emitProgress(documentId, UploadStatus.uploadingFile, progress: 0.0);
 
-      // 1. Upload PDF/DOCX to Supabase Storage
+      // 1. Validate file size before upload (Play Store requirement)
       final file = File(document.filePath);
       if (!await file.exists()) {
         throw Exception('Document file not found: ${document.filePath}');
       }
 
+      final fileSize = await file.length();
+      if (!FileUploadConfig.isValidSize(fileSize, document.format)) {
+        final error = FileUploadConfig.getFileSizeError(fileSize, document.format);
+        AppLogger.error('File size validation failed', error: error);
+        throw Exception(error);
+      }
+
+      // Warn user if file is large
+      if (FileUploadConfig.shouldWarnUser(fileSize, document.format)) {
+        AppLogger.warning(
+          FileUploadConfig.getFileSizeWarning(fileSize, document.format),
+          error: null,
+        );
+      }
+
+      // 2. Validate file type using magic numbers (Play Store security requirement)
+      final validationError = await FileTypeValidator.validateFileWithMessage(
+        file,
+        document.format,
+      );
+      if (validationError != null) {
+        AppLogger.error('File type validation failed', error: validationError);
+        throw Exception(validationError);
+      }
+
+      AppLogger.info(
+        'File validation passed',
+        data: {
+          'documentId': documentId,
+          'format': document.format,
+          'size': FileUploadConfig.formatFileSize(fileSize),
+        },
+      );
+
       // Use document ID as filename to ensure consistency across updates
       // This ensures that when a document is updated, it replaces the same file
       // Format: {userId}/{documentId}.{format}
       final fileName = '$userId/${document.id}.${document.format}';
-      final fileSize = await file.length();
 
       AppLogger.info(
         'Uploading document to Supabase Storage',

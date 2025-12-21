@@ -192,6 +192,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           _savedPdfPath = filePath;
           _colorProfile = DocumentColorProfile.fromKey(doc.colorProfile);
           _documentId = doc.id;
+          // Load page image paths for multi-page documents
+          if (doc.pageImagePaths.isNotEmpty) {
+            _pages = List.from(doc.pageImagePaths);
+          }
         });
       }
     } catch (e) {
@@ -211,10 +215,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   }
 
   /// Update existing document when pages are modified
-  /// Note: This updates locally WITHOUT optimization or upload
+  /// Syncs changes to both local storage AND backend (Supabase + PostgreSQL)
   Future<void> _updateExistingDocument() async {
-    // Update with skipUpload=true to prevent duplicate upload
-    await _persistDocument(force: true, skipUpload: true);
+    // Update with skipUpload=false to sync changes to backend immediately
+    // This ensures Supabase Storage and PostgreSQL are updated
+    await _persistDocument(force: true, skipUpload: false);
   }
 
   Future<DocumentModel?> _persistDocument({bool force = false, bool skipUpload = false}) async {
@@ -376,13 +381,21 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           }
         }
         
+        // Auto-sync changes to backend (Supabase Storage + PostgreSQL)
+        if (_documentId != null) {
+          await _updateExistingDocument();
+        }
+        
         // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Page added successfully'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Page added and synced to cloud'),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -508,7 +521,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Deleted ${deletedIndices.length} page${deletedIndices.length == 1 ? '' : 's'}',
+              'Deleted ${deletedIndices.length} page${deletedIndices.length == 1 ? '' : 's'} and synced to cloud',
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
