@@ -82,6 +82,7 @@ dependencies:
   firebase_analytics: ^11.3.8
   shimmer: ^3.0.0
   syncfusion_flutter_pdf: ^24.1.41
+  lottie: ^3.3.2
   
 dev_dependencies:
   flutter_test:

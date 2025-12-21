@@ -17,6 +17,8 @@ import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/features/scan/core/services/image_processing_service.dart';
 import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
+import 'package:thyscan/features/home/presentation/widgets/upload_progress_banner.dart';
+import 'package:thyscan/features/home/presentation/widgets/upload_complete_dialog.dart';
 import 'package:thyscan/services/document_service.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 import 'package:thyscan/models/document_model.dart';

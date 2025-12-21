@@ -12,6 +12,7 @@ import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
+import 'package:thyscan/features/home/presentation/widgets/upload_complete_dialog.dart';
 import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/features/scan/presentation/screens/delete_pages_screen.dart';
@@ -49,13 +50,13 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   int _selectedBottomNavIndex = 0;
   String? _documentId; // Store the document ID after auto-save
   bool _hasUnsavedChanges = false;
+  bool _isLoadingPreviews = false;
   DocumentColorProfile _colorProfile = DocumentColorProfile.color;
   late final ScanMode _activeScanMode;
   PdfGenerationProgress? _pdfProgress;
   
   // Preview paths for UI display (downscaled to reduce memory pressure)
   final Map<String, String> _previewPaths = {};
-  bool _isLoadingPreviews = false;
 
   @override
   void initState() {
@@ -545,17 +546,25 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     final doc = await _persistDocument(force: true, skipUpload: false);
     if (!mounted || doc == null) return;
 
-    await _promptShareAfterSave(doc);
-
-    // Navigate to Home Screen
-    context.go('/appmainscreen');
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Document saved successfully'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-      ),
+    // Show upload complete dialog
+    await UploadCompleteDialog.show(
+      context: context,
+      documentTitle: widget.pdfFileName,
+      pageCount: _pages.length,
+      onViewDocument: () {
+        // Navigate to home screen
+        context.go('/appmainscreen');
+      },
+      onShareDocument: () async {
+        await _shareFile(
+          doc.filePath,
+          subject: doc.title,
+          text: 'Sent from ThyScan',
+        );
+        if (mounted) {
+          context.go('/appmainscreen');
+        }
+      },
     );
   }
 
@@ -1120,7 +1129,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             icon,
             color: isSelected
                 ? cs.primary
-                : cs.onSurface.withValues(alpha: 0.6),
+                : cs.onSurface.withOpacity(0.6),
             size: 24,
           ),
           const SizedBox(height: 4),
@@ -1131,7 +1140,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
               color: isSelected
                   ? cs.primary
-                  : cs.onSurface.withValues(alpha: 0.6),
+                  : cs.onSurface.withOpacity(0.6),
             ),
           ),
         ],

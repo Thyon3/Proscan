@@ -8,6 +8,7 @@ import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dar
 import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
+import 'package:thyscan/features/home/presentation/widgets/upload_progress_indicator.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/models/file_status.dart';
