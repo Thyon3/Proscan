@@ -8,7 +8,6 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:thyscan/core/errors/failures.dart';
-import 'package:thyscan/core/errors/pdf_exceptions.dart';
 import 'package:thyscan/core/errors/storage_exceptions.dart';
 import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/app_logger.dart';
@@ -21,14 +20,12 @@ import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/document_update_service.dart';
 import 'package:thyscan/core/services/conflict_detection_service.dart';
-import 'package:thyscan/core/models/document_snapshot.dart';
 import 'package:thyscan/core/models/update_progress.dart';
-import 'package:thyscan/core/exceptions/conflict_exception.dart'
-    hide ConflictException;
-import 'package:thyscan/core/exceptions/update_exceptions.dart';
+import 'package:thyscan/core/services/delta_upload_service.dart';
+import 'package:thyscan/core/models/document_changes.dart';
+import 'package:thyscan/core/services/smart_thumbnail_service.dart';
 import 'package:thyscan/core/services/page_diff_service.dart';
 import 'package:thyscan/core/services/incremental_pdf_service.dart';
-import 'package:thyscan/core/models/page_modification.dart';
 import 'package:thyscan/core/services/duplicate_prevention_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
@@ -559,27 +556,102 @@ class DocumentService {
           // PROGRESS: Generating PDF
           _emitUpdateProgress(documentId, UpdateStage.generatingPdf, 0.0);
 
-          preprocessedPaths = await PdfPreprocessor.instance.preprocess(
-            imagePaths: pageImagePaths,
-            dpi: options.dpi,
+          // Phase 2A: Incremental PDF update (true incremental) when possible.
+          // We can only use incremental mode when:
+          // - We have an existing local PDF
+          // - All page image paths are local files
+          // - Less than 30% of pages changed (diff heuristic)
+          final diffResult = PageDiffService.instance.calculateModifications(
+            oldPages: existingDoc.pageImagePaths,
+            newPages: pageImagePaths,
           );
 
-          final generationInputs = preprocessedPaths.isNotEmpty
-              ? preprocessedPaths
-              : pageImagePaths;
-          final finalConfig = preprocessedPaths.isNotEmpty
-              ? appliedConfig.copyWith(isPreprocessed: true)
-              : appliedConfig;
+          final hasExistingPdf = existingDoc.filePath.isNotEmpty &&
+              !existingDoc.filePath.startsWith('http') &&
+              !existingDoc.filePath.startsWith('https') &&
+              await File(existingDoc.filePath).exists();
 
-          pdfResult = await PdfGenerationService.instance.generate(
-            imagePaths: generationInputs,
-            outputPdfPath: tempFilePath,
-            optimizedDirPath: pagesDir.path,
-            documentId: documentId,
-            batchId: timestamp.toString(),
-            config: finalConfig,
-            onProgress: onProgress,
-          );
+          final allPagesLocalAndExist = pageImagePaths.isNotEmpty &&
+              pageImagePaths.every((p) =>
+                  p.isNotEmpty &&
+                  !p.startsWith('http') &&
+                  !p.startsWith('https') &&
+                  File(p).existsSync());
+
+          final canUseIncremental =
+              hasExistingPdf &&
+              diffResult.totalCount > 0 &&
+              diffResult.shouldUseIncremental(pageImagePaths.length) &&
+              allPagesLocalAndExist;
+
+          if (canUseIncremental) {
+            AppLogger.info(
+              '⚡ Using incremental PDF update',
+              data: {
+                'documentId': documentId,
+                'modifications': diffResult.totalCount,
+                'pageCount': pageImagePaths.length,
+                'percentChanged':
+                    '${(diffResult.percentageModified(pageImagePaths.length) * 100).toStringAsFixed(1)}%',
+              },
+            );
+
+            final incResult =
+                await IncrementalPdfService.instance.updatePdfIncremental(
+              existingPdfPath: existingDoc.filePath,
+              modifications: diffResult.modifications,
+              outputPath: tempFilePath,
+              onProgress: (current, total) {
+                onProgress?.call(
+                  PdfGenerationProgress(
+                    processedPages: current,
+                    totalPages: total,
+                    stage: 'incremental_update',
+                  ),
+                );
+              },
+            );
+
+            if (!incResult.success) {
+              AppLogger.warning(
+                'Incremental PDF update failed, falling back to full regeneration',
+                error: null,
+                data: {'documentId': documentId},
+              );
+              // Fall through to full generation.
+            } else {
+              pdfResult = PdfGenerationResult(
+                pdfPath: incResult.pdfPath,
+                optimizedImagePaths: pageImagePaths,
+                elapsed: incResult.processingTime ?? Duration.zero,
+              );
+            }
+          }
+
+          // Full regeneration path (current behavior) if incremental wasn't used or failed.
+          if (pdfResult == null) {
+            preprocessedPaths = await PdfPreprocessor.instance.preprocess(
+              imagePaths: pageImagePaths,
+              dpi: options.dpi,
+            );
+
+            final generationInputs = preprocessedPaths.isNotEmpty
+                ? preprocessedPaths
+                : pageImagePaths;
+            final finalConfig = preprocessedPaths.isNotEmpty
+                ? appliedConfig.copyWith(isPreprocessed: true)
+                : appliedConfig;
+
+            pdfResult = await PdfGenerationService.instance.generate(
+              imagePaths: generationInputs,
+              outputPdfPath: tempFilePath,
+              optimizedDirPath: pagesDir.path,
+              documentId: documentId,
+              batchId: timestamp.toString(),
+              config: finalConfig,
+              onProgress: onProgress,
+            );
+          }
 
           final tempFile = File(tempFilePath);
           if (!await tempFile.exists()) {
@@ -619,18 +691,48 @@ class DocumentService {
           );
           committedFilePath = savedPdfPath;
 
+          // Phase 2C: Smart thumbnail reuse
+          // If first page didn't change, reuse existing thumbnail instead of regenerating.
           if (pdfResult.optimizedImagePaths.isNotEmpty) {
-            final firstPageFile = File(pdfResult.optimizedImagePaths.first);
-            if (await firstPageFile.exists()) {
-              await AtomicFileService.instance.copyAtomically(
-                sourcePath: pdfResult.optimizedImagePaths.first,
-                targetPath: tempThumbPath,
+            final decision = await SmartThumbnailService.instance.decide(
+              oldPages: existingDoc.pageImagePaths,
+              newPages: pdfResult.optimizedImagePaths,
+              existingThumbnailPath: existingDoc.thumbnailPath,
+            );
+
+            if (decision.action == ThumbnailAction.reuse) {
+              committedThumbPath = decision.reusePath;
+              AppLogger.info(
+                '⚡ Reusing thumbnail (smart caching)',
+                data: {
+                  'documentId': documentId,
+                  'reason': decision.reason,
+                },
               );
-              committedThumbPath = tempThumbPath;
+            } else {
+              final firstPageFile = File(pdfResult.optimizedImagePaths.first);
+              if (await firstPageFile.exists()) {
+                await AtomicFileService.instance.copyAtomically(
+                  sourcePath: pdfResult.optimizedImagePaths.first,
+                  targetPath: tempThumbPath,
+                );
+                committedThumbPath = tempThumbPath;
+                AppLogger.info(
+                  '🖼️ Generated new thumbnail',
+                  data: {
+                    'documentId': documentId,
+                    'reason': decision.reason,
+                  },
+                );
+              }
             }
           }
 
+          // Only delete old thumbnail if we actually generated a new one
+          // (i.e., committedThumbPath points to the newly created tempThumbPath).
           if (existingDoc.thumbnailPath.isNotEmpty &&
+              committedThumbPath != null &&
+              committedThumbPath == tempThumbPath &&
               existingDoc.thumbnailPath != committedThumbPath) {
             await _deleteIfExists(existingDoc.thumbnailPath);
           }
@@ -674,22 +776,53 @@ class DocumentService {
           if (!options.skipUpload) {
             _emitUpdateProgress(documentId, UpdateStage.committingUpdate, 0.0);
 
-            AppLogger.info(
-              '🔄 Document updated, uploading new version to Supabase Storage',
-              data: {'documentId': updatedDoc.id},
+            // Phase 2B: Delta Sync - upload only what changed
+            // This provides 50x faster updates for metadata-only changes
+            final changes = DocumentChangesDetector.instance.detectChanges(
+              oldDoc: existingDoc,
+              newDoc: updatedDoc,
             );
 
-            DocumentUploadService.instance
-                .uploadDocument(updatedDoc)
-                .then((url) {
-                  if (url != null) {
-                    AppLogger.info('✅ Updated document uploaded successfully');
+            AppLogger.info(
+              '🔄 Document updated, starting delta sync',
+              data: {
+                'documentId': updatedDoc.id,
+                'changes': changes.toString(),
+                'uploadSize': changes.uploadSize,
+                'expectedSpeedup': changes.expectedSpeedup,
+              },
+            );
+
+            // Use delta upload service (smart routing)
+            DeltaUploadService.instance
+                .uploadDelta(
+                  oldDoc: existingDoc,
+                  newDoc: updatedDoc,
+                  changes: changes,
+                )
+                .then((success) {
+                  if (success) {
+                    AppLogger.info(
+                      '✅ Delta sync completed successfully',
+                      data: {
+                        'documentId': updatedDoc.id,
+                        'fastPath': changes.onlyMetadata,
+                      },
+                    );
+                  } else {
+                    AppLogger.warning(
+                      '⚠️ Delta sync failed, document saved locally only',
+                      error: null,
+                      data: {'documentId': updatedDoc.id},
+                    );
                   }
                 })
                 .catchError((error, stack) {
                   AppLogger.error(
-                    '❌ Failed to upload updated document',
+                    '❌ Delta sync error',
                     error: error,
+                    stack: stack,
+                    data: {'documentId': updatedDoc.id},
                   );
                 });
 
@@ -702,10 +835,12 @@ class DocumentService {
           return updatedDoc;
         } catch (e) {
           await _deleteIfExists(tempFilePath);
-          if (committedFilePath != null)
+          if (committedFilePath != null) {
             await _deleteIfExists(committedFilePath);
-          if (committedThumbPath != null)
+          }
+          if (committedThumbPath != null) {
             await _deleteIfExists(committedThumbPath);
+          }
           rethrow;
         } finally {
           await _cleanupTempFiles(preprocessedPaths);

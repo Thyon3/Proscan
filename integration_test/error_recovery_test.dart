@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/file_integrity_service.dart';
+import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 

@@ -120,7 +120,7 @@ class PageDiffService {
         'adds': addCount,
         'removes': removeCount,
         'replaces': replaceCount,
-        'percentageChanged': (result.percentageModified(newPages.length) * 100).toStringAsFixed(1) + '%',
+        'percentageChanged': '${(result.percentageModified(newPages.length) * 100).toStringAsFixed(1)}%',
       },
     );
 

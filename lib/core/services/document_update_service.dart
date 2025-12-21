@@ -1,13 +1,13 @@
 // core/services/document_update_service.dart
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:thyscan/core/exceptions/update_exceptions.dart';
 import 'package:thyscan/core/models/document_snapshot.dart';
 import 'package:thyscan/core/models/update_progress.dart';
+import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/models/document_model.dart';
 
@@ -69,13 +69,14 @@ class DocumentUpdateService {
 
         // Step 1: Create snapshot for rollback (only on first attempt)
         if (attempt == 0) {
-          snapshot = await _createDocumentSnapshot(documentId);
+          final createdSnapshot = await _createDocumentSnapshot(documentId);
+          snapshot = createdSnapshot;
           AppLogger.info(
             '📸 Snapshot created successfully',
             data: {
               'documentId': documentId,
-              'snapshotId': snapshot.snapshotId,
-              'filesCount': snapshot.filePaths.length,
+              'snapshotId': createdSnapshot.snapshotId,
+              'filesCount': createdSnapshot.filePaths.length,
             },
           );
         }
@@ -187,13 +188,26 @@ class DocumentUpdateService {
     );
   }
 
-  /// Creates a snapshot of the current document state
-  /// This method will be called internally - snapshot creation is handled
-  /// by the caller (DocumentService)
-  Future<DocumentSnapshot> createSnapshotForDocument(String documentId) async {
-    throw UnimplementedError(
-      'Snapshot creation should be done by DocumentService before calling updateWithRollback',
-    );
+  /// Creates a snapshot of the current document state.
+  ///
+  /// This is used internally by [updateWithRollback] to enable rollback.
+  Future<DocumentSnapshot> _createDocumentSnapshot(String documentId) async {
+    try {
+      final document = await DocumentRepository.instance.getDocumentById(documentId);
+      if (document == null) {
+        throw Exception('Document not found for snapshot: $documentId');
+      }
+
+      return await DocumentSnapshot.create(document);
+    } catch (error, stack) {
+      AppLogger.error(
+        'Failed to create document snapshot',
+        error: error,
+        stack: stack,
+        data: {'documentId': documentId},
+      );
+      rethrow;
+    }
   }
 
   /// Restores document from snapshot

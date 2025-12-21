@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/models/document_color_profile.dart';
+import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
 void main() {

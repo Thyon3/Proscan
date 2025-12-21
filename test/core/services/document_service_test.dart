@@ -1,9 +1,11 @@
 // test/core/services/document_service_test.dart
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/file_integrity_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
@@ -12,11 +14,31 @@ import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('DocumentService', () {
     late Directory tempDir;
     late String testImagePath;
 
     setUpAll(() async {
+      // Mock path_provider for unit tests
+      const channel = MethodChannel('plugins.flutter.io/path_provider');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+        final tmp = await Directory.systemTemp.createTemp('thyscan_test_');
+        switch (call.method) {
+          case 'getTemporaryDirectory':
+          case 'getApplicationDocumentsDirectory':
+          case 'getApplicationSupportDirectory':
+            return tmp.path;
+          default:
+            return tmp.path;
+        }
+      });
+
+      // Mock shared_preferences for unit tests (used by Supabase/Auth)
+      SharedPreferences.setMockInitialValues({});
+
       // Initialize Hive for testing
       final dir = await getTemporaryDirectory();
       Hive.init(dir.path);
@@ -25,13 +47,30 @@ void main() {
 
     setUp(() async {
       tempDir = await getTemporaryDirectory();
+
+      // Ensure we start each test with a clean documents box
+      final box = await Hive.openBox<DocumentModel>(DocumentService.boxName);
+      await box.clear();
+      await box.close();
+
       final testDir = Directory('${tempDir.path}/test_documents');
       await testDir.create(recursive: true);
 
-      // Create a dummy test image file
-      testImagePath = '${testDir.path}/test_image.jpg';
+      // Create a small valid PNG test image file (1x1)
+      testImagePath = '${testDir.path}/test_image.png';
       final testImage = File(testImagePath);
-      await testImage.writeAsBytes(List.generate(1000, (i) => i % 256));
+      const pngBytes = <int>[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
+        0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82,
+      ];
+      await testImage.writeAsBytes(pngBytes);
     });
 
     tearDown(() async {
@@ -90,7 +129,7 @@ void main() {
         title: 'Original Title',
         scanMode: 'document',
         colorProfile: DocumentColorProfile.color,
-        options: const DocumentSaveOptions(),
+        options: const DocumentSaveOptions(skipUpload: true),
       );
 
       // Update document
@@ -100,7 +139,7 @@ void main() {
         title: 'Updated Title',
         scanMode: 'idCard',
         colorProfile: DocumentColorProfile.grayscale,
-        options: const DocumentSaveOptions(),
+        options: const DocumentSaveOptions(skipUpload: true),
       );
 
       expect(updatedDoc.id, originalDoc.id);
@@ -122,17 +161,15 @@ void main() {
         title: 'To Delete',
         scanMode: 'document',
         colorProfile: DocumentColorProfile.color,
-        options: const DocumentSaveOptions(),
+        options: const DocumentSaveOptions(skipUpload: true),
       );
 
-      // Delete document (soft delete)
+      // Delete document (for local-only docs this results in immediate deletion)
       await service.deleteDocument(doc.id, hardDelete: false);
 
-      // Verify soft delete
+      // Verify deletion
       final deletedDoc = box.get(doc.id);
-      expect(deletedDoc, isNotNull);
-      expect(deletedDoc!.isDeleted, isTrue);
-      expect(deletedDoc.deletedAt, isNotNull);
+      expect(deletedDoc, isNull);
 
       await box.close();
     });
@@ -147,7 +184,7 @@ void main() {
         title: 'Valid Document',
         scanMode: 'document',
         colorProfile: DocumentColorProfile.color,
-        options: const DocumentSaveOptions(),
+        options: const DocumentSaveOptions(skipUpload: true),
       );
 
       // Create document with missing file

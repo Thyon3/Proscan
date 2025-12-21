@@ -1,4 +1,6 @@
 // integration_test/offline_scenarios_test.dart
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
@@ -56,7 +58,6 @@ void main() {
         pageImagePaths: testImagePaths,
         title: 'Offline Document',
         scanMode: 'document',
-        colorProfile: DocumentColorProfile.color,
       );
 
       // Verify document is immediately available locally
@@ -85,7 +86,6 @@ void main() {
           pageImagePaths: testImagePaths,
           title: 'Document $i',
           scanMode: 'document',
-          colorProfile: DocumentColorProfile.color,
         );
         docs.add(doc);
       }
@@ -109,7 +109,6 @@ void main() {
         pageImagePaths: testImagePaths,
         title: 'Original Title',
         scanMode: 'document',
-        colorProfile: DocumentColorProfile.color,
       );
 
       // Update document while "offline"
@@ -118,7 +117,6 @@ void main() {
         pageImagePaths: testImagePaths,
         title: 'Updated Title',
         scanMode: 'idCard',
-        colorProfile: DocumentColorProfile.grayscale,
       );
 
       // Verify update is immediate
@@ -144,11 +142,10 @@ void main() {
         pageImagePaths: testImagePaths,
         title: 'To Delete',
         scanMode: 'document',
-        colorProfile: DocumentColorProfile.color,
       );
 
       // Delete document while "offline"
-      await offlineService.deleteDocument(doc.id, hardDelete: false);
+      await offlineService.deleteDocument(doc.id);
 
       // Verify deletion is immediate in local storage
       final repository = DocumentRepository.instance;
@@ -170,7 +167,6 @@ void main() {
         pageImagePaths: testImagePaths,
         title: 'Persistent Queue Test',
         scanMode: 'document',
-        colorProfile: DocumentColorProfile.color,
       );
 
       // Get pending operations

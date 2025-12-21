@@ -1,4 +1,6 @@
 // integration_test/document_creation_flow_test.dart
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
@@ -125,8 +127,6 @@ void main() {
         pageImagePaths: testImagePaths,
         title: 'Offline Document',
         scanMode: 'document',
-        colorProfile: DocumentColorProfile.color,
-        options: const DocumentSaveOptions(),
       );
 
       // Verify document is immediately available locally
