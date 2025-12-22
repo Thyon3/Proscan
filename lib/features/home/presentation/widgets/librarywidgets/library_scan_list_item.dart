@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:thyscan/core/widgets/error_boundary.dart';
 import 'package:thyscan/features/home/presentation/widgets/corrupted_document_tile.dart';
-import 'package:thyscan/features/home/presentation/widgets/document_thumbnail.dart';
+import 'package:thyscan/features/home/presentation/widgets/fast_thumbnail.dart';
 import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
 import 'package:thyscan/features/home/presentation/widgets/sync_status_badge.dart';
@@ -507,47 +507,24 @@ class LibraryScanListItem extends StatelessWidget {
 
     // Check if file exists (bulletproof validation)
     if (scan.imagePath.isNotEmpty) {
-      // If it's a URL, show thumbnail (can be downloaded)
-      if (scan.imagePath.startsWith('http://') ||
-          scan.imagePath.startsWith('https://')) {
-        return SizedBox(
+      // Use FastThumbnail for instant loading
+      if (document != null) {
+        return FastThumbnail(
+          documentId: document!.id,
+          fit: BoxFit.cover,
           width: 64,
           height: 84,
-          child: DocumentThumbnail(
-            imagePath: scan.imagePath,
-            fit: BoxFit.cover,
-            borderRadius: BorderRadius.circular(12),
-            placeholder: Container(
-              color: colorScheme.surfaceVariant,
-              child: Icon(
-                Icons.image_not_supported_rounded,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
+          borderRadius: BorderRadius.circular(12),
         );
       }
-
-      // Check if local file exists
-      final file = File(scan.imagePath);
-      if (file.existsSync()) {
-        return SizedBox(
-          width: 64,
-          height: 84,
-          child: DocumentThumbnail(
-            imagePath: scan.imagePath,
-            fit: BoxFit.cover,
-            borderRadius: BorderRadius.circular(12),
-            placeholder: Container(
-              color: colorScheme.surfaceVariant,
-              child: Icon(
-                Icons.image_not_supported_rounded,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        );
-      }
+      
+      return FastThumbnail(
+        documentId: scan.id,
+        fit: BoxFit.cover,
+        width: 64,
+        height: 84,
+        borderRadius: BorderRadius.circular(12),
+      );
     }
 
     // Fallback placeholder

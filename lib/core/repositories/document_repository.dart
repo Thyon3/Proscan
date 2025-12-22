@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/repositories/document_repository_interface.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/thumbnail_preload_service.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
@@ -114,6 +115,15 @@ class DocumentRepository implements IDocumentRepository {
 
   /// Get all documents (async, uses isolate)
   Future<List<DocumentModel>> getAllDocuments({bool includeDeleted = false}) async {
+    final docs = await _getAllDocumentsAsync(includeDeleted: includeDeleted);
+    
+    // Preload thumbnails in background (non-blocking)
+    _preloadThumbnailsInBackground(docs);
+    
+    return docs;
+  }
+  
+  Future<List<DocumentModel>> _getAllDocumentsAsync({bool includeDeleted = false}) async {
     final cacheKey = 'all_${includeDeleted}';
     
     // Check cache (valid for 5 seconds)
@@ -388,5 +398,15 @@ Future<int> _getDocumentCountIsolate(bool includeDeleted) async {
     );
     return 0;
   }
+}
+
+/// Preload thumbnails in background (non-blocking)
+void _preloadThumbnailsInBackground(List<DocumentModel> docs) {
+  if (docs.isEmpty) return;
+  
+  // Run in background without awaiting
+  ThumbnailPreloadService.instance.preloadBatch(docs).catchError((e) {
+    AppLogger.warning('Background thumbnail preload failed', error: e);
+  });
 }
 

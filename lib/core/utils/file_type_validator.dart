@@ -26,10 +26,10 @@ class FileTypeValidator {
   };
 
   /// Validates file type by checking magic numbers
-  /// 
+  ///
   /// Reads the first 8 bytes of the file and compares with known signatures
   /// This prevents malicious files disguised with different extensions
-  /// 
+  ///
   /// Returns true if file type matches expected format
   static Future<bool> validateFile(File file, String expectedFormat) async {
     try {
@@ -39,8 +39,7 @@ class FileTypeValidator {
 
       // Read first 8 bytes (sufficient for most file signatures)
       final fileStream = file.openRead(0, 8);
-      final bytesList = await fileStream.first;
-      final bytes = Uint8List.fromList(bytesList);
+      final bytes = await fileStream.first;
 
       return _validateBytes(bytes, expectedFormat);
     } catch (e) {
@@ -81,7 +80,7 @@ class FileTypeValidator {
   }
 
   /// Validates file with detailed error message
-  /// 
+  ///
   /// Returns null if valid, error message if invalid
   static Future<String?> validateFileWithMessage(
     File file,
@@ -93,8 +92,7 @@ class FileTypeValidator {
 
     try {
       final fileStream = file.openRead(0, 8);
-      final bytesList = await fileStream.first;
-      final bytes = Uint8List.fromList(bytesList);
+      final bytes = await fileStream.first;
 
       if (bytes.isEmpty) {
         return 'File is empty or corrupted';
@@ -121,8 +119,8 @@ class FileTypeValidator {
     try {
       // Read more bytes to check for DOCX-specific content
       final fileStream = file.openRead(0, 4096);
-      final bytesList = await fileStream.first;
-      final content = String.fromCharCodes(bytesList);
+      final bytes = await fileStream.first;
+      final content = String.fromCharCodes(bytes);
 
       // Check for mandatory DOCX structure markers
       final hasContentTypes = content.contains('[Content_Types].xml');

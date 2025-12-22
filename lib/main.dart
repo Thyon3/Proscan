@@ -21,6 +21,7 @@ import 'package:thyscan/core/services/background_sync_service.dart';
 import 'package:thyscan/core/services/hive_migration_service.dart';
 import 'package:thyscan/core/services/offline_first_service.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
+import 'package:thyscan/core/services/thumbnail_preload_service.dart';
 import 'package:thyscan/core/theme/constants/theme.dart';
 import 'package:thyscan/core/theme/controllers/theme.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -179,6 +180,14 @@ void main() {
         ImageCacheService.instance.initialize().catchError((error) {
           AppLogger.error(
             'ImageCacheService initialization failed',
+            error: error,
+          );
+        });
+
+        // Initialize thumbnail preload service for instant thumbnail loading
+        ThumbnailPreloadService.instance.initialize().catchError((error) {
+          AppLogger.error(
+            'ThumbnailPreloadService initialization failed',
             error: error,
           );
         });

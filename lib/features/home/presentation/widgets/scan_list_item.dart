@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:thyscan/core/widgets/error_boundary.dart';
-import 'package:thyscan/features/home/presentation/widgets/cached_thumbnail.dart';
+import 'package:thyscan/features/home/presentation/widgets/fast_thumbnail.dart';
 import 'package:thyscan/features/home/presentation/widgets/corrupted_document_tile.dart';
 import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
@@ -492,20 +492,42 @@ class ScanListItem extends StatelessWidget {
       // If it's a URL, show thumbnail (can be downloaded)
       if (scan.imagePath.startsWith('http://') ||
           scan.imagePath.startsWith('https://')) {
-        return CachedThumbnail(
-          path: scan.imagePath,
+        // Use FastThumbnail for instant loading if we have document
+        if (document != null) {
+          return FastThumbnail(
+            documentId: document!.id,
+            fit: BoxFit.cover,
+            width: 80,
+            height: 100,
+          );
+        }
+        
+        return FastThumbnail(
+          documentId: scan.id,
           fit: BoxFit.cover,
-          placeholder: _buildErrorPlaceholder(colorScheme),
+          width: 80,
+          height: 100,
         );
       }
 
       // Check if local file exists
       final file = File(scan.imagePath);
       if (file.existsSync()) {
-        return CachedThumbnail(
-          path: scan.imagePath,
+        // Use FastThumbnail for instant loading if we have document
+        if (document != null) {
+          return FastThumbnail(
+            documentId: document!.id,
+            fit: BoxFit.cover,
+            width: 80,
+            height: 100,
+          );
+        }
+        
+        return FastThumbnail(
+          documentId: scan.id,
           fit: BoxFit.cover,
-          placeholder: _buildErrorPlaceholder(colorScheme),
+          width: 80,
+          height: 100,
         );
       }
     }
