@@ -223,6 +223,11 @@ class DeltaUploadService {
   /// Slow path: Upload file + metadata (full upload)
   ///
   /// Falls back to standard upload service when files changed.
+  /// This performs a complete upload cycle:
+  /// 1. Upload new file to Supabase Storage
+  /// 2. Upload new thumbnail (if changed)
+  /// 3. Update backend with new URLs and metadata
+  /// 4. Backend will delete old files from storage
   Future<bool> _uploadFull(DocumentModel document) async {
     AppLogger.info(
       '🔄 Full upload (file changed)',
@@ -233,11 +238,30 @@ class DeltaUploadService {
     );
 
     try {
+      // Upload document to Supabase Storage and sync with backend
+      // This will update both the file in storage and metadata in PostgreSQL
       final url = await DocumentUploadService.instance.uploadDocument(document);
-      return url != null;
+      
+      if (url != null) {
+        AppLogger.info(
+          '✅ Full upload completed successfully',
+          data: {
+            'documentId': document.id,
+            'fileUrl': url.substring(0, url.length > 50 ? 50 : url.length) + '...',
+          },
+        );
+        return true;
+      } else {
+        AppLogger.warning(
+          '⚠️ Full upload returned null (queued or failed)',
+          error: null,
+          data: {'documentId': document.id},
+        );
+        return false;
+      }
     } catch (e, stack) {
       AppLogger.error(
-        'Full upload failed',
+        '❌ Full upload failed',
         error: e,
         stack: stack,
         data: {'documentId': document.id},

@@ -414,6 +414,29 @@ class DocumentService {
     return docs;
   }
 
+  /// Gets a single document by ID
+  /// 
+  /// Returns the document if found, null otherwise.
+  /// Uses cache first for performance, falls back to repository.
+  DocumentModel? getDocumentById(String id) {
+    // Check cache first
+    if (_documentsCache.containsKey(id) && !_cacheDirty) {
+      return _documentsCache[id];
+    }
+
+    // Fall back to Hive box
+    final box = Hive.box<DocumentModel>(boxName);
+    return box.get(id);
+  }
+
+  /// Gets a single document by ID asynchronously
+  /// 
+  /// Use this version when you need to ensure the document is loaded from storage.
+  /// Returns the document if found, null otherwise.
+  Future<DocumentModel?> getDocumentByIdAsync(String id) async {
+    return await DocumentRepository.instance.getDocumentById(id);
+  }
+
   Future<DocumentModel> updateDocument({
     required String documentId,
     required List<String> pageImagePaths,

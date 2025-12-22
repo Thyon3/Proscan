@@ -811,13 +811,22 @@ class DocumentBackendSyncService {
   /// Updates document metadata in backend (without re-uploading file).
   ///
   /// Use this when only metadata changes (e.g., title, tags) and file hasn't changed.
+  /// 
+  /// **IMPORTANT:** This method now supports updating file URLs when the file changes.
+  /// The backend will automatically delete old files from Supabase storage when URLs change.
   ///
   /// **Parameters:**
   /// - `document`: Updated document model
+  /// - `newFileUrl`: Optional new file URL (if file was re-uploaded)
+  /// - `newThumbnailUrl`: Optional new thumbnail URL (if thumbnail was re-uploaded)
   ///
   /// **Throws:**
   /// - `Exception` if update fails
-  Future<void> updateDocumentMetadata(DocumentModel document) async {
+  Future<void> updateDocumentMetadata(
+    DocumentModel document, {
+    String? newFileUrl,
+    String? newThumbnailUrl,
+  }) async {
     try {
       await AuthService.instance.ensureInitialized();
       final user = AuthService.instance.currentUser;
@@ -874,17 +883,20 @@ class DocumentBackendSyncService {
         throw Exception('Failed to build update URL');
       }
 
-      // Extract fileUrl and thumbnailUrl from document.filePath if it's a URL
-      String? fileUrl;
-      String? thumbnailUrl;
+      // Determine file URLs to use (new URLs take precedence)
+      String? fileUrl = newFileUrl;
+      String? thumbnailUrl = newThumbnailUrl;
 
-      if (document.filePath.startsWith('http://') ||
-          document.filePath.startsWith('https://')) {
+      // Fall back to document paths if new URLs not provided
+      if (fileUrl == null &&
+          (document.filePath.startsWith('http://') ||
+              document.filePath.startsWith('https://'))) {
         fileUrl = document.filePath;
       }
 
-      if (document.thumbnailPath.startsWith('http://') ||
-          document.thumbnailPath.startsWith('https://')) {
+      if (thumbnailUrl == null &&
+          (document.thumbnailPath.startsWith('http://') ||
+              document.thumbnailPath.startsWith('https://'))) {
         thumbnailUrl = document.thumbnailPath;
       }
 
@@ -909,7 +921,12 @@ class DocumentBackendSyncService {
 
       AppLogger.info(
         'Updating document metadata in backend',
-        data: {'documentId': document.id, 'title': document.title},
+        data: {
+          'documentId': document.id,
+          'title': document.title,
+          'hasNewFileUrl': newFileUrl != null,
+          'hasNewThumbnailUrl': newThumbnailUrl != null,
+        },
       );
 
       // Generate request signature for critical operation
@@ -941,8 +958,12 @@ class DocumentBackendSyncService {
 
       if (response.statusCode == 200) {
         AppLogger.info(
-          'Document metadata updated successfully',
-          data: {'documentId': document.id},
+          '✅ Document metadata updated successfully (backend will handle storage cleanup)',
+          data: {
+            'documentId': document.id,
+            'fileUrlChanged': newFileUrl != null,
+            'thumbnailUrlChanged': newThumbnailUrl != null,
+          },
         );
       } else {
         AppLogger.error(
