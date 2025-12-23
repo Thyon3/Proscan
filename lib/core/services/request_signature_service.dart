@@ -46,6 +46,9 @@ class RequestSignatureService {
   }) {
     final secret = AppEnv.requestSignatureSecret;
     
+    // DEBUG: Log secret status
+    print('🔐 [RequestSignature] Secret loaded: ${secret != null && secret.isNotEmpty ? "YES (${secret.length} chars)" : "NO"}');
+    
     if (secret == null || secret.isEmpty) {
       // In development, allow requests without signature if secret is not configured
       if (const bool.fromEnvironment('dart.vm.product') == false) {
@@ -98,13 +101,26 @@ class RequestSignatureService {
     final digest = hmac.convert(bytes);
     final signature = digest.toString();
 
+    // DEBUG: Detailed signature info
+    print('🔐 [RequestSignature] Generated signature:');
+    print('   Method: $method');
+    print('   Path: $normalizedPath');
+    print('   Body: $bodyString');
+    print('   Timestamp: $timestamp');
+    print('   UserId: ${user.id}');
+    print('   Message: ${message.replaceAll('\n', '\\n')}');
+    print('   Signature: $signature');
+    
     AppLogger.info(
       'Generated request signature',
       data: {
         'method': method,
         'path': normalizedPath,
+        'bodyString': bodyString,
         'timestamp': timestamp,
         'userId': user.id,
+        'message': message,
+        'signature': signature,
       },
     );
 

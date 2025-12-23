@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:thyscan/core/services/thumbnail_cache_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:thyscan/core/errors/failures.dart';
 import 'package:thyscan/core/errors/storage_exceptions.dart';
@@ -246,7 +247,7 @@ class DocumentService {
 
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(id);
-      
+
       // CRITICAL: Immediately preload thumbnail so it appears in UI without delay
       if (committedThumbPath != null && committedThumbPath.isNotEmpty) {
         try {
@@ -267,7 +268,7 @@ class DocumentService {
 
       // Store upload result for caller to check
       String? uploadUrl;
-      
+
       // Upload to cloud - wait for result if not skipped
       if (!options.skipUpload) {
         print('═══════════════════════════════════════════════════════════');
@@ -291,25 +292,37 @@ class DocumentService {
 
         try {
           uploadUrl = await DocumentUploadService.instance.uploadDocument(doc);
-          
+
           if (uploadUrl != null) {
-            print('═══════════════════════════════════════════════════════════');
+            print(
+              '═══════════════════════════════════════════════════════════',
+            );
             print('✅ [DOCUMENT SERVICE] Upload completed successfully');
             print('   Document ID: ${doc.id}');
-            print('   URL: ${uploadUrl.substring(0, uploadUrl.length > 60 ? 60 : uploadUrl.length)}...');
-            print('═══════════════════════════════════════════════════════════');
-            
+            print(
+              '   URL: ${uploadUrl.substring(0, uploadUrl.length > 60 ? 60 : uploadUrl.length)}...',
+            );
+            print(
+              '═══════════════════════════════════════════════════════════',
+            );
+
             AppLogger.info(
               '✅ Document uploaded successfully: ${doc.id}',
               data: {'url': uploadUrl.substring(0, 50) + '...'},
             );
           } else {
-            print('═══════════════════════════════════════════════════════════');
+            print(
+              '═══════════════════════════════════════════════════════════',
+            );
             print('⚠️ [DOCUMENT SERVICE] Upload queued or failed');
             print('   Document ID: ${doc.id}');
-            print('   Reason: Upload returned null (offline/auth/rate-limited)');
-            print('═══════════════════════════════════════════════════════════');
-            
+            print(
+              '   Reason: Upload returned null (offline/auth/rate-limited)',
+            );
+            print(
+              '═══════════════════════════════════════════════════════════',
+            );
+
             AppLogger.warning(
               '⚠️ Document upload queued or failed: ${doc.id}',
               error: null,
@@ -321,7 +334,7 @@ class DocumentService {
           print('   Document ID: ${doc.id}');
           print('   Error: $error');
           print('═══════════════════════════════════════════════════════════');
-          
+
           AppLogger.error(
             '❌ Upload failed for document ${doc.id}',
             error: error,
@@ -431,7 +444,7 @@ class DocumentService {
   }
 
   /// Gets a single document by ID
-  /// 
+  ///
   /// Returns the document if found, null otherwise.
   /// Uses cache first for performance, falls back to repository.
   DocumentModel? getDocumentById(String id) {
@@ -446,7 +459,7 @@ class DocumentService {
   }
 
   /// Gets a single document by ID asynchronously
-  /// 
+  ///
   /// Use this version when you need to ensure the document is loaded from storage.
   /// Returns the document if found, null otherwise.
   Future<DocumentModel?> getDocumentByIdAsync(String id) async {
@@ -605,17 +618,21 @@ class DocumentService {
             newPages: pageImagePaths,
           );
 
-          final hasExistingPdf = existingDoc.filePath.isNotEmpty &&
+          final hasExistingPdf =
+              existingDoc.filePath.isNotEmpty &&
               !existingDoc.filePath.startsWith('http') &&
               !existingDoc.filePath.startsWith('https') &&
               await File(existingDoc.filePath).exists();
 
-          final allPagesLocalAndExist = pageImagePaths.isNotEmpty &&
-              pageImagePaths.every((p) =>
-                  p.isNotEmpty &&
-                  !p.startsWith('http') &&
-                  !p.startsWith('https') &&
-                  File(p).existsSync());
+          final allPagesLocalAndExist =
+              pageImagePaths.isNotEmpty &&
+              pageImagePaths.every(
+                (p) =>
+                    p.isNotEmpty &&
+                    !p.startsWith('http') &&
+                    !p.startsWith('https') &&
+                    File(p).existsSync(),
+              );
 
           final canUseIncremental =
               hasExistingPdf &&
@@ -635,21 +652,21 @@ class DocumentService {
               },
             );
 
-            final incResult =
-                await IncrementalPdfService.instance.updatePdfIncremental(
-              existingPdfPath: existingDoc.filePath,
-              modifications: diffResult.modifications,
-              outputPath: tempFilePath,
-              onProgress: (current, total) {
-                onProgress?.call(
-                  PdfGenerationProgress(
-                    processedPages: current,
-                    totalPages: total,
-                    stage: 'incremental_update',
-                  ),
+            final incResult = await IncrementalPdfService.instance
+                .updatePdfIncremental(
+                  existingPdfPath: existingDoc.filePath,
+                  modifications: diffResult.modifications,
+                  outputPath: tempFilePath,
+                  onProgress: (current, total) {
+                    onProgress?.call(
+                      PdfGenerationProgress(
+                        processedPages: current,
+                        totalPages: total,
+                        stage: 'incremental_update',
+                      ),
+                    );
+                  },
                 );
-              },
-            );
 
             if (!incResult.success) {
               AppLogger.warning(
@@ -743,10 +760,7 @@ class DocumentService {
               committedThumbPath = decision.reusePath;
               AppLogger.info(
                 '⚡ Reusing thumbnail (smart caching)',
-                data: {
-                  'documentId': documentId,
-                  'reason': decision.reason,
-                },
+                data: {'documentId': documentId, 'reason': decision.reason},
               );
             } else {
               final firstPageFile = File(pdfResult.optimizedImagePaths.first);
@@ -758,10 +772,7 @@ class DocumentService {
                 committedThumbPath = tempThumbPath;
                 AppLogger.info(
                   '🖼️ Generated new thumbnail',
-                  data: {
-                    'documentId': documentId,
-                    'reason': decision.reason,
-                  },
+                  data: {'documentId': documentId, 'reason': decision.reason},
                 );
               }
             }
@@ -808,14 +819,39 @@ class DocumentService {
           await DocumentRepository.instance.updateDocument(updatedDoc);
           await _refreshCache(forceRefresh: true);
           DocumentSearchService.instance.invalidateCacheForDocument(documentId);
-          
+
+          // Evict old thumbnail from cache if path changed (prevents stale cache)
+          if (existingDoc.thumbnailPath != updatedDoc.thumbnailPath &&
+              existingDoc.thumbnailPath.isNotEmpty) {
+            try {
+              ThumbnailCacheService.instance.evict(existingDoc.thumbnailPath);
+              AppLogger.info(
+                '🗑️ Evicted old thumbnail from cache (path changed)',
+                data: {
+                  'documentId': documentId,
+                  'oldPath': existingDoc.thumbnailPath,
+                  'newPath': updatedDoc.thumbnailPath,
+                },
+              );
+            } catch (e) {
+              AppLogger.warning(
+                'Failed to evict old thumbnail from cache (non-critical)',
+                error: e,
+                data: {'documentId': documentId},
+              );
+            }
+          }
+
           // CRITICAL: Preload updated thumbnail for immediate display
           if (committedThumbPath != null && committedThumbPath.isNotEmpty) {
             try {
               await ThumbnailPreloadService.instance.preloadBatch([updatedDoc]);
               AppLogger.info(
                 '✅ Updated thumbnail preloaded for immediate display',
-                data: {'documentId': updatedDoc.id, 'thumbnailPath': committedThumbPath},
+                data: {
+                  'documentId': updatedDoc.id,
+                  'thumbnailPath': committedThumbPath,
+                },
               );
             } catch (e) {
               AppLogger.warning(
@@ -1065,6 +1101,23 @@ class DocumentService {
   }
 
   /// Performs soft delete: marks document as deleted but keeps it for retention period
+  ///
+  /// **IMPORTANT: Soft Delete Storage Policy**
+  /// - Local files: Kept on device (not deleted)
+  /// - Hive database: Updated with isDeleted=true and deletedAt timestamp
+  /// - Supabase Storage: Files remain in cloud storage (NOT deleted)
+  /// - PostgreSQL: Metadata marked as deleted but row remains
+  ///
+  /// **Rationale:** This allows document recovery within retention period
+  /// without re-uploading files. Storage quota is consumed until hard delete.
+  ///
+  /// **Use Cases:**
+  /// - User accidentally deletes document (can restore)
+  /// - Multi-device sync (other devices see deletion)
+  /// - Audit trail for compliance
+  ///
+  /// **Hard Delete:** Use `hardDelete: true` to immediately remove all files
+  /// and free storage quota.
   Future<void> _performSoftDelete(String id, DocumentModel doc) async {
     AppLogger.info(
       '🗑️ Performing soft delete',
@@ -1199,6 +1252,23 @@ class DocumentService {
     } catch (e) {
       AppLogger.warning(
         'Failed to clear sync status (non-critical)',
+        error: e,
+        data: {'documentId': id},
+      );
+    }
+
+    // 3.5. Clear thumbnail from in-memory cache to prevent memory leaks
+    try {
+      if (doc.thumbnailPath.isNotEmpty) {
+        ThumbnailCacheService.instance.evict(doc.thumbnailPath);
+        AppLogger.info(
+          '🗑️ Cleared thumbnail cache for deleted document',
+          data: {'documentId': id, 'thumbnailPath': doc.thumbnailPath},
+        );
+      }
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to clear thumbnail cache (non-critical)',
         error: e,
         data: {'documentId': id},
       );

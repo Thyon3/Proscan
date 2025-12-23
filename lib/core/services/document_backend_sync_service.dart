@@ -812,8 +812,34 @@ class DocumentBackendSyncService {
   ///
   /// Use this when only metadata changes (e.g., title, tags) and file hasn't changed.
   /// 
-  /// **IMPORTANT:** This method now supports updating file URLs when the file changes.
-  /// The backend will automatically delete old files from Supabase storage when URLs change.
+  /// **🔴 CRITICAL: Backend File Cleanup Responsibility**
+  /// 
+  /// This method supports updating file URLs when files are re-uploaded.
+  /// When `newFileUrl` or `newThumbnailUrl` differs from the existing URLs in the
+  /// database, **THE BACKEND MUST DELETE THE OLD FILES FROM SUPABASE STORAGE**.
+  /// 
+  /// **Frontend Expectation:**
+  /// - Frontend uploads new file → generates new URL
+  /// - Frontend calls this method with new URL
+  /// - Backend detects URL change → deletes old file from Supabase
+  /// - Backend updates PostgreSQL with new URL
+  /// 
+  /// **⚠️ WARNING: STORAGE LEAK RISK**
+  /// If the backend does NOT implement orphaned file cleanup, every document
+  /// update will leak storage:
+  /// - Document updated 10 times = 9 orphaned files consuming quota
+  /// - 100 users × 50 docs × 5 updates = 25,000 orphaned files!
+  /// 
+  /// **Backend Implementation Required:**
+  /// ```javascript
+  /// // In your backend API (PUT /api/documents/:id):
+  /// if (newFileUrl !== existingDoc.fileUrl) {
+  ///   await deleteFromSupabaseStorage(existingDoc.fileUrl);
+  /// }
+  /// if (newThumbnailUrl !== existingDoc.thumbnailUrl) {
+  ///   await deleteFromSupabaseStorage(existingDoc.thumbnailUrl);
+  /// }
+  /// ```
   ///
   /// **Parameters:**
   /// - `document`: Updated document model

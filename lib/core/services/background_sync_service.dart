@@ -1,5 +1,6 @@
 // core/services/background_sync_service.dart
 import 'dart:async';
+import 'dart:io';
 
 import 'package:workmanager/workmanager.dart';
 import 'package:thyscan/core/services/app_logger.dart';
@@ -165,24 +166,48 @@ class BackgroundSyncService {
               data: {'documentId': remoteDoc.id, 'title': remoteDoc.title},
             );
           } else if (remoteDoc.isDeleted) {
-            // Document deleted on cloud
-            if (!localDoc.isDeleted) {
-              // Soft delete locally
-              final softDeletedDoc = localDoc.copyWith(
-                isDeleted: true,
-                deletedAt: DateTime.now(),
-              );
-              await box.put(remoteDoc.id, softDeletedDoc);
-              DocumentSyncStateService.instance.setSyncStatus(
-                remoteDoc.id,
-                DocumentSyncStatus.synced,
-                lastSyncTime: DateTime.now(),
-              );
-              AppLogger.info(
-                'Soft deleted document from cloud',
+            // Document deleted on cloud - perform HARD DELETE locally
+            // Remove from local storage completely to match backend state
+            await box.delete(remoteDoc.id);
+            
+            // Also delete local files if they exist
+            try {
+              final localFilePath = localDoc.filePath;
+              if (localFilePath.isNotEmpty && 
+                  !localFilePath.startsWith('http://') &&
+                  !localFilePath.startsWith('https://')) {
+                final file = File(localFilePath);
+                if (await file.exists()) {
+                  await file.delete();
+                  AppLogger.info(
+                    'Deleted local file for document',
+                    data: {'filePath': localFilePath},
+                  );
+                }
+              }
+              
+              // Delete thumbnail
+              if (localDoc.thumbnailPath.isNotEmpty) {
+                final thumbFile = File(localDoc.thumbnailPath);
+                if (await thumbFile.exists()) {
+                  await thumbFile.delete();
+                }
+              }
+            } catch (e) {
+              AppLogger.warning(
+                'Failed to delete local files (non-critical)',
+                error: e,
                 data: {'documentId': remoteDoc.id},
               );
             }
+            
+            // Remove sync status
+            DocumentSyncStateService.instance.clearSyncStatus(remoteDoc.id);
+            
+            AppLogger.info(
+              'Hard deleted document from cloud (backend marked as deleted)',
+              data: {'documentId': remoteDoc.id},
+            );
           } else if (remoteDoc.updatedAt.isAfter(localDoc.updatedAt)) {
             // Remote is newer, update local (last write wins)
             
