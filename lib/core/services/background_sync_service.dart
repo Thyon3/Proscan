@@ -185,7 +185,32 @@ class BackgroundSyncService {
             }
           } else if (remoteDoc.updatedAt.isAfter(localDoc.updatedAt)) {
             // Remote is newer, update local (last write wins)
-            await box.put(remoteDoc.id, remoteDoc);
+            
+            // Check if local has files and remote has URLs
+            final hasLocalFiles = !localDoc.filePath.startsWith('http://') &&
+                !localDoc.filePath.startsWith('https://');
+            final needsDownload = remoteDoc.filePath.startsWith('http://') ||
+                remoteDoc.filePath.startsWith('https://');
+            
+            DocumentModel finalDoc = remoteDoc;
+            
+            // Preserve local files if they exist while updating metadata
+            if (hasLocalFiles && needsDownload) {
+              AppLogger.info(
+                '📱 Background sync: Merging backend metadata with local files',
+                data: {
+                  'documentId': remoteDoc.id,
+                  'title': remoteDoc.title,
+                },
+              );
+              finalDoc = remoteDoc.copyWith(
+                filePath: localDoc.filePath,
+                thumbnailPath: localDoc.thumbnailPath,
+                pageImagePaths: localDoc.pageImagePaths,
+              );
+            }
+            
+            await box.put(remoteDoc.id, finalDoc);
             DocumentSyncStateService.instance.setSyncStatus(
               remoteDoc.id,
               DocumentSyncStatus.synced,
@@ -198,6 +223,7 @@ class BackgroundSyncService {
                 'documentId': remoteDoc.id,
                 'localUpdatedAt': localDoc.updatedAt.toIso8601String(),
                 'remoteUpdatedAt': remoteDoc.updatedAt.toIso8601String(),
+                'filesPreserved': hasLocalFiles && needsDownload,
               },
             );
           } else if (localDoc.updatedAt.isAfter(remoteDoc.updatedAt)) {

@@ -48,6 +48,134 @@ enum DocumentSyncStatus {
   failed,
 }
 
+/// Simplified sync status for UI display.
+/// 
+/// Maps the detailed [DocumentSyncStatus] (14 states) to 5 visual states
+/// for consistent UI representation across the app.
+/// 
+/// **Visual Mapping:**
+/// - [synced] → 🟢 Green cloud icon
+/// - [notSynced] → 🔴 Red cloud icon (local only, pending upload)
+/// - [syncing] → ⚪ Grey cloud icon (animated, active sync)
+/// - [syncFailed] → 🟡 Yellow warning icon (failed after retries)
+/// - [offline] → 📱 Local-only icon (device offline)
+enum SyncDisplayStatus {
+  /// Document is fully synced with cloud - show green cloud
+  synced,
+  
+  /// Document exists only locally, pending upload - show red cloud
+  notSynced,
+  
+  /// Document is actively syncing - show animated grey cloud
+  syncing,
+  
+  /// Sync failed after retries - show yellow warning
+  syncFailed,
+  
+  /// Device is offline - show local-only icon
+  offline,
+}
+
+/// Extension to convert [DocumentSyncStatus] to [SyncDisplayStatus].
+/// 
+/// This provides a single source of truth for mapping detailed sync states
+/// to simplified UI display states.
+/// 
+/// **Usage:**
+/// ```dart
+/// final displayStatus = documentSyncStatus.toDisplayStatus();
+/// // Or with offline detection:
+/// final displayStatus = documentSyncStatus.toDisplayStatus(isOffline: true);
+/// ```
+extension SyncDisplayStatusMapper on DocumentSyncStatus {
+  /// Converts this [DocumentSyncStatus] to a simplified [SyncDisplayStatus].
+  /// 
+  /// **Parameters:**
+  /// - [isOffline]: If true, returns [SyncDisplayStatus.offline] regardless
+  ///   of the current sync status. Use this when the device has no network.
+  /// 
+  /// **Mapping:**
+  /// - `synced` → [SyncDisplayStatus.synced]
+  /// - `pendingUpload` → [SyncDisplayStatus.notSynced]
+  /// - `pendingDownload`, `syncing`, `uploadingFile`, `uploadingThumbnail`, 
+  ///   `syncingMetadata` → [SyncDisplayStatus.syncing]
+  /// - `error`, `failedRetry`, `failedSyncDelete`, `failed`, `conflict`,
+  ///   `pendingConflictResolution` → [SyncDisplayStatus.syncFailed]
+  SyncDisplayStatus toDisplayStatus({bool isOffline = false}) {
+    // If device is offline, always show offline status
+    if (isOffline) {
+      return SyncDisplayStatus.offline;
+    }
+    
+    switch (this) {
+      case DocumentSyncStatus.synced:
+        return SyncDisplayStatus.synced;
+        
+      case DocumentSyncStatus.pendingUpload:
+        return SyncDisplayStatus.notSynced;
+        
+      case DocumentSyncStatus.pendingDownload:
+      case DocumentSyncStatus.syncing:
+      case DocumentSyncStatus.uploadingFile:
+      case DocumentSyncStatus.uploadingThumbnail:
+      case DocumentSyncStatus.syncingMetadata:
+        return SyncDisplayStatus.syncing;
+        
+      case DocumentSyncStatus.error:
+      case DocumentSyncStatus.failedRetry:
+      case DocumentSyncStatus.failedSyncDelete:
+      case DocumentSyncStatus.failed:
+      case DocumentSyncStatus.conflict:
+      case DocumentSyncStatus.pendingConflictResolution:
+        return SyncDisplayStatus.syncFailed;
+    }
+  }
+}
+
+/// Extension providing UI helper methods for [SyncDisplayStatus].
+extension SyncDisplayStatusUI on SyncDisplayStatus {
+  /// Gets the display label for this status.
+  String get label {
+    switch (this) {
+      case SyncDisplayStatus.synced:
+        return 'Synced';
+      case SyncDisplayStatus.notSynced:
+        return 'Not Synced';
+      case SyncDisplayStatus.syncing:
+        return 'Syncing...';
+      case SyncDisplayStatus.syncFailed:
+        return 'Sync Failed';
+      case SyncDisplayStatus.offline:
+        return 'Offline';
+    }
+  }
+  
+  /// Gets the tooltip message for this status.
+  String get tooltip {
+    switch (this) {
+      case SyncDisplayStatus.synced:
+        return 'Uploaded to cloud';
+      case SyncDisplayStatus.notSynced:
+        return 'Waiting to upload';
+      case SyncDisplayStatus.syncing:
+        return 'Syncing with cloud...';
+      case SyncDisplayStatus.syncFailed:
+        return 'Sync failed - tap to retry';
+      case SyncDisplayStatus.offline:
+        return 'Saved locally (offline)';
+    }
+  }
+  
+  /// Whether this status indicates an issue that may need user attention.
+  bool get hasIssue => this == SyncDisplayStatus.syncFailed;
+  
+  /// Whether this status indicates active sync operations.
+  bool get isActive => this == SyncDisplayStatus.syncing;
+  
+  /// Whether this status indicates the document is fully synced.
+  bool get isSynced => this == SyncDisplayStatus.synced;
+}
+
 /// Service to track sync status for documents.
 ///
 /// Provides:
@@ -301,6 +429,43 @@ class DocumentSyncStateService {
         'Failed to reset retry count',
         error: e,
         data: {'documentId': documentId},
+      );
+    }
+  }
+
+  /// Clears all retry counts for all documents
+  /// Used when user initiates a full retry-all operation
+  void clearAllRetries() {
+    if (!_isInitialized || _box == null) return;
+
+    try {
+      int cleared = 0;
+      final keys = _box!.keys.toList();
+      
+      for (final key in keys) {
+        // Skip metadata keys
+        if (key == _lastPullSyncTimeKey || key is! String) continue;
+        
+        final statusData = _box!.get(key) as Map<String, dynamic>?;
+        if (statusData != null && (statusData['retryCount'] as int? ?? 0) > 0) {
+          final updatedData = <String, dynamic>{
+            ...statusData,
+            'retryCount': 0,
+            'updatedAt': DateTime.now().toIso8601String(),
+          };
+          _box!.put(key, updatedData);
+          cleared++;
+        }
+      }
+      
+      AppLogger.info(
+        '✅ Cleared all retry counts',
+        data: {'documentsCleared': cleared, 'totalDocuments': keys.length},
+      );
+    } catch (e) {
+      AppLogger.error(
+        'Failed to clear all retry counts',
+        error: e,
       );
     }
   }

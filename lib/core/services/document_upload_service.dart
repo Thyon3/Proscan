@@ -1,10 +1,10 @@
 // core/services/document_upload_service.dart
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:thyscan/core/config/retry_config.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/events/document_events.dart';
@@ -12,7 +12,6 @@ import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/rate_limiter_service.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
-import 'package:thyscan/core/utils/filename_sanitizer.dart';
 import 'package:thyscan/core/utils/file_type_validator.dart';
 import 'package:thyscan/core/config/file_upload_config.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -118,9 +117,13 @@ class DocumentUploadService {
   static final DocumentUploadService instance = DocumentUploadService._();
 
   static const String _storageBucket = 'documents';
-  static const int _maxRetryAttempts = 3;
-  static const Duration _retryDelay = Duration(seconds: 5);
-  static const Duration _maxRetryBackoff = Duration(minutes: 5);
+  
+  // Retry configuration - uses standardized RetryConfig for consistency
+  // Maximum number of upload attempts before marking as failed
+  static const int _maxRetryAttempts = RetryConfig.maxRetries; // 3 attempts
+  
+  // Retry configuration now uses standardized RetryConfig class
+  // See: lib/core/config/retry_config.dart
 
   final _uploadQueue = <PendingUpload>[];
   final _progressController = StreamController<UploadProgress>.broadcast();
@@ -346,7 +349,7 @@ class DocumentUploadService {
     final userId = AuthService.instance.currentUser!.id;
 
     AppLogger.info(
-      '📤 Starting document upload (attempt ${attempt + 1} of $_maxRetryAttempts)',
+      '📤 Starting document upload (attempt ${attempt + 1} )',
       data: {
         'documentId': documentId,
         'userId': userId,
@@ -376,7 +379,10 @@ class DocumentUploadService {
 
       final fileSize = await file.length();
       if (!FileUploadConfig.isValidSize(fileSize, document.format)) {
-        final error = FileUploadConfig.getFileSizeError(fileSize, document.format);
+        final error = FileUploadConfig.getFileSizeError(
+          fileSize,
+          document.format,
+        );
         AppLogger.error('File size validation failed', error: error);
         throw Exception(error);
       }
@@ -605,11 +611,11 @@ class DocumentUploadService {
         );
       }
 
-      // Retry logic - only retry up to 3 times (attempts 0, 1, 2)
-      if (attempt < _maxRetryAttempts - 1) {
-        final delay = _calculateRetryDelay(attempt);
+      // Retry logic using standardized RetryConfig
+      if (RetryConfig.shouldRetry(attempt + 1)) {
+        final delay = RetryConfig.getDelay(attempt);
         AppLogger.info(
-          'Retrying upload in ${delay.inSeconds} seconds (attempt ${attempt + 2} of $_maxRetryAttempts)',
+          'Retrying upload in ${delay.inSeconds} seconds (attempt ${attempt + 2} of ${RetryConfig.maxRetries})',
           data: {'documentId': documentId, 'attempt': attempt + 1},
         );
 
@@ -620,7 +626,7 @@ class DocumentUploadService {
       // Max attempts reached, mark as failed
       print('═══════════════════════════════════════════════════════════');
       print(
-        '❌ [UPLOAD SERVICE] Upload FAILED after $_maxRetryAttempts attempts',
+        '❌ [UPLOAD SERVICE] Upload FAILED after ${RetryConfig.maxRetries} attempts',
       );
       print('   Document ID: $documentId');
       print('   Title: ${document.title}');
@@ -639,11 +645,11 @@ class DocumentUploadService {
         documentId,
         DocumentSyncStatus.failed,
         errorMessage:
-            'Upload failed after $_maxRetryAttempts attempts: ${e.toString()}',
+            'Upload failed after ${RetryConfig.maxRetries} attempts: ${e.toString()}',
       );
 
       AppLogger.error(
-        '❌ Upload failed after $_maxRetryAttempts attempts',
+        '❌ Upload failed after ${RetryConfig.maxRetries} attempts',
         error: e,
         stack: stack,
         data: {'documentId': documentId},
@@ -707,13 +713,12 @@ class DocumentUploadService {
           },
         );
       }
-    } catch (e, stack) {
+    } catch (e) {
       print('⚠️ [UPLOAD SERVICE] Rollback failed (non-critical)');
       print('   Error: $e');
       AppLogger.warning(
         '⚠️ Failed to rollback storage uploads (files may remain in storage)',
         error: e,
-
         data: {'documentId': documentId},
       );
       // Don't throw - rollback failure is non-critical
@@ -827,18 +832,9 @@ class DocumentUploadService {
         );
       }
 
-      // Small delay between uploads
+      // Small delay between uploads to prevent overwhelming the system
       await Future.delayed(const Duration(seconds: 1));
     }
-  }
-
-  /// Calculates retry delay with exponential backoff
-  Duration _calculateRetryDelay(int attempt) {
-    final baseDelay = _retryDelay.inSeconds;
-    final delaySeconds =
-        baseDelay * (1 << attempt); // Exponential: 5s, 10s, 20s
-    final delay = Duration(seconds: delaySeconds);
-    return delay > _maxRetryBackoff ? _maxRetryBackoff : delay;
   }
 
   /// Emits progress event

@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/document_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
+import 'package:thyscan/core/services/document_upload_service.dart';
 
 /// Screen for configuring document sync settings
 class SyncSettingsScreen extends StatefulWidget {
@@ -404,6 +405,122 @@ class _SyncSettingsScreenState extends State<SyncSettingsScreen> {
               },
             ),
           ),
+          const SizedBox(height: 12),
+
+          // Retry All Button - Full sync from backend
+          if (stats.hasIssues || stats.hasPendingOperations)
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.3),
+              child: ListTile(
+                leading: const Icon(Icons.cloud_download, color: Colors.orange),
+                title: const Text(
+                  'Retry All & Replace with Backend',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: const Text(
+                  'Fetch all documents from backend and replace local copies',
+                  style: TextStyle(fontSize: 12),
+                ),
+                onTap: () async {
+                  // Show confirmation dialog
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Replace Local Documents?'),
+                      content: const Text(
+                        'This will:\n'
+                        '• Fetch all documents from backend\n'
+                        '• Replace your local copies\n'
+                        '• Clear all sync errors\n\n'
+                        'Local-only changes that haven\'t been uploaded will be lost.\n\n'
+                        'Continue?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                          ),
+                          child: const Text('Replace All'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed != true || !context.mounted) return;
+
+                  try {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                            SizedBox(width: 16),
+                            Text('Performing full sync from backend...'),
+                          ],
+                        ),
+                        duration: Duration(seconds: 30),
+                      ),
+                    );
+
+                    AppLogger.info('🔄 User initiated retry-all from sync settings');
+
+                    // Step 1: Upload any pending local documents first
+                    await DocumentUploadService.instance.syncNow();
+
+                    // Step 2: Full sync with replace mode
+                    final result = await DocumentSyncService.instance.syncDocuments(
+                      forceFullSync: true,
+                      replaceLocal: true,
+                    );
+
+                    // Step 3: Clear retry counters
+                    DocumentSyncStateService.instance.clearAllRetries();
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            result.success
+                                ? '✅ Full sync completed: ${result.documentsAdded} added, '
+                                    '${result.documentsUpdated} updated, '
+                                    '${result.documentsReplaced} replaced'
+                                : '❌ Sync failed: ${result.message}',
+                          ),
+                          backgroundColor: result.success ? Colors.green : Colors.red,
+                          duration: const Duration(seconds: 5),
+                        ),
+                      );
+                      setState(() {});
+                    }
+                  } catch (e, stack) {
+                    AppLogger.error('❌ Retry-all failed', error: e, stack: stack);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Retry-all failed: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 5),
+                        ),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
           const SizedBox(height: 12),
 
           // View Conflicts Button

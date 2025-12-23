@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/config/app_env.dart';
+import 'package:thyscan/core/config/retry_config.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/events/document_events.dart';
@@ -63,9 +64,8 @@ class DocumentSyncService {
   static const Duration _syncRequestTimeout = Duration(minutes: 10);
   
   static const String _lastSyncTimeKey = 'last_sync_time';
-  static const int _maxRetryAttempts = 3;
-  static const Duration _baseRetryDelay = Duration(seconds: 5);
-  static const Duration _maxRetryBackoff = Duration(minutes: 5);
+  // Retry configuration now uses standardized RetryConfig class
+  // See: lib/core/config/retry_config.dart
   Box<dynamic>? _prefsBox;
 
   bool get isSyncing => _isSyncing;
@@ -655,11 +655,16 @@ class DocumentSyncService {
               // Preserve local files if they exist and backend only has URL
               if (hasLocalFiles && needsDownload) {
                 AppLogger.info(
-                  '📱 Preserving local files, downloading backend version in background',
+                  '📱 Replace mode: Merging backend metadata with local files',
                   data: {'id': remoteDoc.id, 'title': remoteDoc.title},
                 );
-                // Keep local file paths temporarily, download in background
-                finalDoc = localDoc;
+                // Merge: Use backend metadata but keep local file paths
+                finalDoc = remoteDoc.copyWith(
+                  filePath: localDoc.filePath,
+                  thumbnailPath: localDoc.thumbnailPath,
+                  pageImagePaths: localDoc.pageImagePaths,
+                );
+                // Download backend version in background (will update when complete)
                 _startBackgroundDownload(remoteDoc, box);
               } else if (needsDownload) {
                 _startBackgroundDownload(remoteDoc, box);
@@ -682,7 +687,7 @@ class DocumentSyncService {
                 // If local has files and backend has URL, preserve local files during download
                 if (hasLocalFiles && needsDownload) {
                   AppLogger.info(
-                    '📱 Backend newer: Keeping local files visible, downloading in background',
+                    '📱 Backend newer: Merging backend metadata with local files',
                     data: {
                       'id': remoteDoc.id,
                       'title': remoteDoc.title,
@@ -690,8 +695,13 @@ class DocumentSyncService {
                       'remoteUpdated': remoteUpdatedAt.toIso8601String(),
                     },
                   );
-                  // Keep local version visible until download completes
-                  finalDoc = localDoc;
+                  // Merge: Use backend metadata but keep local file paths
+                  finalDoc = remoteDoc.copyWith(
+                    filePath: localDoc.filePath,
+                    thumbnailPath: localDoc.thumbnailPath,
+                    pageImagePaths: localDoc.pageImagePaths,
+                  );
+                  // Download backend version in background (will update when complete)
                   _startBackgroundDownload(remoteDoc, box);
                 } else if (needsDownload) {
                   _startBackgroundDownload(remoteDoc, box);
@@ -910,16 +920,16 @@ class DocumentSyncService {
       );
     } catch (e, stack) {
       AppLogger.error(
-        'Document sync failed (attempt ${retryAttempt + 1}/$_maxRetryAttempts)',
+        'Document sync failed (attempt ${retryAttempt + 1}/${RetryConfig.maxRetries})',
         error: e,
         stack: stack,
       );
 
-      // Retry with exponential backoff
-      if (retryAttempt < _maxRetryAttempts - 1) {
-        final delay = _calculateRetryDelay(retryAttempt);
+      // Retry with exponential backoff using standardized RetryConfig
+      if (RetryConfig.shouldRetry(retryAttempt + 1)) {
+        final delay = RetryConfig.getDelay(retryAttempt);
         AppLogger.info(
-          'Retrying sync in ${delay.inSeconds}s (attempt ${retryAttempt + 2}/$_maxRetryAttempts)',
+          'Retrying sync in ${delay.inSeconds}s (attempt ${retryAttempt + 2}/${RetryConfig.maxRetries})',
           data: {'error': e.toString(), 'delaySeconds': delay.inSeconds},
         );
 
@@ -935,7 +945,7 @@ class DocumentSyncService {
       return SyncResult(
         success: false,
         message:
-            'Sync failed after $_maxRetryAttempts attempts: ${e.toString()}',
+            'Sync failed after ${RetryConfig.maxRetries} attempts: ${e.toString()}',
         documentsAdded: 0,
         documentsUpdated: 0,
         documentsSkipped: 0,
@@ -998,30 +1008,29 @@ class DocumentSyncService {
     });
   }
 
-  /// Calculates retry delay with exponential backoff
+  /// Calculates retry delay with exponential backoff using standardized RetryConfig.
+  /// 
+  /// **Delay sequence:** 1s, 2s, 4s, 8s, 16s (capped at maxDelay)
+  /// 
+  /// @deprecated Use RetryConfig.getDelay() directly instead.
   Duration _calculateRetryDelay(int attempt) {
-    final baseDelay = _baseRetryDelay.inSeconds;
-    final delaySeconds =
-        baseDelay * (1 << attempt); // Exponential: 5s, 10s, 20s
-    final delay = Duration(seconds: delaySeconds);
-    return delay > _maxRetryBackoff ? _maxRetryBackoff : delay;
+    return RetryConfig.getDelay(attempt);
   }
 
   /// Starts background download for a document with URL filePath.
   /// Uses the download queue for better management and progress tracking.
-  /// Implements retry logic with exponential backoff (max 3 retries).
+  /// Implements retry logic with exponential backoff using RetryConfig.
   void _startBackgroundDownload(
     DocumentModel remoteDoc,
     Box<DocumentModel> box,
   ) {
-    // Check retry count before queuing
+    // Check retry count before queuing - use standardized RetryConfig
     final retryCount = DocumentSyncStateService.instance.getRetryCount(remoteDoc.id);
-    const maxRetries = 3;
 
-    if (retryCount >= maxRetries) {
+    if (retryCount >= RetryConfig.maxRetries) {
       // Max retries reached - mark as failed
       AppLogger.warning(
-        'Download failed after $maxRetries retries, marking as failed',
+        'Download failed after ${RetryConfig.maxRetries} retries, marking as failed',
         error: null,
         data: {
           'id': remoteDoc.id,
@@ -1032,7 +1041,7 @@ class DocumentSyncService {
       DocumentSyncStateService.instance.setSyncStatus(
         remoteDoc.id,
         DocumentSyncStatus.failed,
-        errorMessage: 'Download failed after $maxRetries attempts',
+        errorMessage: 'Download failed after ${RetryConfig.maxRetries} attempts',
       );
       return;
     }
@@ -1083,7 +1092,7 @@ class DocumentSyncService {
           final newRetryCount = DocumentSyncStateService.instance.getRetryCount(remoteDoc.id);
           
           AppLogger.error(
-            'Download failed for document (retry $newRetryCount/$maxRetries)',
+            'Download failed for document (retry $newRetryCount/${RetryConfig.maxRetries})',
             error: Exception(progress.error),
             data: {'id': remoteDoc.id, 'retryCount': newRetryCount},
           );
@@ -1096,16 +1105,16 @@ class DocumentSyncService {
             retryCount: newRetryCount,
           );
           
-          if (newRetryCount < maxRetries) {
-            // Calculate exponential backoff delay: 5min, 15min, 30min
-            final delayMinutes = [5, 15, 30][newRetryCount - 1];
+          if (RetryConfig.shouldRetry(newRetryCount)) {
+            // Use standardized exponential backoff from RetryConfig
+            final delay = RetryConfig.getDelay(newRetryCount - 1);
             AppLogger.info(
-              'Retrying download after ${delayMinutes} minutes',
+              'Retrying download after ${delay.inSeconds} seconds',
               data: {'id': remoteDoc.id, 'retryCount': newRetryCount},
             );
             
             // Schedule retry
-            Future.delayed(Duration(minutes: delayMinutes), () {
+            Future.delayed(delay, () {
               _startBackgroundDownload(remoteDoc, box);
             });
           } else {
@@ -1113,7 +1122,7 @@ class DocumentSyncService {
             DocumentSyncStateService.instance.setSyncStatus(
               remoteDoc.id,
               DocumentSyncStatus.failed,
-              errorMessage: progress.error ?? 'Download failed after $maxRetries attempts',
+              errorMessage: progress.error ?? 'Download failed after ${RetryConfig.maxRetries} attempts',
             );
           }
           
@@ -1126,15 +1135,15 @@ class DocumentSyncService {
         final newRetryCount = DocumentSyncStateService.instance.getRetryCount(remoteDoc.id);
         
         AppLogger.error(
-          'Error listening to download progress (retry $newRetryCount/$maxRetries)',
+          'Error listening to download progress (retry $newRetryCount/${RetryConfig.maxRetries})',
           error: error,
           data: {'id': remoteDoc.id, 'retryCount': newRetryCount},
         );
 
-        if (newRetryCount < maxRetries) {
-          // Calculate exponential backoff delay
-          final delayMinutes = [5, 15, 30][newRetryCount - 1];
-          Future.delayed(Duration(minutes: delayMinutes), () {
+        if (RetryConfig.shouldRetry(newRetryCount)) {
+          // Use standardized exponential backoff from RetryConfig
+          final delay = RetryConfig.getDelay(newRetryCount - 1);
+          Future.delayed(delay, () {
             _startBackgroundDownload(remoteDoc, box);
           });
         } else {
@@ -1142,7 +1151,7 @@ class DocumentSyncService {
           DocumentSyncStateService.instance.setSyncStatus(
             remoteDoc.id,
             DocumentSyncStatus.failed,
-            errorMessage: 'Download failed after $maxRetries attempts: ${error.toString()}',
+            errorMessage: 'Download failed after ${RetryConfig.maxRetries} attempts: ${error.toString()}',
           );
         }
         

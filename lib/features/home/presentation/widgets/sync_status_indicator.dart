@@ -1,12 +1,10 @@
 // features/home/presentation/widgets/sync_status_indicator.dart
 import 'package:flutter/material.dart';
+import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/document_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
-import 'package:thyscan/core/services/offline_first_service.dart';
-import 'package:thyscan/models/document_model.dart';
-import 'package:thyscan/services/document_service.dart';
 
 /// Widget that displays sync status for a document
 class SyncStatusIndicator extends StatelessWidget {
@@ -281,28 +279,58 @@ class _SyncStatusDialogState extends State<_SyncStatusDialog> {
                 : () async {
                     setState(() => _isRetrying = true);
                     try {
-                      // Retry failed uploads via syncNow
+                      AppLogger.info('🔄 User initiated retry-all sync');
+                      
+                      // Step 1: Retry failed uploads
+                      AppLogger.info('Step 1/3: Retrying failed uploads...');
                       await DocumentUploadService.instance.syncNow();
-                      // Retry sync
-                      await DocumentSyncService.instance.syncDocuments(
-                        forceFullSync: false,
-                        replaceLocal: false,
+                      
+                      // Step 2: Perform full sync from backend (replaces local with backend)
+                      AppLogger.info('Step 2/3: Performing full sync from backend...');
+                      final result = await DocumentSyncService.instance.syncDocuments(
+                        forceFullSync: true, // Full sync to get all documents
+                        replaceLocal: true,  // Replace local with backend data
                       );
+                      
+                      // Step 3: Clear any retry counters
+                      AppLogger.info('Step 3/3: Clearing retry counters...');
+                      DocumentSyncStateService.instance.clearAllRetries();
+                      
                       if (mounted) {
+                        AppLogger.info(
+                          '✅ Retry-all completed successfully',
+                          data: {
+                            'added': result.documentsAdded,
+                            'updated': result.documentsUpdated,
+                            'replaced': result.documentsReplaced,
+                          },
+                        );
+                        
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Sync retry initiated'),
-                            duration: Duration(seconds: 2),
+                          SnackBar(
+                            content: Text(
+                              'Sync completed: ${result.documentsAdded} added, '
+                              '${result.documentsUpdated} updated, '
+                              '${result.documentsReplaced} replaced from backend',
+                            ),
+                            backgroundColor: Colors.green,
+                            duration: const Duration(seconds: 4),
                           ),
                         );
                         Navigator.of(context).pop();
                       }
-                    } catch (e) {
+                    } catch (e, stack) {
+                      AppLogger.error(
+                        '❌ Retry-all failed',
+                        error: e,
+                        stack: stack,
+                      );
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Retry failed: ${e.toString()}'),
                             backgroundColor: Colors.red,
+                            duration: const Duration(seconds: 4),
                           ),
                         );
                       }
