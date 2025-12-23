@@ -381,14 +381,75 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
   }
 
-  /// Delete document from Hive and internal storage
+  /// Delete document from Hive, internal storage, and backend
+  /// Performs HARD DELETE (permanent removal)
   Future<void> _deleteDocument(BuildContext context, DocumentModel doc) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Document'),
+        content: Text('Are you sure you want to delete "${doc.title}"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
     try {
-      await DocumentService.instance.deleteDocument(doc.id);
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('Deleting ${doc.title}...'),
+            ],
+          ),
+          duration: const Duration(seconds: 10),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Perform HARD DELETE (permanent removal from local storage, backend, and Supabase)
+      await DocumentService.instance.deleteDocument(doc.id, hardDelete: true);
+      
+      // Refresh the paginated list immediately
+      final homeState = ref.read(homeProvider);
+      final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
+      final paginatedNotifier = ref.read(
+        paginatedDocumentsProvider(
+          PaginatedDocumentsParams(
+            scanMode: activeFilter.scanMode,
+            sortBy: homeState.sortCriteria,
+          ),
+        ).notifier,
+      );
+      await paginatedNotifier.refresh();
+
       if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${doc.title} deleted'),
+            content: Text('✓ ${doc.title} deleted'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
@@ -399,10 +460,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     } catch (e) {
       if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to delete: $e'),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -1113,26 +1176,99 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ),
     );
 
-    if (confirmed == true) {
+    if (confirmed == true && context.mounted) {
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('Deleting $count document${count > 1 ? 's' : ''}...'),
+            ],
+          ),
+          duration: const Duration(seconds: 30),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
       try {
+        int successCount = 0;
+        int failCount = 0;
+
         for (final id in state.selectedScanIds) {
-          await DocumentService.instance.deleteDocument(id);
+          try {
+            // Perform HARD DELETE (permanent removal)
+            await DocumentService.instance.deleteDocument(id, hardDelete: true);
+            successCount++;
+          } catch (e) {
+            failCount++;
+            AppLogger.error('Failed to delete document $id', error: e);
+          }
         }
-        notifier.exitSelectionMode();
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$count documents deleted'),
-              backgroundColor: Colors.green,
+
+        // Refresh the paginated list immediately
+        final homeState = ref.read(homeProvider);
+        final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
+        final paginatedNotifier = ref.read(
+          paginatedDocumentsProvider(
+            PaginatedDocumentsParams(
+              scanMode: activeFilter.scanMode,
+              sortBy: homeState.sortCriteria,
             ),
-          );
+          ).notifier,
+        );
+        await paginatedNotifier.refresh();
+
+        notifier.exitSelectionMode();
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          
+          if (successCount > 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ Deleted $successCount document${successCount > 1 ? 's' : ''}'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
+          }
+
+          if (failCount > 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to delete $failCount document${failCount > 1 ? 's' : ''}'),
+                backgroundColor: Colors.red,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            );
+          }
         }
       } catch (e) {
         if (context.mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Error deleting documents: $e'),
               backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           );
         }

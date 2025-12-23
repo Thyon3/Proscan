@@ -132,20 +132,30 @@ class _FastThumbnailState extends State<FastThumbnail> {
   }
 
   Widget _buildPlaceholder() {
-    Widget placeholder = Container(
+    // Use the asset placeholder image
+    Widget placeholder = Image.asset(
+      'assets/images/thumbnailPlaceholder.png',
       width: widget.width,
       height: widget.height,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: widget.borderRadius ?? BorderRadius.circular(12),
-      ),
-      child: Center(
-        child: Icon(
-          Icons.description_outlined,
-          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-          size: _calculateIconSize(),
-        ),
-      ),
+      fit: widget.fit,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback to icon if asset fails to load
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: widget.borderRadius ?? BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Icon(
+              Icons.description_outlined,
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              size: _calculateIconSize(),
+            ),
+          ),
+        );
+      },
     );
 
     if (widget.borderRadius != null) {

@@ -159,7 +159,7 @@ class _DocumentThumbnailState extends State<DocumentThumbnail> {
 
     // Use professional placeholder asset
     Widget placeholderImage = Image.asset(
-      'assets/images/thumbnail_placeholder.png',
+      'assets/images/thumbnailPlaceholder.png',
       width: widget.width,
       height: widget.height,
       fit: widget.fit,

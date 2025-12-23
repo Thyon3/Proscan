@@ -29,6 +29,7 @@ import 'package:thyscan/core/services/incremental_pdf_service.dart';
 import 'package:thyscan/core/services/duplicate_prevention_service.dart';
 import 'package:thyscan/core/services/performance_tracker.dart';
 import 'package:thyscan/core/services/resource_guard.dart';
+import 'package:thyscan/core/services/thumbnail_preload_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/file_export_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
@@ -245,6 +246,24 @@ class DocumentService {
 
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(id);
+      
+      // CRITICAL: Immediately preload thumbnail so it appears in UI without delay
+      if (committedThumbPath != null && committedThumbPath.isNotEmpty) {
+        try {
+          // Import at top: import 'package:thyscan/core/services/thumbnail_preload_service.dart';
+          await ThumbnailPreloadService.instance.preloadBatch([doc]);
+          AppLogger.info(
+            '✅ Thumbnail preloaded for immediate display',
+            data: {'documentId': doc.id, 'thumbnailPath': committedThumbPath},
+          );
+        } catch (e) {
+          AppLogger.warning(
+            'Failed to preload thumbnail (non-critical)',
+            error: e,
+            data: {'documentId': doc.id},
+          );
+        }
+      }
 
       // Store upload result for caller to check
       String? uploadUrl;
@@ -789,6 +808,23 @@ class DocumentService {
           await DocumentRepository.instance.updateDocument(updatedDoc);
           await _refreshCache(forceRefresh: true);
           DocumentSearchService.instance.invalidateCacheForDocument(documentId);
+          
+          // CRITICAL: Preload updated thumbnail for immediate display
+          if (committedThumbPath != null && committedThumbPath.isNotEmpty) {
+            try {
+              await ThumbnailPreloadService.instance.preloadBatch([updatedDoc]);
+              AppLogger.info(
+                '✅ Updated thumbnail preloaded for immediate display',
+                data: {'documentId': updatedDoc.id, 'thumbnailPath': committedThumbPath},
+              );
+            } catch (e) {
+              AppLogger.warning(
+                'Failed to preload updated thumbnail (non-critical)',
+                error: e,
+                data: {'documentId': updatedDoc.id},
+              );
+            }
+          }
 
           _emitUpdateProgress(documentId, UpdateStage.updatingLocal, 1.0);
 

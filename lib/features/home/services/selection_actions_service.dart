@@ -50,6 +50,7 @@ class SelectionActionsService {
   }
 
   /// Delete multiple documents with confirmation
+  /// This performs HARD DELETE (permanent removal) with backend sync
   static Future<void> deleteDocuments(
     BuildContext context,
     List<String> documentIds,
@@ -67,9 +68,34 @@ class SelectionActionsService {
       int successCount = 0;
       int failCount = 0;
 
+      // Show loading indicator
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text('Deleting ${documentIds.length} document${documentIds.length > 1 ? 's' : ''}...'),
+              ],
+            ),
+            duration: const Duration(seconds: 30), // Long duration
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
       for (final id in documentIds) {
         try {
-          await DocumentService.instance.deleteDocument(id);
+          // Perform HARD DELETE (permanent removal from local storage and backend)
+          await DocumentService.instance.deleteDocument(id, hardDelete: true);
           successCount++;
         } catch (e) {
           failCount++;
@@ -77,11 +103,16 @@ class SelectionActionsService {
         }
       }
 
+      // Clear the loading snackbar
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+      }
+
       if (context.mounted) {
         if (successCount > 0) {
           _showSnackBar(
             context,
-            'Deleted $successCount document${successCount > 1 ? 's' : ''}',
+            '✓ Deleted $successCount document${successCount > 1 ? 's' : ''}',
           );
           onSuccess();
         }
@@ -96,6 +127,7 @@ class SelectionActionsService {
       }
     } catch (e) {
       if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
         _showSnackBar(context, 'Failed to delete: $e', isError: true);
       }
     }

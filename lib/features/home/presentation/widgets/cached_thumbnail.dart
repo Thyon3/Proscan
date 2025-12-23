@@ -107,7 +107,7 @@ class CachedThumbnail extends StatelessWidget {
   /// Professional placeholder using the asset image
   Widget _buildDefaultPlaceholder() {
     Widget placeholderImage = Image.asset(
-      'assets/images/thumbnail_placeholder.png',
+      'assets/images/thumbnailPlaceholder.png',
       fit: fit,
       // Use lower resolution for placeholder
       cacheWidth: 300,
