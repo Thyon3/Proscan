@@ -246,10 +246,13 @@ class DocumentService {
       // Invalidate search cache
       DocumentSearchService.instance.invalidateCacheForDocument(id);
 
-      // Upload to cloud in background (non-blocking) - only if not skipped
+      // Store upload result for caller to check
+      String? uploadUrl;
+      
+      // Upload to cloud - wait for result if not skipped
       if (!options.skipUpload) {
         print('═══════════════════════════════════════════════════════════');
-        print('🚀 [DOCUMENT SERVICE] Starting background upload');
+        print('🚀 [DOCUMENT SERVICE] Starting upload (waiting for result)');
         print('   Document ID: ${doc.id}');
         print('   Title: ${doc.title}');
         print('   Format: ${doc.format}');
@@ -258,7 +261,7 @@ class DocumentService {
         print('═══════════════════════════════════════════════════════════');
 
         AppLogger.info(
-          '🚀 Starting background upload for document ${doc.id}',
+          '🚀 Starting upload for document ${doc.id}',
           data: {
             'documentId': doc.id,
             'title': doc.title,
@@ -267,51 +270,45 @@ class DocumentService {
           },
         );
 
-        DocumentUploadService.instance
-            .uploadDocument(doc)
-            .then((url) {
-              print(
-                '═══════════════════════════════════════════════════════════',
-              );
-              print('✅ [DOCUMENT SERVICE] Upload completed');
-              print('   Document ID: ${doc.id}');
-              print(
-                '   URL: ${url != null ? url.substring(0, url.length > 60 ? 60 : url.length) + "..." : "NULL (failed)"}',
-              );
-              print(
-                '═══════════════════════════════════════════════════════════',
-              );
-              if (url != null) {
-                AppLogger.info(
-                  '✅ Document uploaded successfully: ${doc.id}',
-                  data: {'url': url.substring(0, 50) + '...'},
-                );
-              } else {
-                AppLogger.warning(
-                  '⚠️ Document upload failed after retries: ${doc.id}',
-                  error: null,
-                );
-              }
-            })
-            .catchError((error, stack) {
-              print(
-                '═══════════════════════════════════════════════════════════',
-              );
-              print('❌ [DOCUMENT SERVICE] Upload FAILED');
-              print('   Document ID: ${doc.id}');
-              print('   Error: $error');
-              print(
-                '   Stack: ${stack.toString().substring(0, stack.toString().length > 200 ? 200 : stack.toString().length)}',
-              );
-              print(
-                '═══════════════════════════════════════════════════════════',
-              );
-              AppLogger.error(
-                '❌ Background upload failed for document ${doc.id}',
-                error: error,
-                stack: stack,
-              );
-            });
+        try {
+          uploadUrl = await DocumentUploadService.instance.uploadDocument(doc);
+          
+          if (uploadUrl != null) {
+            print('═══════════════════════════════════════════════════════════');
+            print('✅ [DOCUMENT SERVICE] Upload completed successfully');
+            print('   Document ID: ${doc.id}');
+            print('   URL: ${uploadUrl.substring(0, uploadUrl.length > 60 ? 60 : uploadUrl.length)}...');
+            print('═══════════════════════════════════════════════════════════');
+            
+            AppLogger.info(
+              '✅ Document uploaded successfully: ${doc.id}',
+              data: {'url': uploadUrl.substring(0, 50) + '...'},
+            );
+          } else {
+            print('═══════════════════════════════════════════════════════════');
+            print('⚠️ [DOCUMENT SERVICE] Upload queued or failed');
+            print('   Document ID: ${doc.id}');
+            print('   Reason: Upload returned null (offline/auth/rate-limited)');
+            print('═══════════════════════════════════════════════════════════');
+            
+            AppLogger.warning(
+              '⚠️ Document upload queued or failed: ${doc.id}',
+              error: null,
+            );
+          }
+        } catch (error, stack) {
+          print('═══════════════════════════════════════════════════════════');
+          print('❌ [DOCUMENT SERVICE] Upload FAILED with exception');
+          print('   Document ID: ${doc.id}');
+          print('   Error: $error');
+          print('═══════════════════════════════════════════════════════════');
+          
+          AppLogger.error(
+            '❌ Upload failed for document ${doc.id}',
+            error: error,
+            stack: stack,
+          );
+        }
       } else {
         print('⏭️ [DOCUMENT SERVICE] Upload skipped (skipUpload = true)');
         AppLogger.info(

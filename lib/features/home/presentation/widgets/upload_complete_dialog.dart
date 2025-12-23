@@ -3,10 +3,19 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 
-/// Dialog shown when document upload completes successfully
+/// Upload status enum
+enum DocumentUploadStatus {
+  success,     // Uploaded to cloud successfully
+  queued,      // Queued for later upload (offline/auth)
+  failed,      // Failed after retries
+  localOnly,   // Saved locally only (upload skipped)
+}
+
+/// Dialog shown when document save completes
 class UploadCompleteDialog extends StatelessWidget {
   final String documentTitle;
   final int pageCount;
+  final DocumentUploadStatus uploadStatus;
   final VoidCallback? onViewDocument;
   final VoidCallback? onShareDocument;
 
@@ -14,15 +23,17 @@ class UploadCompleteDialog extends StatelessWidget {
     super.key,
     required this.documentTitle,
     required this.pageCount,
+    required this.uploadStatus,
     this.onViewDocument,
     this.onShareDocument,
   });
 
-  /// Shows the upload complete dialog
+  /// Shows the upload complete dialog with upload status
   static Future<void> show({
     required BuildContext context,
     required String documentTitle,
     required int pageCount,
+    required DocumentUploadStatus uploadStatus,
     VoidCallback? onViewDocument,
     VoidCallback? onShareDocument,
   }) {
@@ -32,6 +43,7 @@ class UploadCompleteDialog extends StatelessWidget {
       builder: (context) => UploadCompleteDialog(
         documentTitle: documentTitle,
         pageCount: pageCount,
+        uploadStatus: uploadStatus,
         onViewDocument: onViewDocument,
         onShareDocument: onShareDocument,
       ),
@@ -41,6 +53,44 @@ class UploadCompleteDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
+    // Determine icon, color, title, and message based on upload status
+    IconData icon;
+    Color iconColor;
+    Color bgColor;
+    String title;
+    String message;
+
+    switch (uploadStatus) {
+      case DocumentUploadStatus.success:
+        icon = Icons.cloud_done_rounded;
+        iconColor = Colors.green;
+        bgColor = Colors.green.withOpacity(0.1);
+        title = 'Upload Complete!';
+        message = '✓ Successfully synced to cloud';
+        break;
+      case DocumentUploadStatus.queued:
+        icon = Icons.cloud_queue_rounded;
+        iconColor = Colors.orange;
+        bgColor = Colors.orange.withOpacity(0.1);
+        title = 'Saved Locally';
+        message = '⏱ Will sync when online';
+        break;
+      case DocumentUploadStatus.failed:
+        icon = Icons.cloud_off_rounded;
+        iconColor = Colors.red;
+        bgColor = Colors.red.withOpacity(0.1);
+        title = 'Upload Failed';
+        message = '✗ Saved locally only. Check connection and try again.';
+        break;
+      case DocumentUploadStatus.localOnly:
+        icon = Icons.save_rounded;
+        iconColor = cs.primary;
+        bgColor = cs.primary.withOpacity(0.1);
+        title = 'Saved Locally';
+        message = '✓ Document saved on device';
+        break;
+    }
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -52,25 +102,25 @@ class UploadCompleteDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Success animation/icon
+            // Status icon
             Container(
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
+                color: bgColor,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.cloud_done_rounded,
+              child: Icon(
+                icon,
                 size: 48,
-                color: Colors.green,
+                color: iconColor,
               ),
             ),
             const SizedBox(height: 20),
 
             // Title
             Text(
-              'Upload Complete!',
+              title,
               style: GoogleFonts.inter(
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
@@ -81,12 +131,13 @@ class UploadCompleteDialog extends StatelessWidget {
 
             // Message
             Text(
-              '✓ Successfully synced to cloud',
+              message,
               style: GoogleFonts.inter(
                 fontSize: 14,
-                color: Colors.green,
+                color: iconColor,
                 fontWeight: FontWeight.w600,
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             

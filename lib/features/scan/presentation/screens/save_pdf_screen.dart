@@ -7,6 +7,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/core/services/document_download_service.dart';
+import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
@@ -546,11 +547,39 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     final doc = await _persistDocument(force: true, skipUpload: false);
     if (!mounted || doc == null) return;
 
-    // Show upload complete dialog
+    // Determine upload status by checking sync state
+    DocumentUploadStatus uploadStatus;
+    final syncStatus = DocumentSyncStateService.instance.getSyncStatus(doc.id);
+    
+    if (syncStatus == DocumentSyncStatus.synced) {
+      uploadStatus = DocumentUploadStatus.success;
+    } else if (syncStatus == DocumentSyncStatus.failed) {
+      uploadStatus = DocumentUploadStatus.failed;
+    } else if (syncStatus == DocumentSyncStatus.pendingUpload || 
+               syncStatus == DocumentSyncStatus.uploadingFile ||
+               syncStatus == DocumentSyncStatus.uploadingThumbnail ||
+               syncStatus == DocumentSyncStatus.syncingMetadata ||
+               syncStatus == DocumentSyncStatus.syncing) {
+      uploadStatus = DocumentUploadStatus.queued;
+    } else if (syncStatus == DocumentSyncStatus.error ||
+               syncStatus == DocumentSyncStatus.failedRetry) {
+      uploadStatus = DocumentUploadStatus.failed;
+    } else {
+      // Fallback: check if document was actually uploaded
+      // by checking if file path is now a URL
+      if (doc.filePath.startsWith('http://') || doc.filePath.startsWith('https://')) {
+        uploadStatus = DocumentUploadStatus.success;
+      } else {
+        uploadStatus = DocumentUploadStatus.queued;
+      }
+    }
+
+    // Show upload complete dialog with actual status
     await UploadCompleteDialog.show(
       context: context,
       documentTitle: widget.pdfFileName,
       pageCount: _pages.length,
+      uploadStatus: uploadStatus,
       onViewDocument: () {
         // Navigate to home screen
         context.go('/appmainscreen');
