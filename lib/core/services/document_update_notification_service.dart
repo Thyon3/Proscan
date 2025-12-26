@@ -33,10 +33,15 @@ class DocumentUpdateNotificationService {
       if (_context == null || !_context!.mounted) return;
 
       switch (progress.stage) {
+        case UpdateStage.creatingSnapshot:
         case UpdateStage.generatingPdf:
+        case UpdateStage.calculatingChecksum:
+        case UpdateStage.preparingUpdate:
         case UpdateStage.uploadingToStorage:
+        case UpdateStage.uploadingThumbnail:
         case UpdateStage.committingUpdate:
-          // Show progress for long-running stages
+        case UpdateStage.updatingLocal:
+        case UpdateStage.cleaningUp:
           _showProgressToast(progress);
           break;
         
@@ -67,10 +72,6 @@ class DocumentUpdateNotificationService {
             );
           }
           break;
-        
-        default:
-          // Other stages don't need notifications
-          break;
       }
     });
   }
@@ -93,7 +94,7 @@ class DocumentUpdateNotificationService {
                 value: progress.progress,
                 strokeWidth: 2,
                 color: Colors.white,
-                backgroundColor: Colors.white.withOpacity(0.3),
+                backgroundColor: Colors.white.withValues(alpha: 0.3),
               ),
             ),
             const SizedBox(width: 16),
@@ -114,7 +115,7 @@ class DocumentUpdateNotificationService {
                     progress.percentageString,
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
                 ],
@@ -151,7 +152,7 @@ class DocumentUpdateNotificationService {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -193,7 +194,7 @@ class DocumentUpdateNotificationService {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withValues(alpha: 0.2),
                 shape: BoxShape.circle,
               ),
               child: const Icon(

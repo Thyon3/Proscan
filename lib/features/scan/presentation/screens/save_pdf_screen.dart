@@ -1,4 +1,5 @@
 // features/scan/presentation/screens/save_pdf_screen.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -6,15 +7,14 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/services/document_upload_notification_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/document_download_service.dart';
-import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
 import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
-import 'package:thyscan/features/home/presentation/widgets/upload_complete_dialog.dart';
 import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/features/scan/presentation/screens/delete_pages_screen.dart';
@@ -578,69 +578,26 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     );
     if (!mounted || doc == null) return;
 
-    // Upload to cloud once (Supabase Storage + PostgreSQL)
-    await DocumentUploadService.instance.uploadDocument(doc);
+    // Request upload completion dialog (will be shown by notification service)
+    // and navigate home immediately for non-blocking UX.
+    DocumentUploadNotificationService.instance.requestUploadCompletionDialog(
+      documentId: doc.id,
+      documentTitle: doc.title,
+      pageCount: doc.pageCount,
+    );
 
-    // Determine upload status by checking sync state
-    DocumentUploadStatus uploadStatus;
-    final syncStatus = DocumentSyncStateService.instance.getSyncStatus(doc.id);
-    
-    if (syncStatus == DocumentSyncStatus.synced) {
-      uploadStatus = DocumentUploadStatus.success;
-    } else if (syncStatus == DocumentSyncStatus.failed) {
-      uploadStatus = DocumentUploadStatus.failed;
-    } else if (syncStatus == DocumentSyncStatus.pendingUpload || 
-               syncStatus == DocumentSyncStatus.uploadingFile ||
-               syncStatus == DocumentSyncStatus.uploadingThumbnail ||
-               syncStatus == DocumentSyncStatus.syncingMetadata ||
-               syncStatus == DocumentSyncStatus.syncing) {
-      uploadStatus = DocumentUploadStatus.queued;
-    } else if (syncStatus == DocumentSyncStatus.error ||
-               syncStatus == DocumentSyncStatus.failedRetry) {
-      uploadStatus = DocumentUploadStatus.failed;
-    } else {
-      // Fallback: check if document was actually uploaded
-      // by checking if file path is now a URL
-      if (doc.filePath.startsWith('http://') || doc.filePath.startsWith('https://')) {
-        uploadStatus = DocumentUploadStatus.success;
-      } else {
-        uploadStatus = DocumentUploadStatus.queued;
-      }
+    if (mounted) {
+      context.go('/appmainscreen');
     }
 
-    // Show upload complete dialog with actual status
-    await UploadCompleteDialog.show(
-      context: context,
-      documentTitle: widget.pdfFileName,
-      pageCount: _pages.length,
-      uploadStatus: uploadStatus,
-      onViewDocument: () {
-        if (!mounted) return;
-        // New document flow: replace editor with preview.
-        context.pushReplacement(
-          '/pdfpreview',
-          extra: {
-            'documentId': doc.id,
-            'startEdit': false,
-          },
-        );
-      },
-      onShareDocument: () async {
-        await _shareFile(
-          doc.filePath,
-          subject: doc.title,
-          text: 'Sent from ThyScan',
-        );
-
-        if (!mounted) return;
-        context.pushReplacement(
-          '/pdfpreview',
-          extra: {
-            'documentId': doc.id,
-            'startEdit': false,
-          },
-        );
-      },
+    unawaited(
+      () async {
+        try {
+          await DocumentUploadService.instance.uploadDocument(doc);
+        } catch (_) {
+          // Upload service already emits error progress; notification service will handle UI.
+        }
+      }(),
     );
   }
 
