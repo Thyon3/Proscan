@@ -76,6 +76,7 @@ class PaginatedDocumentsNotifier
   final Ref _ref;
   Timer? _disposeTimer;
   int _lastDocumentCount = 0;
+  int _lastDocumentsSignature = 0;
 
   PaginatedDocumentsNotifier({
     required this.scanMode,
@@ -103,16 +104,40 @@ class PaginatedDocumentsNotifier
       allDocumentsProvider,
       (previous, next) {
         next.whenData((documents) {
+          final signature = _computeDocumentsSignature(documents);
+
           // Check if document count changed (new document saved or deleted)
           final currentCount = documents.length;
-          if (currentCount != _lastDocumentCount) {
+          final countChanged = currentCount != _lastDocumentCount;
+          final signatureChanged = signature != _lastDocumentsSignature;
+
+          if (countChanged || signatureChanged) {
             _lastDocumentCount = currentCount;
+            _lastDocumentsSignature = signature;
             // Documents changed - refresh current page to show new/updated documents
             _refreshCurrentPageSilently();
           }
         });
       },
     );
+  }
+
+  int _computeDocumentsSignature(List<DocumentModel> documents) {
+    // We include fields that impact list rendering and sorting.
+    // This intentionally avoids hashing large strings (e.g. textContent).
+    var hash = 0;
+    for (final doc in documents) {
+      hash = Object.hash(
+        hash,
+        doc.id,
+        doc.updatedAt.millisecondsSinceEpoch,
+        doc.pageCount,
+        doc.thumbnailPath,
+        doc.filePath,
+        doc.isDeleted,
+      );
+    }
+    return hash;
   }
   
   /// Silently refreshes the current page without showing loading state

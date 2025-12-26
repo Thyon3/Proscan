@@ -1,6 +1,7 @@
 // features/home/presentation/widgets/fast_thumbnail.dart
 
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:thyscan/core/services/thumbnail_preload_service.dart';
@@ -44,6 +45,7 @@ class FastThumbnail extends StatefulWidget {
 
 class _FastThumbnailState extends State<FastThumbnail> {
   String? _thumbnailPath;
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -55,8 +57,15 @@ class _FastThumbnailState extends State<FastThumbnail> {
   void didUpdateWidget(FastThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.documentId != widget.documentId) {
+      _stopPolling();
       _loadThumbnail();
     }
+  }
+
+  @override
+  void dispose() {
+    _stopPolling();
+    super.dispose();
   }
 
   void _loadThumbnail() {
@@ -69,12 +78,47 @@ class _FastThumbnailState extends State<FastThumbnail> {
       setState(() {
         _thumbnailPath = cachedPath;
       });
+      _stopPolling();
     } else {
       // Thumbnail not ready yet, show placeholder
       setState(() {
         _thumbnailPath = null;
       });
+
+      // The preload service fills cache asynchronously. This widget previously
+      // never re-checked, so thumbnails could stay as placeholders until a full
+      // screen rebuild. Poll briefly to pick up the cached file as soon as it exists.
+      _startPolling();
     }
+  }
+
+  void _startPolling() {
+    if (_pollTimer != null) return;
+
+    // Poll a few times per second for a short window.
+    // This is intentionally lightweight (timer is cancelled once thumbnail appears).
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted) return;
+      final cachedPath = ThumbnailPreloadService.instance
+          .getCachedThumbnailPath(widget.documentId);
+      if (cachedPath != null) {
+        setState(() {
+          _thumbnailPath = cachedPath;
+        });
+        _stopPolling();
+      }
+    });
+
+    // Stop polling after a short timeout to avoid background work.
+    Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      _stopPolling();
+    });
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
   }
 
   @override
