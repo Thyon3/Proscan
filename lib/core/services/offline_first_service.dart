@@ -1,7 +1,6 @@
 // core/services/offline_first_service.dart
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/document_sync_service.dart';
@@ -32,9 +31,6 @@ import 'package:thyscan/services/document_service.dart';
 class OfflineFirstService {
   OfflineFirstService._();
   static final OfflineFirstService instance = OfflineFirstService._();
-
-  final Connectivity _connectivity = Connectivity();
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _isInitialized = false;
 
   /// Queue of pending operations (uploads/downloads)
@@ -54,22 +50,6 @@ class OfflineFirstService {
 
     AppLogger.info('Initializing OfflineFirstService');
 
-    // Listen to connectivity changes
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
-      results,
-    ) {
-      final isOnline = results.any(
-        (result) =>
-            result != ConnectivityResult.none &&
-            result != ConnectivityResult.bluetooth,
-      );
-
-      if (isOnline) {
-        AppLogger.info('Network restored, processing offline queue');
-        _processOfflineQueue();
-      }
-    });
-
     // Load pending operations from persistent storage
     await _loadPendingOperations();
 
@@ -79,7 +59,6 @@ class OfflineFirstService {
 
   /// Disposes the service
   void dispose() {
-    _connectivitySubscription?.cancel();
     _queueController.close();
     _isInitialized = false;
   }
@@ -99,9 +78,6 @@ class OfflineFirstService {
       data: {'count': localDocs.length},
     );
 
-    // Trigger background sync if online (non-blocking)
-    _triggerBackgroundSync();
-
     return localDocs;
   }
 
@@ -114,9 +90,6 @@ class OfflineFirstService {
     if (doc != null && !doc.isDeleted) {
       return doc;
     }
-
-    // If not found locally and online, trigger sync
-    _triggerBackgroundSync();
 
     return null;
   }
@@ -213,45 +186,6 @@ class OfflineFirstService {
         createdAt: DateTime.now(),
       ),
     );
-  }
-
-  /// Triggers background sync if online (non-blocking).
-  void _triggerBackgroundSync() {
-    _connectivity.checkConnectivity().then((results) {
-      final isOnline = results.any(
-        (result) =>
-            result != ConnectivityResult.none &&
-            result != ConnectivityResult.bluetooth,
-      );
-
-      if (isOnline) {
-        // Trigger sync in background (non-blocking)
-        DocumentSyncService.instance.syncDocuments().catchError((error) {
-          AppLogger.error('Background sync failed', error: error);
-        });
-      }
-    });
-  }
-
-  /// Processes the offline queue when network is restored.
-  Future<void> _processOfflineQueue() async {
-    if (_pendingOperations.isEmpty) return;
-
-    AppLogger.info(
-      'Processing offline queue',
-      data: {'count': _pendingOperations.length},
-    );
-
-    // Process uploads (DocumentUploadService handles this automatically)
-    // Process downloads (DocumentSyncService handles this automatically)
-    // Just trigger sync and let services handle their queues
-
-    await DocumentSyncService.instance.syncDocuments();
-
-    // Clear processed operations
-    _pendingOperations.clear();
-    _savePendingOperations();
-    _queueController.add(_pendingOperations);
   }
 
   /// Adds a pending operation to the queue.

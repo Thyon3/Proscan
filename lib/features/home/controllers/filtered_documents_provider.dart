@@ -155,6 +155,14 @@ final filteredDocumentsProvider = Provider<AsyncValue<List<DocumentModel>>>((
         if (doc.isDeleted) {
           return false;
         }
+        // Offline-first display: show only documents stored locally
+        if (doc.isCloudDocument) {
+          return false;
+        }
+        // Ensure the local file actually exists (internal-storage only)
+        if (!doc.hasValidFile) {
+          return false;
+        }
         return activeFilter.matches(doc.scanMode);
       }).toList();
 
@@ -187,39 +195,12 @@ final filteredDocumentsWithBackendProvider = FutureProvider<List<DocumentModel>>
   final homeState = ref.watch(homeProvider);
   final activeFilter = DocumentFilters.getById(homeState.activeFilterId);
 
-  // Check connectivity
-  final connectivity = Connectivity();
-  final connectivityResults = await connectivity.checkConnectivity();
-  final isOnline = connectivityResults.any(
-    (result) =>
-        result != ConnectivityResult.none &&
-        result != ConnectivityResult.bluetooth,
-  );
-
-  // For "All" filter with default sort, use local (fast and documents are synced)
-  // For specific filters or when online, prefer backend for consistency
-  if (isOnline && activeFilter.scanMode != null) {
-    try {
-      // Use backend search for filtered views when online
-      final results = await DocumentSearchService.instance.search(
-        query: null, // No text query, just filtering
-        scanMode: activeFilter.scanMode,
-        sortBy: homeState.sortCriteria,
-        descending: true,
-        page: 0,
-        pageSize: 1000, // Get all results for main view
-      );
-      return results.items;
-    } catch (e) {
-      // Fallback to local on error
-    }
-  }
-
-  // Use local filtering (offline or "All" filter or backend failed)
+  // Offline-first display: always use local filtering for the main view.
   final allDocumentsAsync = ref.watch(allDocumentsProvider);
   final allDocuments = await allDocumentsAsync.value ?? [];
+  final localOnly = allDocuments.where((doc) => !doc.isCloudDocument).toList();
   return DocumentSearchService.instance.filterAndSort(
-    documents: allDocuments,
+    documents: localOnly,
     scanMode: activeFilter.scanMode,
     sortBy: homeState.sortCriteria,
     descending: true,

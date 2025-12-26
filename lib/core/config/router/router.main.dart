@@ -238,6 +238,27 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(
+      path: '/pdfpreview',
+      name: 'pdfpreview',
+      builder: (_, state) {
+        final extra = state.extra;
+        if (extra is Map<String, dynamic>) {
+          final documentId = extra['documentId'] as String?;
+          final startEdit = extra['startEdit'] as bool? ?? false;
+          if (documentId == null || documentId.isEmpty) {
+            throw ArgumentError('PdfPreviewScreen requires documentId.');
+          }
+          return PdfPreviewScreen(
+            documentId: documentId,
+            startInEditMode: startEdit,
+          );
+        } else if (extra is String) {
+          return PdfPreviewScreen(documentId: extra);
+        }
+        throw ArgumentError('PdfPreviewScreen requires documentId.');
+      },
+    ),
+    GoRoute(
       path: '/texteditorscreen',
       builder: (_, state) {
         final extra = state.extra;

@@ -2,6 +2,7 @@ import com.android.build.gradle.LibraryExtension
 import org.gradle.api.JavaVersion
 import org.gradle.api.file.Directory
 import org.gradle.kotlin.dsl.configure
+import org.gradle.api.tasks.compile.JavaCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 buildscript {
@@ -69,6 +70,12 @@ subprojects {
         kotlinOptions {
             jvmTarget = "17"
         }
+    }
+
+    // Force Java 17 for all Java compilation tasks (some plugins default to 11)
+    tasks.withType<JavaCompile>().configureEach {
+        sourceCompatibility = JavaVersion.VERSION_17.toString()
+        targetCompatibility = JavaVersion.VERSION_17.toString()
     }
 }
 

@@ -575,7 +575,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
         ),
       );
 
-      context.go('/appmainscreen');
+      if (context.canPop()) {
+        context.pop(true);
+      } else {
+        context.go('/appmainscreen');
+      }
 
       // Prompt for share after save
       final box = Hive.box<DocumentModel>(DocumentService.boxName);

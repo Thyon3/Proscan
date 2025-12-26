@@ -163,15 +163,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen>
       context.push('/textdocumentscreen', extra: {'documentId': doc.id});
     } else {
       context.push(
-        '/savepdfscreen',
+        '/pdfpreview',
         extra: {
-          'imagePaths': doc.pageImagePaths.isNotEmpty
-              ? doc.pageImagePaths
-              : [doc.thumbnailPath],
-          'pdfFileName': doc.title,
           'documentId': doc.id,
-          'scanMode': doc.scanMode,
-          'colorProfile': doc.colorProfile,
+          'startEdit': false,
         },
       );
     }

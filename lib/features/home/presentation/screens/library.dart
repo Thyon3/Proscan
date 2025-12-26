@@ -308,7 +308,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               _openDocument(context, doc);
             }
           },
-          onEdit: () => _openDocument(context, doc),
+          onEdit: () => _editDocument(context, doc),
           onDelete: () => _deleteDocument(context, doc),
           onShare: () => _shareDocument(context, doc),
         ),
@@ -365,20 +365,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         context.push('/textdocumentscreen', extra: {'documentId': doc.id});
       }
     } else {
-      // Route PDF documents to SavePdfScreen
       context.push(
-        '/savepdfscreen',
+        '/pdfpreview',
         extra: {
-          'imagePaths': doc.pageImagePaths.isNotEmpty
-              ? doc.pageImagePaths
-              : [doc.thumbnailPath],
-          'pdfFileName': doc.title,
           'documentId': doc.id,
-          'scanMode': doc.scanMode,
-          'colorProfile': doc.colorProfile,
+          'startEdit': false,
         },
       );
     }
+  }
+
+  void _editDocument(BuildContext context, DocumentModel doc) {
+    if (doc.format == 'txt' || doc.format == 'docx') {
+      if (doc.scanMode == 'translate') {
+        context.push('/translationeditorscreen', extra: {'documentId': doc.id});
+      } else {
+        context.push('/textdocumentscreen', extra: {'documentId': doc.id});
+      }
+      return;
+    }
+
+    context.push(
+      '/pdfpreview',
+      extra: {
+        'documentId': doc.id,
+        'startEdit': true,
+      },
+    );
   }
 
   /// Delete document from Hive, internal storage, and backend

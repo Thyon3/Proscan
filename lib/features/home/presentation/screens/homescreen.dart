@@ -197,7 +197,7 @@ class HomeScreen extends ConsumerWidget {
               _openDocument(context, doc);
             }
           },
-          onEdit: () => _openDocument(context, doc),
+          onEdit: () => _editDocument(context, doc),
           onDelete: () => _deleteDocument(context, doc),
           onShare: () => _shareDocument(context, doc),
         ),
@@ -228,10 +228,58 @@ class HomeScreen extends ConsumerWidget {
   }
 
   /// Open document in appropriate screen based on format
-  void _openDocument(BuildContext context, DocumentModel doc) {
+  Future<void> _openDocument(BuildContext context, DocumentModel doc) async {
+    if (doc.format == 'txt' || doc.format == 'docx') {
+      context.push('/textdocumentscreen', extra: {'documentId': doc.id});
+      return;
+    }
+
+    context.push(
+      '/pdfpreview',
+      extra: {
+        'documentId': doc.id,
+        'startEdit': false,
+      },
+    );
+  }
+
+  Future<void> _editDocument(BuildContext context, DocumentModel doc) async {
+    if (doc.format == 'txt' || doc.format == 'docx') {
+      context.push('/textdocumentscreen', extra: {'documentId': doc.id});
+      return;
+    }
+
+    context.push(
+      '/pdfpreview',
+      extra: {
+        'documentId': doc.id,
+        'startEdit': true,
+      },
+    );
+  }
+  
+  /// Opens document with local files (no download needed)
+  void _openDocumentWithLocalFiles(BuildContext context, DocumentModel doc) {
     if (doc.format == 'txt' || doc.format == 'docx') {
       context.push('/textdocumentscreen', extra: {'documentId': doc.id});
     } else {
+      // For PDF documents, we need page images
+      // If pageImagePaths is empty but we have a local file, extract pages first
+      if (doc.pageImagePaths.isEmpty && doc.filePath.isNotEmpty) {
+        // Show error - PDF pages need to be extracted
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document needs to be processed. Please wait...'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        AppLogger.warning(
+          'PDF document has no page images',
+          data: {'documentId': doc.id},
+        );
+        return;
+      }
+      
       context.push(
         '/savepdfscreen',
         extra: {

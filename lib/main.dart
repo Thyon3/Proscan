@@ -48,7 +48,7 @@ void main() {
           error: details.exception,
           stack: details.stack,
         );
-        
+
         // Return a safe error widget instead of crashing
         return Material(
           child: Container(
@@ -70,10 +70,7 @@ void main() {
                 const SizedBox(height: 8),
                 Text(
                   'This widget failed to render',
-                  style: TextStyle(
-                    color: Colors.red.shade700,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12),
                 ),
               ],
             ),
@@ -96,16 +93,18 @@ void main() {
         // The UI will show these documents right away, even before sync completes
         await Hive.initFlutter();
         Hive.registerAdapter(DocumentModelAdapter());
-        
+
         // Run migrations before opening boxes
         await HiveMigrationService.instance.migrateIfNeeded();
-        
+
         await Hive.openBox<DocumentModel>(DocumentService.boxName);
-        
+
         AppLogger.info(
           '📱 Hive initialized - Documents from internal storage are now available',
           data: {
-            'documentCount': Hive.box<DocumentModel>(DocumentService.boxName).length,
+            'documentCount': Hive.box<DocumentModel>(
+              DocumentService.boxName,
+            ).length,
           },
         );
 
@@ -201,89 +200,53 @@ void main() {
 
         // Run document health check in background (non-blocking)
         // Prevents crashes from manually deleted files
-        DocumentHealthCheckService.instance.runHealthCheck().catchError((error) {
+        DocumentHealthCheckService.instance.runHealthCheck().catchError((
+          error,
+        ) {
           AppLogger.error(
             'Document health check failed (non-critical)',
             error: error,
           );
         });
 
-        // Trigger initial sync after auth is ready (non-blocking)
-        // SAFE MERGE MODE: Merges backend documents with local storage
-        // Never clears local documents - preserves offline work
-        authInitFuture.then((_) async {
-          // Wait a bit for auth to fully initialize
-          await Future.delayed(const Duration(seconds: 2));
-          final user = AuthService.instance.currentUser;
-          if (user != null) {
-            AppLogger.info(
-              '✅ User authenticated - userId: ${user.id}',
-              data: {
-                'userId': user.id,
-                'email': user.email ?? 'N/A',
-              },
-            );
-            
-            // Register periodic background sync
-            BackgroundSyncService.registerPeriodicSync().catchError((error) {
-              AppLogger.error(
-                'Failed to register periodic background sync',
-                error: error,
-              );
-            });
-            
-            AppLogger.info(
-              '🔄 Triggering initial document sync for authenticated user (merging with local documents)',
-              data: {
-                'userId': user.id,
-                'localDocumentCount': Hive.box<DocumentModel>(DocumentService.boxName).length,
-              },
-            );
-            // SAFE: Merge backend documents with local storage
-            // Local documents are preserved and only updated if backend version is newer
-            // CRITICAL: Backend will only return documents with this user's userId
-            DocumentSyncService.instance
-                .syncDocuments(
-                  forceFullSync: true,
-                  replaceLocal: false, // SAFE: Merge mode - preserves local documents
-                )
-                .then((result) {
-              AppLogger.info(
-                '✅ Initial sync completed for user ${user.id}',
-                data: {
-                  'userId': user.id,
-                  'success': result.success,
-                  'added': result.documentsAdded,
-                  'updated': result.documentsUpdated,
-                  'skipped': result.documentsSkipped,
-                },
-              );
-            }).catchError((error) {
+        // Offline-first: do not auto-sync at startup.
+        // Sync is user-initiated via the UI sync button.
+        authInitFuture
+            .then((_) async {
+              // Wait a bit for auth to fully initialize
+              await Future.delayed(const Duration(seconds: 2));
+              final user = AuthService.instance.currentUser;
+              if (user != null) {
+                AppLogger.info(
+                  '✅ User authenticated - userId: ${user.id}',
+                  data: {'userId': user.id, 'email': user.email ?? 'N/A'},
+                );
+              } else {
+                AppLogger.info(
+                  'ℹ️ No authenticated user - app will show only local documents',
+                );
+              }
+            })
+            .catchError((error) {
               AppLogger.warning(
-                '⚠️ Initial sync failed for user ${user.id} (app will use local documents)',
+                'Auth initialization failed, skipping initial sync',
                 error: error,
-                data: {'userId': user.id},
               );
             });
-          } else {
-            AppLogger.info(
-              'ℹ️ No authenticated user - app will show only local documents',
-            );
-          }
-        }).catchError((error) {
-          AppLogger.warning(
-            'Auth initialization failed, skipping initial sync',
-            error: error,
-          );
-        });
 
-        AppLogger.info('Core services initialized successfully (auth initializing in background)');
+        AppLogger.info(
+          'Core services initialized successfully (auth initializing in background)',
+        );
       } catch (e, s) {
-        AppLogger.error('FATAL: Core initialization failed', error: e, stack: s);
+        AppLogger.error(
+          'FATAL: Core initialization failed',
+          error: e,
+          stack: s,
+        );
         // Optional: Show crash screen
       }
 
-      runApp( ProviderScope(child: MyApp()));
+      runApp(ProviderScope(child: MyApp()));
     },
     (error, stack) {
       AppLogger.error('Uncaught error', error: error, stack: stack);

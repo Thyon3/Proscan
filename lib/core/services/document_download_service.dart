@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
@@ -455,8 +456,9 @@ class DocumentDownloadService {
       }
 
       // Create local file path
-      final localFilePath = '${documentsDir.path}/$documentId/$finalFileName';
+      final localFilePath = p.join(documentsDir.path, documentId, finalFileName);
       final localFile = File(localFilePath);
+      final tempFile = File('$localFilePath.part');
 
       // Create parent directory if it doesn't exist
       await localFile.parent.create(recursive: true);
@@ -468,6 +470,15 @@ class DocumentDownloadService {
           data: {'path': localFilePath},
         );
         return localFilePath;
+      }
+
+      // Clean up any previous partial download
+      if (await tempFile.exists()) {
+        try {
+          await tempFile.delete();
+        } catch (_) {
+          // Ignore
+        }
       }
 
       AppLogger.info(
@@ -482,65 +493,91 @@ class DocumentDownloadService {
       // Emit initial progress
       _emitProgress(documentId, progress: 0.0);
 
-      // Download file with progress tracking
-      final request = http.Request('GET', Uri.parse(url));
-      final streamedResponse = await http.Client()
-          .send(request)
-          .timeout(
-            const Duration(seconds: 60),
-            onTimeout: () {
-              throw Exception('Download timeout');
+      // Download file with progress tracking (stream-to-disk)
+      final client = http.Client();
+      try {
+        final request = http.Request('GET', Uri.parse(url));
+
+        // If the URL is a protected endpoint that accepts Bearer auth, attach token.
+        // This is safe for public URLs too (server will ignore unknown auth).
+        try {
+          await AuthService.instance.ensureInitialized();
+          final session = AuthService.instance.supabase.auth.currentSession;
+          if (session?.accessToken.isNotEmpty == true) {
+            request.headers['Authorization'] = 'Bearer ${session!.accessToken}';
+          }
+        } catch (_) {
+          // Auth not available (guest/offline) - continue without auth header.
+        }
+
+        final streamedResponse = await client
+            .send(request)
+            .timeout(
+              const Duration(seconds: 90),
+              onTimeout: () {
+                throw Exception('Download timeout');
+              },
+            );
+
+        if (streamedResponse.statusCode != 200) {
+          AppLogger.error(
+            'Failed to download file',
+            data: {
+              'statusCode': streamedResponse.statusCode,
+              'reasonPhrase': streamedResponse.reasonPhrase,
+              'url': url.substring(0, url.length > 100 ? 100 : url.length) + '...',
             },
           );
-
-      final totalBytes = streamedResponse.contentLength;
-      int bytesDownloaded = 0;
-
-      // Read response with progress tracking
-      final List<int> bytes = [];
-      await for (final chunk in streamedResponse.stream) {
-        bytes.addAll(chunk);
-        bytesDownloaded += chunk.length;
-
-        // Emit progress
-        if (totalBytes != null && totalBytes > 0) {
-          final progress = bytesDownloaded / totalBytes;
-          _emitProgress(
-            documentId,
-            progress: progress,
-            bytesDownloaded: bytesDownloaded,
-            totalBytes: totalBytes,
-          );
-        } else {
-          // Unknown total, just track bytes
-          _emitProgress(
-            documentId,
-            progress: 0.5, // Indeterminate progress
-            bytesDownloaded: bytesDownloaded,
-          );
+          return null;
         }
+
+        final totalBytes = streamedResponse.contentLength;
+        var bytesDownloaded = 0;
+
+        final sink = tempFile.openWrite();
+        try {
+          await for (final chunk in streamedResponse.stream) {
+            sink.add(chunk);
+            bytesDownloaded += chunk.length;
+
+            if (totalBytes != null && totalBytes > 0) {
+              final progress = bytesDownloaded / totalBytes;
+              _emitProgress(
+                documentId,
+                progress: progress,
+                bytesDownloaded: bytesDownloaded,
+                totalBytes: totalBytes,
+              );
+            } else {
+              _emitProgress(
+                documentId,
+                progress: 0.5,
+                bytesDownloaded: bytesDownloaded,
+              );
+            }
+          }
+        } finally {
+          await sink.flush();
+          await sink.close();
+        }
+
+        // Validate download
+        if (!await tempFile.exists()) {
+          return null;
+        }
+        final size = await tempFile.length();
+        if (size <= 0) {
+          try {
+            await tempFile.delete();
+          } catch (_) {}
+          return null;
+        }
+
+        // Atomic-ish promote
+        await tempFile.rename(localFilePath);
+      } finally {
+        client.close();
       }
-
-      final response = http.Response.bytes(
-        bytes,
-        streamedResponse.statusCode,
-        headers: streamedResponse.headers,
-        request: request,
-      );
-
-      if (response.statusCode != 200) {
-        AppLogger.error(
-          'Failed to download file',
-          data: {
-            'statusCode': response.statusCode,
-            'url': url.substring(0, 100) + '...',
-          },
-        );
-        return null;
-      }
-
-      // Write to local file
-      await localFile.writeAsBytes(response.bodyBytes);
 
       AppLogger.info(
         '✅ File downloaded successfully',
@@ -549,6 +586,19 @@ class DocumentDownloadService {
 
       return localFilePath;
     } catch (e, stack) {
+      // Cleanup partial file
+      try {
+        final appDocsDir = await getApplicationDocumentsDirectory();
+        final documentsDir = Directory('${appDocsDir.path}/scanned_documents');
+        final finalFileName = fileName ?? url.split('/').last.split('?').first;
+        final localFilePath = p.join(documentsDir.path, documentId, finalFileName);
+        final tempFile = File('$localFilePath.part');
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (_) {
+        // Ignore cleanup errors
+      }
       AppLogger.error(
         'Failed to download file',
         error: e,

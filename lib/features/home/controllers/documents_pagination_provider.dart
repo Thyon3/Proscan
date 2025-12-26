@@ -329,12 +329,25 @@ class PaginatedDocumentsNotifier
   /// Filters documents by scan mode
   List<DocumentModel> _filterDocuments(List<DocumentModel> documents) {
     if (scanMode == null) {
-      // Return all non-deleted documents
-      return documents.where((doc) => !doc.isDeleted).toList();
+      // Offline-first display: return local, non-deleted documents only
+      return documents
+          .where(
+            (doc) =>
+                !doc.isDeleted &&
+                !doc.isCloudDocument &&
+                doc.hasValidFile,
+          )
+          .toList();
     }
 
     return documents
-        .where((doc) => !doc.isDeleted && doc.scanMode == scanMode)
+        .where(
+          (doc) =>
+              !doc.isDeleted &&
+              !doc.isCloudDocument &&
+              doc.hasValidFile &&
+              doc.scanMode == scanMode,
+        )
         .toList();
   }
 

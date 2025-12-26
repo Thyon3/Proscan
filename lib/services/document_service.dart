@@ -796,6 +796,21 @@ class DocumentService {
             } catch (_) {}
           }
 
+          final preservedRemoteFileUrl = existingDoc.metadata['remoteFileUrl'];
+          final preservedRemoteThumbUrl =
+              existingDoc.metadata['remoteThumbnailUrl'];
+          final mergedMetadata = {
+            ...resolvedMetadata.toDocumentMap(),
+            if (preservedRemoteFileUrl != null &&
+                (preservedRemoteFileUrl.startsWith('http://') ||
+                    preservedRemoteFileUrl.startsWith('https://')))
+              'remoteFileUrl': preservedRemoteFileUrl,
+            if (preservedRemoteThumbUrl != null &&
+                (preservedRemoteThumbUrl.startsWith('http://') ||
+                    preservedRemoteThumbUrl.startsWith('https://')))
+              'remoteThumbnailUrl': preservedRemoteThumbUrl,
+          };
+
           final updatedDoc = DocumentModel(
             id: documentId,
             title: docTitle,
@@ -810,7 +825,7 @@ class DocumentService {
             colorProfile: newColorProfile.key,
             textContent: existingDoc.textContent,
             tags: resolvedTags,
-            metadata: resolvedMetadata.toDocumentMap(),
+            metadata: mergedMetadata,
           );
 
           // PROGRESS: Updating local database
@@ -882,41 +897,43 @@ class DocumentService {
                 'changes': changes.toString(),
                 'uploadSize': changes.uploadSize,
                 'expectedSpeedup': changes.expectedSpeedup,
+                'fileChanged': changes.fileChanged,
+                'needsFileUpload': changes.needsFileUpload,
               },
             );
 
-            // Use delta upload service (smart routing)
-            DeltaUploadService.instance
-                .uploadDelta(
-                  oldDoc: existingDoc,
-                  newDoc: updatedDoc,
-                  changes: changes,
-                )
-                .then((success) {
-                  if (success) {
-                    AppLogger.info(
-                      '✅ Delta sync completed successfully',
-                      data: {
-                        'documentId': updatedDoc.id,
-                        'fastPath': changes.onlyMetadata,
-                      },
-                    );
-                  } else {
-                    AppLogger.warning(
-                      '⚠️ Delta sync failed, document saved locally only',
-                      error: null,
-                      data: {'documentId': updatedDoc.id},
-                    );
-                  }
-                })
-                .catchError((error, stack) {
-                  AppLogger.error(
-                    '❌ Delta sync error',
-                    error: error,
-                    stack: stack,
-                    data: {'documentId': updatedDoc.id},
-                  );
-                });
+            // Use delta upload service (smart routing) - AWAIT to ensure upload completes
+            try {
+              final uploadSuccess = await DeltaUploadService.instance.uploadDelta(
+                oldDoc: existingDoc,
+                newDoc: updatedDoc,
+                changes: changes,
+              );
+
+              if (uploadSuccess) {
+                AppLogger.info(
+                  '✅ Delta sync completed successfully',
+                  data: {
+                    'documentId': updatedDoc.id,
+                    'fastPath': changes.onlyMetadata,
+                    'fileChanged': changes.fileChanged,
+                  },
+                );
+              } else {
+                AppLogger.warning(
+                  '⚠️ Delta sync failed, document saved locally only',
+                  error: null,
+                  data: {'documentId': updatedDoc.id},
+                );
+              }
+            } catch (error, stack) {
+              AppLogger.error(
+                '❌ Delta sync error',
+                error: error,
+                stack: stack,
+                data: {'documentId': updatedDoc.id},
+              );
+            }
 
             _emitUpdateProgress(documentId, UpdateStage.committingUpdate, 1.0);
           }
@@ -1084,11 +1101,17 @@ class DocumentService {
       },
     );
 
-    // Check if document is uploaded to Supabase Storage
-    // If filePath is a URL (starts with http/https), it's in Supabase Storage
+    // Check if document is uploaded to Supabase Storage.
+    // Cloud docs may be cached locally (filePath becomes a local path), so we also
+    // treat documents with a preserved remote URL in metadata as uploaded.
+    final remoteFileUrl = doc.metadata['remoteFileUrl'];
+    final remoteThumbUrl = doc.metadata['remoteThumbnailUrl'];
     final isUploaded =
         doc.filePath.startsWith('http://') ||
-        doc.filePath.startsWith('https://');
+        doc.filePath.startsWith('https://') ||
+        (remoteFileUrl != null &&
+            (remoteFileUrl.startsWith('http://') ||
+                remoteFileUrl.startsWith('https://')));
 
     // If hard delete is requested or document is local-only, perform immediate deletion
     if (hardDelete || !isUploaded) {
@@ -1134,19 +1157,34 @@ class DocumentService {
     _markCacheDirty();
 
     // Request soft delete from backend
+    final remoteFileUrl = doc.metadata['remoteFileUrl'];
+    final remoteThumbUrl = doc.metadata['remoteThumbnailUrl'];
     final isUploaded =
         doc.filePath.startsWith('http://') ||
-        doc.filePath.startsWith('https://');
+        doc.filePath.startsWith('https://') ||
+        (remoteFileUrl != null &&
+            (remoteFileUrl.startsWith('http://') ||
+                remoteFileUrl.startsWith('https://')));
 
     if (isUploaded) {
       try {
-        final fileUrl = doc.filePath;
-        final thumbnailUrl =
-            doc.thumbnailPath.isNotEmpty &&
-                (doc.thumbnailPath.startsWith('http://') ||
-                    doc.thumbnailPath.startsWith('https://'))
-            ? doc.thumbnailPath
-            : null;
+        final fileUrl = (doc.filePath.startsWith('http://') ||
+                doc.filePath.startsWith('https://'))
+            ? doc.filePath
+            : remoteFileUrl;
+        final thumbnailUrl = (doc.thumbnailPath.isNotEmpty &&
+                    (doc.thumbnailPath.startsWith('http://') ||
+                        doc.thumbnailPath.startsWith('https://')))
+                ? doc.thumbnailPath
+                : (remoteThumbUrl != null &&
+                        (remoteThumbUrl.startsWith('http://') ||
+                            remoteThumbUrl.startsWith('https://')))
+                    ? remoteThumbUrl
+                    : null;
+
+        if (fileUrl == null || fileUrl.isEmpty) {
+          throw Exception('Missing remote file URL for backend delete');
+        }
 
         await DocumentBackendSyncService.instance.deleteDocument(
           documentId: id,
@@ -1202,14 +1240,28 @@ class DocumentService {
           data: {'documentId': id},
         );
 
-        // Extract fileUrl and thumbnailUrl from filePath and thumbnailPath
-        final fileUrl = doc.filePath;
-        final thumbnailUrl =
-            doc.thumbnailPath.isNotEmpty &&
-                (doc.thumbnailPath.startsWith('http://') ||
-                    doc.thumbnailPath.startsWith('https://'))
-            ? doc.thumbnailPath
-            : null;
+        final remoteFileUrl = doc.metadata['remoteFileUrl'];
+        final remoteThumbUrl = doc.metadata['remoteThumbnailUrl'];
+
+        // Extract fileUrl and thumbnailUrl.
+        // If the document was cached locally, use remote urls from metadata.
+        final fileUrl = (doc.filePath.startsWith('http://') ||
+                doc.filePath.startsWith('https://'))
+            ? doc.filePath
+            : remoteFileUrl;
+        final thumbnailUrl = (doc.thumbnailPath.isNotEmpty &&
+                    (doc.thumbnailPath.startsWith('http://') ||
+                        doc.thumbnailPath.startsWith('https://')))
+                ? doc.thumbnailPath
+                : (remoteThumbUrl != null &&
+                        (remoteThumbUrl.startsWith('http://') ||
+                            remoteThumbUrl.startsWith('https://')))
+                    ? remoteThumbUrl
+                    : null;
+
+        if (fileUrl == null || fileUrl.isEmpty) {
+          throw Exception('Missing remote file URL for backend delete');
+        }
 
         await DocumentBackendSyncService.instance.deleteDocument(
           documentId: id,
@@ -1310,15 +1362,28 @@ class DocumentService {
     _markCacheDirty();
 
     // If document was uploaded, restore it on backend
+    final remoteFileUrl = doc.metadata['remoteFileUrl'];
+    final remoteThumbUrl = doc.metadata['remoteThumbnailUrl'];
     final isUploaded =
         doc.filePath.startsWith('http://') ||
-        doc.filePath.startsWith('https://');
+        doc.filePath.startsWith('https://') ||
+        (remoteFileUrl != null &&
+            (remoteFileUrl.startsWith('http://') ||
+                remoteFileUrl.startsWith('https://')));
 
     if (isUploaded) {
       try {
         // Update document metadata on backend to clear deleted flag
         await DocumentBackendSyncService.instance.updateDocumentMetadata(
           restoredDoc,
+          newFileUrl: (doc.filePath.startsWith('http://') ||
+                  doc.filePath.startsWith('https://'))
+              ? doc.filePath
+              : remoteFileUrl,
+          newThumbnailUrl: (doc.thumbnailPath.startsWith('http://') ||
+                  doc.thumbnailPath.startsWith('https://'))
+              ? doc.thumbnailPath
+              : remoteThumbUrl,
         );
         DocumentSyncStateService.instance.setSyncStatus(
           id,
@@ -1348,8 +1413,11 @@ class DocumentService {
   /// Deletes local files associated with a document
   Future<void> _deleteLocalFiles(DocumentModel doc, bool isUploaded) async {
     try {
-      // Only try to delete if it's a local file path (not a URL)
-      if (!isUploaded) {
+      // Delete local cached file if it's a local path (even if the document is uploaded).
+      // Cached cloud documents can have a local filePath but still be "uploaded".
+      if (doc.filePath.isNotEmpty &&
+          !doc.filePath.startsWith('http://') &&
+          !doc.filePath.startsWith('https://')) {
         final file = File(doc.filePath);
         if (await file.exists()) {
           await file.delete();
@@ -1359,22 +1427,14 @@ class DocumentService {
           );
         }
       }
-    } catch (e) {
-      AppLogger.warning(
-        'Failed to delete local document file (may not exist)',
-        error: e,
-        data: {'path': doc.filePath},
-      );
-    }
 
-    try {
-      // Delete thumbnail if it's a local file
+      // Delete local thumbnail if it's a local path
       if (doc.thumbnailPath.isNotEmpty &&
           !doc.thumbnailPath.startsWith('http://') &&
           !doc.thumbnailPath.startsWith('https://')) {
-        final thumb = File(doc.thumbnailPath);
-        if (await thumb.exists()) {
-          await thumb.delete();
+        final thumbnail = File(doc.thumbnailPath);
+        if (await thumbnail.exists()) {
+          await thumbnail.delete();
           AppLogger.info(
             '🗑️ Deleted local thumbnail file',
             data: {'path': doc.thumbnailPath},

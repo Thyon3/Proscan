@@ -1,7 +1,6 @@
 // core/services/document_search_service.dart
 import 'dart:async';
 
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/app_logger.dart';
@@ -34,8 +33,6 @@ import 'package:thyscan/services/document_service.dart';
 class DocumentSearchService {
   DocumentSearchService._();
   static final DocumentSearchService instance = DocumentSearchService._();
-
-  final Connectivity _connectivity = Connectivity();
   final Map<String, PaginatedDocuments> _cache = {};
   static const Duration _cacheTTL = Duration(minutes: 5);
   final Map<String, DateTime> _cacheTimestamps = {};
@@ -134,12 +131,17 @@ class DocumentSearchService {
         // Get documents by IDs from repository
         documents = await DocumentRepository.instance.getDocumentsByIds(matchingDocIds);
         
-        // Filter out deleted documents
-        documents = documents.where((doc) => !doc.isDeleted).toList();
+        // Offline-first display: filter out deleted/cloud/missing-file documents
+        documents = documents
+            .where((doc) => !doc.isDeleted && !doc.isCloudDocument && doc.hasValidFile)
+            .toList();
       } else {
         // No query - get all documents
         documents = await DocumentRepository.instance.getAllDocuments();
-        documents = documents.where((doc) => !doc.isDeleted).toList();
+        // Offline-first display: filter out deleted/cloud/missing-file documents
+        documents = documents
+            .where((doc) => !doc.isDeleted && !doc.isCloudDocument && doc.hasValidFile)
+            .toList();
       }
 
       // Apply scanMode filter
@@ -221,40 +223,7 @@ class DocumentSearchService {
       }
     }
 
-    // Check connectivity
-    final connectivityResults = await _connectivity.checkConnectivity();
-    final isOnline = connectivityResults.any(
-      (result) =>
-          result != ConnectivityResult.none &&
-          result != ConnectivityResult.bluetooth,
-    );
-
-    if (isOnline) {
-      try {
-        // Try backend search
-        final results = await searchBackend(
-          query: query,
-          scanMode: scanMode,
-          sortBy: sortBy,
-          descending: descending,
-          page: page,
-          pageSize: pageSize,
-        );
-
-        // Cache results
-        _cacheResult(cacheKey, results);
-
-        return results;
-      } catch (e) {
-        AppLogger.warning(
-          'Backend search failed, falling back to local search',
-          error: e,
-        );
-        // Fall through to local search
-      }
-    }
-
-    // Use local search (offline or backend failed)
+    // Offline-first display: always use local search.
     final localResults = await searchLocal(
       query: query,
       scanMode: scanMode,
@@ -276,6 +245,8 @@ class DocumentSearchService {
       items: paginatedItems,
       hasMore: end < localResults.length,
     );
+
+    _cacheResult(cacheKey, paginatedResults);
 
     return paginatedResults;
   }

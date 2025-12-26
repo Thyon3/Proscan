@@ -1,8 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/features/auth/screens/forgotpassword.dart';
-import 'package:thyscan/features/auth/screens/login.dart'
-    hide ForgotPasswordScreen;
+import 'package:thyscan/features/auth/screens/login.dart' hide ForgotPasswordScreen;
 import 'package:thyscan/features/auth/screens/resetpassword.dart';
 import 'package:thyscan/features/auth/screens/signup.dart';
 import 'package:thyscan/features/auth/screens/verifyotp.dart';
@@ -20,6 +19,7 @@ import 'package:thyscan/features/scan/model/scan_flow_models.dart';
 import 'package:thyscan/features/scan/presentation/screens/camera.dart';
 import 'package:thyscan/features/scan/presentation/screens/edit_scan.dart';
 import 'package:thyscan/features/scan/presentation/screens/save_pdf_screen.dart';
+import 'package:thyscan/features/scan/presentation/screens/pdf_preview_screen.dart';
 import 'package:thyscan/features/scan/presentation/screens/text_editor_screen.dart';
 import 'package:thyscan/features/scan/presentation/screens/text_document_screen.dart';
 import 'package:thyscan/features/scan/presentation/screens/translation_editor_screen.dart';

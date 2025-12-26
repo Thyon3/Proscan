@@ -285,11 +285,11 @@ class _SyncStatusDialogState extends State<_SyncStatusDialog> {
                       AppLogger.info('Step 1/3: Retrying failed uploads...');
                       await DocumentUploadService.instance.syncNow();
                       
-                      // Step 2: Perform full sync from backend (replaces local with backend)
+                      // Step 2: Perform full sync from backend (merge into local)
                       AppLogger.info('Step 2/3: Performing full sync from backend...');
                       final result = await DocumentSyncService.instance.syncDocuments(
                         forceFullSync: true, // Full sync to get all documents
-                        replaceLocal: true,  // Replace local with backend data
+                        replaceLocal: false, // Merge mode - preserves local documents
                       );
                       
                       // Step 3: Clear any retry counters

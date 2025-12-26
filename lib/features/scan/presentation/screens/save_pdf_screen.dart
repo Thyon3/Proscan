@@ -469,10 +469,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             ListTile(
               leading: const Icon(Icons.edit_rounded),
               title: const Text('Edit Pages'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                // Navigate to edit screen
-                context.push(
+
+                final updated = await context.push<bool>(
                   '/editscanscreen',
                   extra: EditScanArgs(
                     imagePath: _pages.isNotEmpty ? _pages[0] : '',
@@ -483,6 +483,18 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                     documentTitle: widget.pdfFileName,
                   ),
                 );
+
+                if (updated == true && _documentId != null && mounted) {
+                  final box = Hive.box<DocumentModel>(DocumentService.boxName);
+                  final doc = box.get(_documentId!);
+                  if (doc != null && doc.pageImagePaths.isNotEmpty) {
+                    setState(() {
+                      _pages = List.from(doc.pageImagePaths);
+                      _hasUnsavedChanges = false;
+                    });
+                    await _loadPreviewImages();
+                  }
+                }
               },
             ),
             ListTile(
@@ -581,8 +593,22 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       pageCount: _pages.length,
       uploadStatus: uploadStatus,
       onViewDocument: () {
-        // Navigate to home screen
-        context.go('/appmainscreen');
+        if (!mounted) return;
+        if (widget.documentId != null) {
+          // Editing an existing document (typically launched from PdfPreviewScreen)
+          // Return to caller so it can refresh.
+          context.pop(true);
+          return;
+        }
+
+        // New document flow: replace editor with preview.
+        context.pushReplacement(
+          '/pdfpreview',
+          extra: {
+            'documentId': doc.id,
+            'startEdit': false,
+          },
+        );
       },
       onShareDocument: () async {
         await _shareFile(
@@ -590,9 +616,20 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           subject: doc.title,
           text: 'Sent from ThyScan',
         );
-        if (mounted) {
-          context.go('/appmainscreen');
+
+        if (!mounted) return;
+        if (widget.documentId != null) {
+          context.pop(true);
+          return;
         }
+
+        context.pushReplacement(
+          '/pdfpreview',
+          extra: {
+            'documentId': doc.id,
+            'startEdit': false,
+          },
+        );
       },
     );
   }

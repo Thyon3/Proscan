@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:thyscan/core/config/retry_config.dart';
+import 'package:thyscan/core/repositories/document_repository.dart';
 import 'package:thyscan/core/services/app_logger.dart';
 import 'package:thyscan/core/services/auth_service.dart';
 import 'package:thyscan/core/events/document_events.dart';
@@ -325,6 +326,36 @@ class DocumentUploadService {
     }
   }
 
+  Future<void> _persistRemoteUrls({
+    required DocumentModel document,
+    required String remoteFileUrl,
+    String? remoteThumbnailUrl,
+  }) async {
+    try {
+      final latest = await DocumentRepository.instance.getDocumentById(
+        document.id,
+      );
+      if (latest == null) return;
+
+      final updated = latest.copyWith(
+        metadata: {
+          ...latest.metadata,
+          'remoteFileUrl': remoteFileUrl,
+          if (remoteThumbnailUrl != null && remoteThumbnailUrl.isNotEmpty)
+            'remoteThumbnailUrl': remoteThumbnailUrl,
+        },
+      );
+
+      await DocumentRepository.instance.updateDocument(updated);
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to persist remote URLs to local metadata (non-critical)',
+        error: e,
+        data: {'documentId': document.id},
+      );
+    }
+  }
+
   /// Internal upload implementation with retry logic and exponential backoff.
   ///
   /// **Retry Strategy:**
@@ -520,6 +551,13 @@ class DocumentUploadService {
           fileUrl: publicUrl,
           thumbnailUrl: thumbnailUrl,
         );
+
+        await _persistRemoteUrls(
+          document: document,
+          remoteFileUrl: publicUrl,
+          remoteThumbnailUrl: thumbnailUrl,
+        );
+
         print('✅ [UPLOAD SERVICE] Metadata sync SUCCESS');
         AppLogger.info(
           '✅ Metadata sync completed successfully',

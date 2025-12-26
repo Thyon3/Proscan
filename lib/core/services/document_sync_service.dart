@@ -1200,6 +1200,8 @@ class DocumentSyncService {
       if (fileExists) {
         final currentDoc = box.get(remoteDoc.id);
         if (currentDoc != null) {
+          final remoteFileUrl = remoteDoc.filePath;
+          final remoteThumbUrl = remoteDoc.thumbnailPath;
           final updatedDoc = DocumentModel(
             id: remoteDoc.id,
             title: remoteDoc.title,
@@ -1214,7 +1216,14 @@ class DocumentSyncService {
             textContent: remoteDoc.textContent,
             colorProfile: remoteDoc.colorProfile,
             tags: remoteDoc.tags,
-            metadata: remoteDoc.metadata,
+            metadata: {
+              ...remoteDoc.metadata,
+              'remoteFileUrl': remoteFileUrl,
+              if (remoteThumbUrl.isNotEmpty &&
+                  (remoteThumbUrl.startsWith('http://') ||
+                      remoteThumbUrl.startsWith('https://')))
+                'remoteThumbnailUrl': remoteThumbUrl,
+            },
           );
 
           await box.put(remoteDoc.id, updatedDoc);

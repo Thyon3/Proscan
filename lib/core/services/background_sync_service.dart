@@ -153,7 +153,7 @@ class BackgroundSyncService {
           final localDoc = box.get(remoteDoc.id);
 
           if (localDoc == null) {
-            // New document from cloud
+            // New document from cloud - store with URLs and queue for download
             await box.put(remoteDoc.id, remoteDoc);
             DocumentSyncStateService.instance.setSyncStatus(
               remoteDoc.id,
@@ -161,8 +161,11 @@ class BackgroundSyncService {
               lastSyncTime: DateTime.now(),
             );
             created++;
+            
+            // Queue document for background download (lazy loading)
+            // Files will be downloaded when user opens the document
             AppLogger.info(
-              'Created new document from cloud',
+              'Created new document from cloud (files will be downloaded on-demand)',
               data: {'documentId': remoteDoc.id, 'title': remoteDoc.title},
             );
           } else if (remoteDoc.isDeleted) {
