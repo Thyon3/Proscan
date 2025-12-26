@@ -801,6 +801,16 @@ class _EditScanScreenState extends State<EditScanScreen> {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            cs.surface.withValues(alpha: 0.98),
+            cs.surface,
+          ],
+        ),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
@@ -854,37 +864,52 @@ class _EditScanScreenState extends State<EditScanScreen> {
     required Color color,
     Color? backgroundColor,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: backgroundColor ?? Colors.transparent,
-              shape: BoxShape.circle,
-              border: backgroundColor == null
-                  ? Border.all(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.outline.withValues(alpha: 0.3),
-                    )
-                  : null,
-            ),
-            child: Icon(icon, color: color, size: 24),
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: backgroundColor ?? Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: backgroundColor == null
+                      ? Border.all(
+                          color: cs.outline.withValues(alpha: 0.3),
+                        )
+                      : null,
+                  boxShadow: backgroundColor != null
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurface,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1614,11 +1639,32 @@ class _EditScanScreenState extends State<EditScanScreen> {
       resizeToAvoidBottomInset:
           false, // Prevent jank from GridView/PageView rebuilds during keyboard animation
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: cs.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_rounded, color: cs.onSurface),
-          onPressed: () => context.pop(),
+        scrolledUnderElevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: IconButton(
+            icon: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: cs.outline.withValues(alpha: 0.12),
+                ),
+              ),
+              child: Icon(
+                Icons.arrow_back_rounded,
+                color: cs.onSurface,
+                size: 20,
+              ),
+            ),
+            onPressed: () => context.pop(),
+            tooltip: 'Back',
+          ),
         ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1626,10 +1672,11 @@ class _EditScanScreenState extends State<EditScanScreen> {
             Flexible(
               child: Text(
                 _pdfFileName,
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                   color: cs.onSurface,
+                  letterSpacing: -0.2,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1645,15 +1692,30 @@ class _EditScanScreenState extends State<EditScanScreen> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: Icon(
-              _isGridView
-                  ? Icons.view_carousel_rounded
-                  : Icons.grid_view_rounded,
-              color: cs.onSurface,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: cs.outline.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Icon(
+                  _isGridView
+                      ? Icons.view_carousel_rounded
+                      : Icons.grid_view_rounded,
+                  color: cs.onSurface,
+                  size: 20,
+                ),
+              ),
+              tooltip: _isGridView ? 'List View' : 'Grid View',
+              onPressed: () => setState(() => _isGridView = !_isGridView),
             ),
-            tooltip: _isGridView ? 'List View' : 'Grid View',
-            onPressed: () => setState(() => _isGridView = !_isGridView),
           ),
           const SizedBox(width: 8),
         ],

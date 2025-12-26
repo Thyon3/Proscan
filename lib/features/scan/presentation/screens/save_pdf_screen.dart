@@ -22,7 +22,7 @@ import 'package:thyscan/services/document_service.dart';
 import 'package:thyscan/core/utils/share_utils.dart';
 
 extension _ColorAlphaX on Color {
-  Color alpha(double opacity) => withValues(alpha: opacity);
+  Color withAlphaX(double opacity) => withValues(alpha: opacity);
 }
 
 class SavePdfScreen extends StatefulWidget {
@@ -56,7 +56,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   DocumentColorProfile _colorProfile = DocumentColorProfile.color;
   late final ScanMode _activeScanMode;
   PdfGenerationProgress? _pdfProgress;
-  
+
   // Preview paths for UI display (downscaled to reduce memory pressure)
   final Map<String, String> _previewPaths = {};
 
@@ -96,10 +96,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         final documentId = widget.documentId ?? 'temp_${path.hashCode}';
         final downloadedPath = await DocumentDownloadService.instance
             .downloadFile(
-          url: path,
-          documentId: documentId,
-          fileName: path.split('/').last.split('?').first,
-        );
+              url: path,
+              documentId: documentId,
+              fileName: path.split('/').last.split('?').first,
+            );
 
         if (downloadedPath != null) {
           downloadedPages.add(downloadedPath);
@@ -140,7 +140,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       });
 
       final previewEntries = await Future.wait(previewFutures);
-      
+
       if (!mounted) return;
 
       setState(() {
@@ -149,7 +149,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      
+
       // Fallback: use original paths if preview loading fails
       setState(() {
         for (final path in _pages) {
@@ -181,10 +181,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
           final downloadedPath = await DocumentDownloadService.instance
               .downloadFile(
-            url: filePath,
-            documentId: doc.id,
-            fileName: '${doc.id}.${doc.format}',
-          );
+                url: filePath,
+                documentId: doc.id,
+                fileName: '${doc.id}.${doc.format}',
+              );
 
           if (downloadedPath != null) {
             filePath = downloadedPath;
@@ -229,7 +229,10 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     }
   }
 
-  Future<DocumentModel?> _persistDocument({bool force = false, bool skipUpload = false}) async {
+  Future<DocumentModel?> _persistDocument({
+    bool force = false,
+    bool skipUpload = false,
+  }) async {
     if (_pages.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -369,7 +372,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           _colorProfile = result.colorProfile;
           _hasUnsavedChanges = true;
         });
-        
+
         // Load preview for newly added page
         try {
           final previewPath = await PreviewImageService.instance
@@ -387,7 +390,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
             });
           }
         }
-        
+
         // Show success message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -395,6 +398,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
               content: Text('Page added'),
               duration: Duration(seconds: 2),
               backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
             ),
           );
         }
@@ -494,8 +498,9 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                       _pages = updatedPaths.whereType<String>().toList();
                       _hasUnsavedChanges = true;
                       if (updatedColorProfile is String) {
-                        _colorProfile =
-                            DocumentColorProfile.fromKey(updatedColorProfile);
+                        _colorProfile = DocumentColorProfile.fromKey(
+                          updatedColorProfile,
+                        );
                       }
                     });
                     await _loadPreviewImages();
@@ -590,15 +595,13 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       context.go('/appmainscreen');
     }
 
-    unawaited(
-      () async {
-        try {
-          await DocumentUploadService.instance.uploadDocument(doc);
-        } catch (_) {
-          // Upload service already emits error progress; notification service will handle UI.
-        }
-      }(),
-    );
+    unawaited(() async {
+      try {
+        await DocumentUploadService.instance.uploadDocument(doc);
+      } catch (_) {
+        // Upload service already emits error progress; notification service will handle UI.
+      }
+    }());
   }
 
   Future<void> _promptShareAfterSave(DocumentModel doc) async {
@@ -981,64 +984,166 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     );
   }
 
+  void _openPage(int index) {
+    if (index < 0 || index >= _pages.length) return;
+    final path = _getPreviewPath(_pages[index]);
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.all(16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: cs.surface,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 30,
+                  offset: const Offset(0, 14),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black,
+                      child: InteractiveViewer(
+                        minScale: 0.8,
+                        maxScale: 5.0,
+                        child: Image.file(
+                          File(path),
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withValues(
+                            alpha: 0.70,
+                          ),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: cs.outline.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.close_rounded,
+                          color: cs.onSurface,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildPageGridItem(int index) {
     final cs = Theme.of(context).colorScheme;
 
     if (index < _pages.length) {
-      return GestureDetector(
-        onTap: () {
-          // Show full page preview or edit
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.outline.withValues(alpha: 0.2),
-              width: 1,
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _openPage(index),
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withAlphaX(0.25),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: cs.outline.withAlphaX(0.14)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.file(
-              File(_getPreviewPath(_pages[index])), // Use preview for grid view
-              fit: BoxFit.cover,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.file(
+                File(_getPreviewPath(_pages[index])),
+                fit: BoxFit.cover,
+              ),
             ),
           ),
         ),
       );
     } else {
-      // Add page button
-      return GestureDetector(
-        onTap: _addPage,
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.outline.withValues(alpha: 0.3),
-              width: 2,
-              style: BorderStyle.solid,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.add_photo_alternate_rounded,
-                size: 48,
-                color: cs.onSurface.withValues(alpha: 0.7),
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _addPage,
+          borderRadius: BorderRadius.circular(18),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  cs.primary.withAlphaX(0.10),
+                  cs.surfaceContainerHighest.withAlphaX(0.22),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Add Pages',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withValues(alpha: 0.7),
+              border: Border.all(color: cs.outline.withAlphaX(0.14)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.10),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
                 ),
-              ),
-            ],
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: cs.primary.withAlphaX(0.14),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: cs.primary.withAlphaX(0.22)),
+                  ),
+                  child: Icon(
+                    Icons.add_photo_alternate_rounded,
+                    size: 28,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Add Pages',
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface.withAlphaX(0.85),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -1056,23 +1161,63 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       // This prevents the scaffold from resizing when keyboard opens/closes, avoiding expensive rebuilds
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: cs.surface,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/appmainscreen'),
+        scrolledUnderElevation: 0,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: IconButton(
+            icon: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withAlphaX(0.55),
+                shape: BoxShape.circle,
+                border: Border.all(color: cs.outline.withAlphaX(0.12)),
+              ),
+              child: Icon(
+                Icons.arrow_back_rounded,
+                color: cs.onSurface,
+                size: 20,
+              ),
+            ),
+            onPressed: () => context.go('/appmainscreen'),
+            tooltip: 'Back',
+          ),
         ),
         title: Text(
           widget.pdfFileName.replaceAll('.pdf', ''),
-          style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600),
+          style: GoogleFonts.inter(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
+          ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert_rounded),
-            onPressed: _showAppBarMenu,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withAlphaX(0.55),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: cs.outline.withAlphaX(0.12)),
+                ),
+                child: Icon(
+                  Icons.more_vert_rounded,
+                  color: cs.onSurface,
+                  size: 20,
+                ),
+              ),
+              onPressed: _showAppBarMenu,
+              tooltip: 'More',
+            ),
           ),
         ],
       ),
@@ -1152,31 +1297,44 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
     final cs = Theme.of(context).colorScheme;
     final isSelected = _selectedBottomNavIndex == index;
 
-    return GestureDetector(
-      onTap: () => _handleBottomNavTap(index),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: isSelected
-                ? cs.primary
-                : cs.onSurface.withOpacity(0.6),
-            size: 24,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _handleBottomNavTap(index),
+        borderRadius: BorderRadius.circular(18),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? cs.primary.withAlphaX(0.10) : Colors.transparent,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
               color: isSelected
-                  ? cs.primary
-                  : cs.onSurface.withOpacity(0.6),
+                  ? cs.primary.withAlphaX(0.22)
+                  : Colors.transparent,
             ),
           ),
-        ],
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? cs.primary : cs.onSurface.withAlphaX(0.6),
+                size: 22,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  color: isSelected ? cs.primary : cs.onSurface.withAlphaX(0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
