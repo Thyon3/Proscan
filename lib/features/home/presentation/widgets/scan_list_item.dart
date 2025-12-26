@@ -858,3 +858,64 @@ class ScanListItem extends StatelessWidget {
     );
   }
 }
+
+class _CloudStatusDot extends StatelessWidget {
+  const _CloudStatusDot({
+    required this.onCloud,
+    required this.size,
+  });
+
+  final bool onCloud;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onCloud ? Colors.green : Colors.red;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.95),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: Colors.white,
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Icon(
+          Icons.cloud_rounded,
+          size: size * 0.62,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+class _CloudStatusIcon extends StatelessWidget {
+  const _CloudStatusIcon({
+    required this.onCloud,
+    required this.size,
+  });
+
+  final bool onCloud;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onCloud ? Colors.green : Colors.red;
+    return Icon(
+      Icons.cloud_rounded,
+      size: size,
+      color: color,
+    );
+  }
+}

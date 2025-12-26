@@ -110,8 +110,9 @@ class DocumentSearchService {
       
       // Use full-text search index if query is provided
       if (query != null && query.trim().isNotEmpty) {
-        // Search using inverted index (instant <100ms)
-        final matchingDocIds = await FullTextSearchIndexService.instance.search(query);
+        // Search using inverted index with relevance ranking
+        final matchingDocIds =
+            await FullTextSearchIndexService.instance.searchWithScores(query);
         
         if (matchingDocIds.isEmpty) {
           // No results from index
@@ -135,6 +136,18 @@ class DocumentSearchService {
         documents = documents
             .where((doc) => !doc.isDeleted && !doc.isCloudDocument && doc.hasValidFile)
             .toList();
+
+        // Preserve relevance order from search IDs
+        final rank = <String, int>{
+          for (int i = 0; i < matchingDocIds.length; i++) matchingDocIds[i]: i,
+        };
+        documents.sort((a, b) {
+          final ra = rank[a.id] ?? 1 << 30;
+          final rb = rank[b.id] ?? 1 << 30;
+          final byRank = ra.compareTo(rb);
+          if (byRank != 0) return byRank;
+          return b.createdAt.compareTo(a.createdAt);
+        });
       } else {
         // No query - get all documents
         documents = await DocumentRepository.instance.getAllDocuments();

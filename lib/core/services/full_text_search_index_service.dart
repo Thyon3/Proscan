@@ -42,6 +42,12 @@ class FullTextSearchIndexService {
   bool _isInitialized = false;
   bool _isIndexing = false;
   Completer<void>? _indexingCompleter;
+
+  static const Set<String> _excludedMetadataKeys = {
+    'remoteFileUrl',
+    'remoteThumbnailUrl',
+    'onCloud',
+  };
   
   /// Whether the service is initialized
   bool get isInitialized => _isInitialized;
@@ -69,6 +75,89 @@ class FullTextSearchIndexService {
         stack: stack,
       );
       rethrow;
+    }
+  }
+
+  Future<List<String>> searchWithScores(String query, {int maxResults = 1000}) async {
+    if (!_isInitialized || _indexBox == null) {
+      AppLogger.warning('FullTextSearchIndexService not initialized');
+      return [];
+    }
+
+    if (query.trim().isEmpty) {
+      return [];
+    }
+
+    final stopwatch = Stopwatch()..start();
+
+    try {
+      final queryWords = _tokenize(query);
+      if (queryWords.isEmpty) {
+        return [];
+      }
+
+      final scores = <String, int>{};
+
+      for (final word in queryWords) {
+        final indexData = _indexBox!.get(word) as Map?;
+        if (indexData == null) continue;
+
+        final docIds = (indexData['documentIds'] as List?)
+                ?.map((e) => e as String)
+                .toList() ??
+            const <String>[];
+
+        for (final id in docIds) {
+          scores[id] = (scores[id] ?? 0) + 1;
+        }
+      }
+
+      if (scores.isEmpty) {
+        stopwatch.stop();
+        AppLogger.info(
+          'Full-text search (scored) completed (no results)',
+          data: {
+            'query': query,
+            'queryWords': queryWords.length,
+            'resultsCount': 0,
+            'durationMs': stopwatch.elapsedMilliseconds,
+          },
+        );
+        return [];
+      }
+
+      final sorted = scores.entries.toList()
+        ..sort((a, b) {
+          final byScore = b.value.compareTo(a.value);
+          if (byScore != 0) return byScore;
+          return a.key.compareTo(b.key);
+        });
+
+      final results = sorted
+          .take(maxResults)
+          .map((e) => e.key)
+          .toList();
+
+      stopwatch.stop();
+      AppLogger.info(
+        'Full-text search (scored) completed',
+        data: {
+          'query': query,
+          'queryWords': queryWords.length,
+          'resultsCount': results.length,
+          'durationMs': stopwatch.elapsedMilliseconds,
+        },
+      );
+
+      return results;
+    } catch (e, stack) {
+      AppLogger.error(
+        'Search (scored) failed',
+        error: e,
+        stack: stack,
+        data: {'query': query},
+      );
+      return [];
     }
   }
   
@@ -169,12 +258,9 @@ class FullTextSearchIndexService {
     }
     
     // Extract from metadata values
-    if (doc.metadata != null) {
-      for (final value in doc.metadata!.values) {
-        if (value is String) {
-          words.addAll(_tokenize(value));
-        }
-      }
+    for (final entry in doc.metadata.entries) {
+      if (_excludedMetadataKeys.contains(entry.key)) continue;
+      words.addAll(_tokenize(entry.value));
     }
     
     return words;
