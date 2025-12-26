@@ -15,12 +15,15 @@ class DocumentUpdateNotificationService {
       DocumentUpdateNotificationService._();
 
   BuildContext? _context;
+  bool _isInitialized = false;
   final Set<String> _notifiedDocuments = {};
   final Map<String, ScaffoldFeatureController> _activeSnackBars = {};
 
   /// Initialize the notification service with app context
   void initialize(BuildContext context) {
     _context = context;
+    if (_isInitialized) return;
+    _isInitialized = true;
     _listenToUpdateProgress();
   }
 

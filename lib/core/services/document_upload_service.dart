@@ -64,6 +64,7 @@ class UploadProgress {
 class PendingUpload {
   final String documentId;
   final DocumentModel document;
+  final bool deleteRemoteBeforeUpload;
   final int attempts;
   final DateTime createdAt;
   final DateTime? lastAttempt;
@@ -71,15 +72,22 @@ class PendingUpload {
   PendingUpload({
     required this.documentId,
     required this.document,
+    this.deleteRemoteBeforeUpload = false,
     this.attempts = 0,
     DateTime? createdAt,
     this.lastAttempt,
   }) : createdAt = createdAt ?? DateTime.now();
 
-  PendingUpload copyWith({int? attempts, DateTime? lastAttempt}) {
+  PendingUpload copyWith({
+    bool? deleteRemoteBeforeUpload,
+    int? attempts,
+    DateTime? lastAttempt,
+  }) {
     return PendingUpload(
       documentId: documentId,
       document: document,
+      deleteRemoteBeforeUpload:
+          deleteRemoteBeforeUpload ?? this.deleteRemoteBeforeUpload,
       attempts: attempts ?? this.attempts,
       createdAt: createdAt,
       lastAttempt: lastAttempt ?? this.lastAttempt,
@@ -279,7 +287,7 @@ class DocumentUploadService {
       final user = AuthService.instance.currentUser;
       if (user == null) {
         AppLogger.warning('Cannot upload - user not authenticated');
-        _addToQueue(document);
+        _addToQueue(document, deleteRemoteBeforeUpload: deleteRemoteBeforeUpload);
         return null;
       }
 
@@ -297,14 +305,14 @@ class DocumentUploadService {
 
       if (!isOnline) {
         AppLogger.info('No internet connection, queuing upload');
-        _addToQueue(document);
+        _addToQueue(document, deleteRemoteBeforeUpload: deleteRemoteBeforeUpload);
         return null;
       }
 
       final allowed = RateLimiterService.instance.tryAcquire('document_upload');
       if (!allowed) {
         AppLogger.warning('Upload rate limited, adding to queue');
-        _addToQueue(document);
+        _addToQueue(document, deleteRemoteBeforeUpload: deleteRemoteBeforeUpload);
         return null;
       }
 
@@ -318,7 +326,7 @@ class DocumentUploadService {
         error: e,
         stack: stack,
       );
-      _addToQueue(document);
+      _addToQueue(document, deleteRemoteBeforeUpload: deleteRemoteBeforeUpload);
       return null;
     }
   }
@@ -600,17 +608,25 @@ class DocumentUploadService {
     }
   }
 
-  void _addToQueue(DocumentModel document) {
+  void _addToQueue(
+    DocumentModel document, {
+    required bool deleteRemoteBeforeUpload,
+  }) {
     final existing = _uploadQueue.indexWhere(
       (u) => u.documentId == document.id,
     );
     if (existing >= 0) {
       _uploadQueue[existing] = _uploadQueue[existing].copyWith(
+        deleteRemoteBeforeUpload: deleteRemoteBeforeUpload,
         lastAttempt: DateTime.now(),
       );
     } else {
       _uploadQueue.add(
-        PendingUpload(documentId: document.id, document: document),
+        PendingUpload(
+          documentId: document.id,
+          document: document,
+          deleteRemoteBeforeUpload: deleteRemoteBeforeUpload,
+        ),
       );
     }
   }
@@ -642,7 +658,11 @@ class DocumentUploadService {
 
       _isProcessing[upload.documentId] = true;
       try {
-        await _uploadDocumentInternal(upload.document, attempt: upload.attempts);
+        await _uploadDocumentInternal(
+          upload.document,
+          attempt: upload.attempts,
+          deleteRemoteBeforeUpload: upload.deleteRemoteBeforeUpload,
+        );
       } catch (_) {
         _uploadQueue.add(
           upload.copyWith(

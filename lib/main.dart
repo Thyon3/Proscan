@@ -261,15 +261,6 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeControllerProvider);
 
-    // Initialize upload and update notification services with context
-    // This needs to be called after the first frame is rendered
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (context.mounted) {
-        DocumentUploadNotificationService.instance.initialize(context);
-        DocumentUpdateNotificationService.instance.initialize(context);
-      }
-    });
-
     return MaterialApp.router(
       title: 'ThyScan',
       routerConfig: router,
@@ -277,6 +268,15 @@ class MyApp extends ConsumerWidget {
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode.value ?? ThemeMode.system,
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            DocumentUploadNotificationService.instance.initialize(context);
+            DocumentUpdateNotificationService.instance.initialize(context);
+          }
+        });
+        return child ?? const SizedBox.shrink();
+      },
     );
   }
 }

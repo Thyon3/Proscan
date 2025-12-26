@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/document_upload_notification_service.dart';
 import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
 import 'package:thyscan/models/document_color_profile.dart';
@@ -213,20 +215,44 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         ),
       );
 
-      await DocumentUploadService.instance.uploadDocument(
-        updatedDoc,
-        deleteRemoteBeforeUpload: true,
+      DocumentUploadNotificationService.instance.requestUploadCompletionDialog(
+        documentId: updatedDoc.id,
+        documentTitle: updatedDoc.title,
+        pageCount: updatedDoc.pageCount,
       );
 
-      if (!mounted) return;
-      setState(() {
-        _draftPageImagePaths = null;
-        _draftScanMode = null;
-        _draftColorProfile = null;
-        _hasDraftChanges = false;
-      });
+      if (mounted) {
+        setState(() {
+          _draftPageImagePaths = null;
+          _draftScanMode = null;
+          _draftColorProfile = null;
+          _hasDraftChanges = false;
+        });
+      }
 
-      await _reloadFromHive();
+      // Navigate to Home immediately after local save (non-blocking UX).
+      if (mounted) {
+        context.go('/appmainscreen');
+      }
+
+      // Continue cloud upload/sync in the background.
+      unawaited(
+        () async {
+          try {
+            await DocumentUploadService.instance.uploadDocument(
+              updatedDoc,
+              deleteRemoteBeforeUpload: true,
+            );
+          } catch (e, stack) {
+            AppLogger.error(
+              'Background upload failed',
+              error: e,
+              stack: stack,
+              data: {'documentId': updatedDoc.id},
+            );
+          }
+        }(),
+      );
     } catch (e, stack) {
       AppLogger.error('Failed to save updated PDF', error: e, stack: stack);
       if (!mounted) return;
@@ -234,10 +260,11 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         _error = e.toString();
       });
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isSaving = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
@@ -437,16 +464,26 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final targetWidth = (screenWidth - 32).clamp(200.0, 1200.0);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(doc?.title ?? 'PDF'),
-        actions: [
-          IconButton(
-            onPressed: _isLoading ? null : _startEdit,
-            icon: const Icon(Icons.edit_outlined),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        context.go('/appmainscreen');
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.go('/appmainscreen'),
           ),
-        ],
-      ),
+          title: Text(doc?.title ?? 'PDF'),
+          actions: [
+            IconButton(
+              onPressed: _isLoading ? null : _startEdit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          ],
+        ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -528,6 +565,7 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
                     );
                   },
                 ),
+      ),
     );
   }
 }
