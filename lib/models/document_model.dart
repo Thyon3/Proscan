@@ -86,6 +86,12 @@ class DocumentModel extends HiveObject {
   /// Gets metadata map, returns empty map if null.
   Map<String, String> get metadata => _metadata ?? const {};
 
+  bool get onCloud {
+    final raw = metadata['onCloud'];
+    if (raw == null) return false;
+    return raw.toLowerCase() == 'true' || raw == '1' || raw.toLowerCase() == 'yes';
+  }
+
   DocumentModel({
     required this.id,
     required this.title,
@@ -132,9 +138,18 @@ class DocumentModel extends HiveObject {
     String? colorProfile,
     List<String>? tags,
     Map<String, String>? metadata,
+    bool? onCloud,
     bool? isDeleted,
     DateTime? deletedAt,
   }) {
+    final resolvedMetadata = metadata ?? this.metadata;
+    final mergedMetadata = onCloud == null
+        ? resolvedMetadata
+        : <String, String>{
+            ...resolvedMetadata,
+            'onCloud': onCloud.toString(),
+          };
+
     return DocumentModel(
       id: id ?? this.id,
       title: title ?? this.title,
@@ -149,7 +164,7 @@ class DocumentModel extends HiveObject {
       colorProfile: colorProfile ?? this.colorProfile,
       pageImagePaths: pageImagePaths ?? this.pageImagePaths,
       tags: tags ?? this.tags,
-      metadata: metadata ?? this.metadata,
+      metadata: mergedMetadata,
       isDeleted: isDeleted ?? this.isDeleted,
       deletedAt: deletedAt ?? this.deletedAt,
     );

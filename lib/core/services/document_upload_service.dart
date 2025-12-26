@@ -349,6 +349,7 @@ class DocumentUploadService {
           if (remoteThumbnailUrl != null && remoteThumbnailUrl.isNotEmpty)
             'remoteThumbnailUrl': remoteThumbnailUrl,
         },
+        onCloud: true,
       );
 
       await DocumentRepository.instance.updateDocument(updated);
@@ -357,6 +358,25 @@ class DocumentUploadService {
         'Failed to persist remote URLs to local metadata (non-critical)',
         error: e,
         data: {'documentId': document.id},
+      );
+    }
+  }
+
+  Future<void> _persistOnCloudFlag({
+    required String documentId,
+    required bool onCloud,
+  }) async {
+    try {
+      final latest = await DocumentRepository.instance.getDocumentById(documentId);
+      if (latest == null) return;
+      await DocumentRepository.instance.updateDocument(
+        latest.copyWith(onCloud: onCloud),
+      );
+    } catch (e) {
+      AppLogger.warning(
+        'Failed to persist onCloud flag (non-critical)',
+        error: e,
+        data: {'documentId': documentId, 'onCloud': onCloud},
       );
     }
   }
@@ -565,6 +585,8 @@ class DocumentUploadService {
         error: e.toString(),
         lastAttempt: DateTime.now(),
       );
+
+      await _persistOnCloudFlag(documentId: documentId, onCloud: false);
 
       DocumentSyncStateService.instance.setSyncStatus(
         documentId,

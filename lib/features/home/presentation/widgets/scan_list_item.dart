@@ -6,9 +6,6 @@ import 'package:thyscan/features/home/presentation/widgets/fast_thumbnail.dart';
 import 'package:thyscan/features/home/presentation/widgets/corrupted_document_tile.dart';
 import 'package:thyscan/features/home/presentation/widgets/file_status_badge.dart';
 import 'package:thyscan/features/home/presentation/widgets/redownload_button.dart';
-import 'package:thyscan/features/home/presentation/widgets/sync_status_badge.dart';
-import 'package:thyscan/features/home/presentation/widgets/sync_status_indicator.dart';
-import 'package:thyscan/features/home/presentation/widgets/upload_progress_indicator.dart';
 import 'package:thyscan/features/scan/model/scans.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/models/file_status.dart';
@@ -207,12 +204,13 @@ class ScanListItem extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Sync status badge (top-right) - like CamScanner
-                      SyncStatusBadge(
-                        documentId: scan.id,
-                        document: document,
-                        size: 20,
-                        position: BadgePosition.topRight,
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: _CloudStatusDot(
+                          onCloud: document?.onCloud ?? false,
+                          size: 20,
+                        ),
                       ),
                       // File status badge overlay (top-left if file is invalid)
                       if (document != null && document!.fileStatus != FileStatus.valid)
@@ -278,8 +276,8 @@ class ScanListItem extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      SyncStatusIndicator(
-                        documentId: scan.id,
+                      _CloudStatusIcon(
+                        onCloud: document?.onCloud ?? false,
                         size: 16,
                       ),
                       // File status badge
