@@ -12,17 +12,15 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:thyscan/features/scan/model/scan_flow_models.dart';
-import 'package:thyscan/models/document_color_profile.dart';
-import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
-import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
-import 'package:thyscan/features/scan/core/services/image_processing_service.dart';
-import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
-import 'package:thyscan/features/home/presentation/widgets/upload_progress_banner.dart';
-import 'package:thyscan/features/home/presentation/widgets/upload_complete_dialog.dart';
-import 'package:thyscan/services/document_service.dart';
-import 'package:thyscan/core/utils/share_utils.dart';
-import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/utils/share_utils.dart';
+import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
+import 'package:thyscan/features/scan/core/services/image_processing_service.dart';
+import 'package:thyscan/features/scan/core/services/pdf_generation_service.dart';
+import 'package:thyscan/features/scan/core/services/preview_image_service.dart';
+import 'package:thyscan/models/document_color_profile.dart';
+import 'package:thyscan/models/document_model.dart';
+import 'package:thyscan/services/document_service.dart';
 
 class EditScanScreen extends StatefulWidget {
   final String imagePath;
@@ -324,38 +322,16 @@ class _EditScanScreenState extends State<EditScanScreen> {
         );
       }
 
-      // Auto-sync changes to backend if editing existing document
-      if (widget.documentId != null) {
-        try {
-          await DocumentService.instance.updateDocument(
-            documentId: widget.documentId!,
-            pageImagePaths: _pages,
-            title: _pdfFileName,
-            scanMode: _scanModeKey(widget.initialMode),
-            colorProfile: _colorProfile,
-            options: _buildSaveOptions(skipUpload: false), // Sync to backend
-          );
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Page added and synced to cloud'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Page added locally (sync failed: $e)'),
-                backgroundColor: Colors.orange,
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-        }
+      // Offline-first editing: do not sync/upload while editing.
+      // Changes are returned to caller and saved only when user taps Save.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Page added'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
@@ -542,41 +518,17 @@ class _EditScanScreenState extends State<EditScanScreen> {
       return;
     }
 
-    setState(() {
-      _isSaving = true;
-      _pdfProgress = PdfGenerationProgress(
-        processedPages: 0,
-        totalPages: _pages.length,
-        stage: 'Preparing',
-      );
-    });
-
     try {
-      await DocumentService.instance.updateDocument(
-        documentId: widget.documentId!,
-        pageImagePaths: _pages,
-        title: _pdfFileName,
-        scanMode: _scanModeKey(widget.initialMode),
-        colorProfile: _colorProfile,
-        options: _buildSaveOptions(),
-        onProgress: (progress) {
-          if (!mounted) return;
-          setState(() => _pdfProgress = progress);
-        },
-      );
-
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Document updated'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
+      // Draft-only: return updated pages to caller.
+      // The caller (SavePdfScreen/PdfPreviewScreen) performs the single
+      // regenerate + upload when user explicitly taps Save.
       if (context.canPop()) {
-        context.pop(true);
+        context.pop({
+          'imagePaths': List<String>.from(_pages),
+          'colorProfile': _colorProfile.key,
+        });
       } else {
         context.go('/appmainscreen');
       }
@@ -1302,38 +1254,16 @@ class _EditScanScreenState extends State<EditScanScreen> {
       _pageController.jumpToPage(_currentIndex);
     }
 
-    // Auto-sync changes to backend if editing existing document
-    if (widget.documentId != null) {
-      try {
-        await DocumentService.instance.updateDocument(
-          documentId: widget.documentId!,
-          pageImagePaths: _pages,
-          title: _pdfFileName,
-          scanMode: _scanModeKey(widget.initialMode),
-          colorProfile: _colorProfile,
-          options: _buildSaveOptions(skipUpload: false), // Sync to backend
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Page deleted and synced to cloud'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Page deleted locally (sync failed: $e)'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
-      }
+    // Offline-first editing: do not sync/upload while editing.
+    // Changes are returned to caller and saved only when user taps Save.
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Page deleted'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 

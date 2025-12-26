@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:thyscan/core/services/document_upload_service.dart';
 import 'package:thyscan/core/services/document_download_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/docx_generator_service.dart';
@@ -217,11 +218,15 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
   }
 
   /// Update existing document when pages are modified
-  /// Syncs changes to both local storage AND backend (Supabase + PostgreSQL)
+  /// Sync to backend is intentionally deferred until explicit Save.
   Future<void> _updateExistingDocument() async {
-    // Update with skipUpload=false to sync changes to backend immediately
-    // This ensures Supabase Storage and PostgreSQL are updated
-    await _persistDocument(force: true, skipUpload: false);
+    // Keep behavior offline-first: just mark dirty.
+    // The caller will perform final save/upload.
+    if (mounted) {
+      setState(() {
+        _hasUnsavedChanges = true;
+      });
+    }
   }
 
   Future<DocumentModel?> _persistDocument({bool force = false, bool skipUpload = false}) async {
@@ -325,7 +330,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       // Ensure we synchronously persist before sharing, so we always
       // have a concrete PDF path to share. This uses the existing
       // direct persistence path rather than the queue.
-      final doc = await _persistDocument(force: true);
+      final doc = await _persistDocument(force: true, skipUpload: true);
       final pdfPath = doc?.filePath ?? _savedPdfPath;
 
       if (pdfPath != null && File(pdfPath).existsSync() && mounted) {
@@ -383,16 +388,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
           }
         }
         
-        // Auto-sync changes to backend (Supabase Storage + PostgreSQL)
-        if (_documentId != null) {
-          await _updateExistingDocument();
-        }
-        
         // Show success message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Page added and synced to cloud'),
+              content: Text('Page added'),
               duration: Duration(seconds: 2),
               backgroundColor: Colors.green,
             ),
@@ -472,7 +472,7 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
               onTap: () async {
                 Navigator.pop(context);
 
-                final updated = await context.push<bool>(
+                final result = await context.push<dynamic>(
                   '/editscanscreen',
                   extra: EditScanArgs(
                     imagePath: _pages.isNotEmpty ? _pages[0] : '',
@@ -484,13 +484,19 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
                   ),
                 );
 
-                if (updated == true && _documentId != null && mounted) {
-                  final box = Hive.box<DocumentModel>(DocumentService.boxName);
-                  final doc = box.get(_documentId!);
-                  if (doc != null && doc.pageImagePaths.isNotEmpty) {
+                if (!mounted) return;
+
+                if (result is Map) {
+                  final updatedPaths = result['imagePaths'];
+                  final updatedColorProfile = result['colorProfile'];
+                  if (updatedPaths is List) {
                     setState(() {
-                      _pages = List.from(doc.pageImagePaths);
-                      _hasUnsavedChanges = false;
+                      _pages = updatedPaths.whereType<String>().toList();
+                      _hasUnsavedChanges = true;
+                      if (updatedColorProfile is String) {
+                        _colorProfile =
+                            DocumentColorProfile.fromKey(updatedColorProfile);
+                      }
                     });
                     await _loadPreviewImages();
                   }
@@ -528,14 +534,11 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         _hasUnsavedChanges = true;
       });
 
-      // Update the document
-      await _updateExistingDocument();
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Deleted ${deletedIndices.length} page${deletedIndices.length == 1 ? '' : 's'} and synced to cloud',
+              'Deleted ${deletedIndices.length} page${deletedIndices.length == 1 ? '' : 's'}',
             ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
@@ -555,9 +558,28 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       return;
     }
 
-    // Final save with skipUpload=false to trigger optimization and upload
-    final doc = await _persistDocument(force: true, skipUpload: false);
+    // If this screen is editing an existing document (typically launched from PdfPreviewScreen),
+    // do not regenerate or upload here. Return draft changes to the caller.
+    if (widget.documentId != null) {
+      if (!mounted) return;
+      context.pop({
+        'imagePaths': List<String>.from(_pages),
+        'colorProfile': _colorProfile.key,
+        'scanMode': _scanModeKey(_activeScanMode),
+        'title': widget.pdfFileName.replaceAll('.pdf', ''),
+      });
+      return;
+    }
+
+    // New document flow: persist locally first, then upload/sync once.
+    final doc = await _persistDocument(
+      force: _hasUnsavedChanges || _documentId == null,
+      skipUpload: true,
+    );
     if (!mounted || doc == null) return;
+
+    // Upload to cloud once (Supabase Storage + PostgreSQL)
+    await DocumentUploadService.instance.uploadDocument(doc);
 
     // Determine upload status by checking sync state
     DocumentUploadStatus uploadStatus;
@@ -594,13 +616,6 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
       uploadStatus: uploadStatus,
       onViewDocument: () {
         if (!mounted) return;
-        if (widget.documentId != null) {
-          // Editing an existing document (typically launched from PdfPreviewScreen)
-          // Return to caller so it can refresh.
-          context.pop(true);
-          return;
-        }
-
         // New document flow: replace editor with preview.
         context.pushReplacement(
           '/pdfpreview',
@@ -618,11 +633,6 @@ class _SavePdfScreenState extends State<SavePdfScreen> {
         );
 
         if (!mounted) return;
-        if (widget.documentId != null) {
-          context.pop(true);
-          return;
-        }
-
         context.pushReplacement(
           '/pdfpreview',
           extra: {

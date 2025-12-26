@@ -12,7 +12,6 @@ import 'package:thyscan/core/events/document_events.dart';
 import 'package:thyscan/core/services/document_backend_sync_service.dart';
 import 'package:thyscan/core/services/document_sync_state_service.dart';
 import 'package:thyscan/core/services/rate_limiter_service.dart';
-import 'package:thyscan/core/services/resource_guard.dart';
 import 'package:thyscan/core/utils/file_type_validator.dart';
 import 'package:thyscan/core/config/file_upload_config.dart';
 import 'package:thyscan/models/document_model.dart';
@@ -201,90 +200,94 @@ class DocumentUploadService {
     }
   }
 
-  /// Uploads a document to Supabase Storage and syncs metadata to backend.
-  ///
-  /// **Process:**
-  /// 1. Validates user authentication and network connectivity
-  /// 2. Uploads document file to Supabase Storage
-  /// 3. Uploads thumbnail (if available)
-  /// 4. Syncs metadata to backend API
-  ///
-  /// **Returns:**
-  /// - Public URL of uploaded file on success
-  /// - `null` if queued for later (offline/unauthenticated) or failed
-  ///
-  /// **Throws:**
-  /// - Exception if critical error occurs (logged automatically)
-  ///
-  /// **Example:**
-  /// ```dart
-  /// final url = await DocumentUploadService.instance.uploadDocument(document);
-  /// if (url != null) {
-  ///   print('Uploaded to: $url');
-  /// } else {
-  ///   print('Queued for later upload');
-  /// }
-  /// ```
-  Future<String?> uploadDocument(DocumentModel document) async {
-    print('═══════════════════════════════════════════════════════════');
-    print('📤 [UPLOAD SERVICE] uploadDocument() CALLED');
-    print('   Document ID: ${document.id}');
-    print('   Title: ${document.title}');
-    print('   Format: ${document.format}');
-    print('═══════════════════════════════════════════════════════════');
+  Future<void> _deleteRemoteObjectsIfPresent(DocumentModel document) async {
+    try {
+      final userId = AuthService.instance.currentUser?.id;
+      if (userId == null) return;
 
-    AppLogger.info(
-      '📤 DocumentUploadService.uploadDocument() called',
-      data: {
-        'documentId': document.id,
-        'title': document.title,
-        'format': document.format,
-      },
-    );
+      final remoteFileUrl = document.metadata['remoteFileUrl'];
+      final remoteThumbUrl = document.metadata['remoteThumbnailUrl'];
 
-    // Check rate limit
-    if (!RateLimiterService.instance.tryAcquire('document_upload')) {
+      final supabase = AuthService.instance.supabase;
+      final filesToDelete = <String>[];
+
+      String? filePath;
+      if (remoteFileUrl is String && remoteFileUrl.isNotEmpty) {
+        filePath = _extractStoragePathFromUrl(remoteFileUrl);
+      }
+
+      String? thumbPath;
+      if (remoteThumbUrl is String && remoteThumbUrl.isNotEmpty) {
+        thumbPath = _extractStoragePathFromUrl(remoteThumbUrl);
+      }
+
+      if (filePath != null && filePath.isNotEmpty) {
+        filesToDelete.add(filePath);
+      } else {
+        // Fallback: try both common formats
+        filesToDelete.add('$userId/${document.id}.pdf');
+        filesToDelete.add('$userId/${document.id}.docx');
+      }
+
+      if (thumbPath != null && thumbPath.isNotEmpty) {
+        filesToDelete.add(thumbPath);
+      } else {
+        filesToDelete.add('$userId/${document.id}_thumb.jpg');
+      }
+
+      if (filesToDelete.isEmpty) return;
+
+      try {
+        await supabase.storage.from(_storageBucket).remove(filesToDelete);
+      } catch (e) {
+        // Best-effort deletion.
+        AppLogger.warning(
+          'Failed to delete old storage objects before upload (non-critical)',
+          error: e,
+          data: {'documentId': document.id, 'files': filesToDelete},
+        );
+      }
+    } catch (e) {
       AppLogger.warning(
-        'Upload rate limited, queuing document',
-        error: null,
-        data: {
-          'documentId': document.id,
-          'availableTokens': RateLimiterService.instance.getAvailableTokens(
-            'document_upload',
-          ),
-        },
+        'Failed to delete remote objects before upload (non-critical)',
+        error: e,
+        data: {'documentId': document.id},
       );
-      _addToQueue(document);
+    }
+  }
+
+  String? _extractStoragePathFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final segments = uri.pathSegments;
+      final bucketIndex = segments.indexOf(_storageBucket);
+      if (bucketIndex >= 0 && bucketIndex < segments.length - 1) {
+        return segments.sublist(bucketIndex + 1).join('/');
+      }
+      return null;
+    } catch (_) {
       return null;
     }
+  }
 
+  Future<String?> uploadDocument(
+    DocumentModel document, {
+    bool deleteRemoteBeforeUpload = false,
+  }) async {
     try {
       await AuthService.instance.ensureInitialized();
       final user = AuthService.instance.currentUser;
-
-      print(
-        '🔐 [UPLOAD SERVICE] Auth check: ${user != null ? "AUTHENTICATED (${user.id})" : "NOT AUTHENTICATED"}',
-      );
-
       if (user == null) {
-        print('❌ [UPLOAD SERVICE] User NOT authenticated - QUEUING');
-        AppLogger.warning(
-          '❌ Cannot upload document: user not authenticated',
-          error: null,
-          data: {'documentId': document.id},
-        );
-        // Queue for later when user logs in
+        AppLogger.warning('Cannot upload - user not authenticated');
         _addToQueue(document);
         return null;
       }
 
-      print('✅ [UPLOAD SERVICE] User authenticated: ${user.id}');
-      AppLogger.info(
-        '✅ User authenticated: ${user.id}',
-        data: {'documentId': document.id},
-      );
+      // Ensure sync service is initialized
+      if (!_isInitialized) {
+        await initialize();
+      }
 
-      // Check network connectivity
       final connectivityResults = await _connectivity.checkConnectivity();
       final isOnline = connectivityResults.any(
         (result) =>
@@ -292,29 +295,23 @@ class DocumentUploadService {
             result != ConnectivityResult.bluetooth,
       );
 
-      print(
-        '🌐 [UPLOAD SERVICE] Network check: ${isOnline ? "ONLINE" : "OFFLINE"}',
-      );
-      print('   Connectivity results: $connectivityResults');
-
       if (!isOnline) {
-        print('⚠️ [UPLOAD SERVICE] No internet - QUEUING');
-        AppLogger.warning(
-          '⚠️ No internet connection, queuing document for later upload',
-          error: null,
-          data: {'documentId': document.id},
-        );
+        AppLogger.info('No internet connection, queuing upload');
         _addToQueue(document);
         return null;
       }
 
-      print('🌐 [UPLOAD SERVICE] Network OK - Proceeding with upload');
-      AppLogger.info(
-        '🌐 Network connectivity OK, proceeding with upload',
-        data: {'documentId': document.id},
-      );
+      final allowed = RateLimiterService.instance.tryAcquire('document_upload');
+      if (!allowed) {
+        AppLogger.warning('Upload rate limited, adding to queue');
+        _addToQueue(document);
+        return null;
+      }
 
-      return await _uploadDocumentInternal(document);
+      return await _uploadDocumentInternal(
+        document,
+        deleteRemoteBeforeUpload: deleteRemoteBeforeUpload,
+      );
     } catch (e, stack) {
       AppLogger.error(
         'Failed to upload document ${document.id}',
@@ -356,25 +353,10 @@ class DocumentUploadService {
     }
   }
 
-  /// Internal upload implementation with retry logic and exponential backoff.
-  ///
-  /// **Retry Strategy:**
-  /// - Attempt 1: Immediate
-  /// - Attempt 2: 5 seconds delay
-  /// - Attempt 3: 10 seconds delay
-  ///
-  /// After 3 attempts, document upload fails and storage is rolled back.
-  ///
-  /// **Parameters:**
-  /// - `document`: Document to upload
-  /// - `attempt`: Current retry attempt (0-indexed)
-  ///
-  /// **Returns:**
-  /// - Public URL on success
-  /// - `null` if max attempts reached (with rollback)
   Future<String?> _uploadDocumentInternal(
     DocumentModel document, {
     int attempt = 0,
+    bool deleteRemoteBeforeUpload = false,
   }) async {
     final documentId = document.id;
     final userId = AuthService.instance.currentUser!.id;
@@ -395,6 +377,10 @@ class DocumentUploadService {
     bool needsRollback = false;
 
     try {
+      if (deleteRemoteBeforeUpload) {
+        await _deleteRemoteObjectsIfPresent(document);
+      }
+
       // Update sync status to uploading file
       DocumentSyncStateService.instance.setSyncStatus(
         documentId,
@@ -402,7 +388,7 @@ class DocumentUploadService {
       );
       _emitProgress(documentId, UploadStatus.uploadingFile, progress: 0.0);
 
-      // 1. Validate file size before upload (Play Store requirement)
+      // 1. Validate file size before upload
       final file = File(document.filePath);
       if (!await file.exists()) {
         throw Exception('Document file not found: ${document.filePath}');
@@ -418,15 +404,7 @@ class DocumentUploadService {
         throw Exception(error);
       }
 
-      // Warn user if file is large
-      if (FileUploadConfig.shouldWarnUser(fileSize, document.format)) {
-        AppLogger.warning(
-          FileUploadConfig.getFileSizeWarning(fileSize, document.format),
-          error: null,
-        );
-      }
-
-      // 2. Validate file type using magic numbers (Play Store security requirement)
+      // 2. Validate file type using magic numbers
       final validationError = await FileTypeValidator.validateFileWithMessage(
         file,
         document.format,
@@ -436,28 +414,8 @@ class DocumentUploadService {
         throw Exception(validationError);
       }
 
-      AppLogger.info(
-        'File validation passed',
-        data: {
-          'documentId': documentId,
-          'format': document.format,
-          'size': FileUploadConfig.formatFileSize(fileSize),
-        },
-      );
-
       // Use document ID as filename to ensure consistency across updates
-      // This ensures that when a document is updated, it replaces the same file
-      // Format: {userId}/{documentId}.{format}
       final fileName = '$userId/${document.id}.${document.format}';
-
-      AppLogger.info(
-        'Uploading document to Supabase Storage',
-        data: {
-          'documentId': documentId,
-          'fileName': fileName,
-          'size': fileSize,
-        },
-      );
 
       final supabase = AuthService.instance.supabase;
       await supabase.storage
@@ -473,13 +431,12 @@ class DocumentUploadService {
             ),
           );
 
-      // Get public URL
-      final publicUrl = supabase.storage
-          .from(_storageBucket)
-          .getPublicUrl(fileName);
+      final publicUrl = supabase.storage.from(_storageBucket).getPublicUrl(
+            fileName,
+          );
 
       uploadedFileUrl = publicUrl;
-      needsRollback = true; // Now we need to rollback if database sync fails
+      needsRollback = true;
 
       // Update sync status to uploading thumbnail
       DocumentSyncStateService.instance.setSyncStatus(
@@ -488,14 +445,12 @@ class DocumentUploadService {
       );
       _emitProgress(documentId, UploadStatus.uploadingThumbnail, progress: 0.5);
 
-      // 2. Upload thumbnail if exists
+      // Upload thumbnail if exists
       String? thumbnailUrl;
       if (document.thumbnailPath.isNotEmpty) {
         try {
           final thumbFile = File(document.thumbnailPath);
           if (await thumbFile.exists()) {
-            // Use document ID for thumbnail filename to ensure consistency
-            // Format: {userId}/{documentId}_thumb.jpg
             final thumbFileName = '$userId/${document.id}_thumb.jpg';
             await supabase.storage
                 .from(_storageBucket)
@@ -527,24 +482,6 @@ class DocumentUploadService {
       );
       _emitProgress(documentId, UploadStatus.syncingMetadata, progress: 0.75);
 
-      // 3. Sync metadata to backend API (create or update)
-      print('═══════════════════════════════════════════════════════════');
-      print('🔄 [UPLOAD SERVICE] Starting metadata sync to backend');
-      print('   Document ID: $documentId');
-      print(
-        '   File URL: ${publicUrl.substring(0, publicUrl.length > 60 ? 60 : publicUrl.length)}...',
-      );
-      print('   Has Thumbnail: ${thumbnailUrl != null}');
-      print('═══════════════════════════════════════════════════════════');
-
-      AppLogger.info(
-        '🔄 Starting metadata sync to backend',
-        data: {
-          'documentId': documentId,
-          'fileUrl': publicUrl.substring(0, 50) + '...',
-          'hasThumbnail': thumbnailUrl != null,
-        },
-      );
       try {
         await DocumentBackendSyncService.instance.syncDocumentMetadata(
           document: document,
@@ -558,41 +495,15 @@ class DocumentUploadService {
           remoteThumbnailUrl: thumbnailUrl,
         );
 
-        print('✅ [UPLOAD SERVICE] Metadata sync SUCCESS');
-        AppLogger.info(
-          '✅ Metadata sync completed successfully',
-          data: {'documentId': documentId},
-        );
-
-        needsRollback = false; // Success! No need to rollback
-      } catch (syncError, syncStack) {
-        // Handle conflict exception
+        needsRollback = false;
+      } catch (syncError) {
         if (syncError is ConflictException) {
-          print('═══════════════════════════════════════════════════════════');
-          print('⚠️ [UPLOAD SERVICE] Conflict detected');
-          print('   Document ID: $documentId');
-          print('   Message: ${syncError.message}');
-          print('═══════════════════════════════════════════════════════════');
-
-          // Mark document as having a conflict
           DocumentSyncStateService.instance.setSyncStatus(
             documentId,
             DocumentSyncStatus.pendingConflictResolution,
             errorMessage: syncError.message,
           );
 
-          AppLogger.warning(
-            '⚠️ Document conflict detected',
-            error: syncError,
-            data: {
-              'documentId': documentId,
-              'hasRemoteDocument': syncError.remoteDocument != null,
-            },
-          );
-
-          // For now, we'll use "last write wins" - keep local version
-          // In the future, this could trigger a UI dialog for user resolution
-          // Emit sync failed event
           DocumentEventBus.instance.emitSyncFailed(
             documentId,
             error: syncError.message,
@@ -600,37 +511,19 @@ class DocumentUploadService {
             retryCount: attempt,
           );
 
-          // Re-throw to trigger rollback and retry
           rethrow;
         }
 
-        print('═══════════════════════════════════════════════════════════');
-        print('❌ [UPLOAD SERVICE] Metadata sync FAILED');
-        print('   Error: $syncError');
-        print('═══════════════════════════════════════════════════════════');
-        AppLogger.error(
-          '❌ Metadata sync failed',
-          error: syncError,
-          stack: syncStack,
-          data: {'documentId': documentId},
-        );
-        // Re-throw to trigger rollback and retry
         rethrow;
       }
 
       _emitProgress(documentId, UploadStatus.completed, progress: 1.0);
-
-      // Update sync status to synced
       DocumentSyncStateService.instance.setSyncStatus(
         documentId,
         DocumentSyncStatus.synced,
         lastSyncTime: DateTime.now(),
       );
 
-      AppLogger.info(
-        'Document uploaded successfully',
-        data: {'documentId': documentId},
-      );
       return publicUrl;
     } catch (e, stack) {
       AppLogger.error(
@@ -639,7 +532,6 @@ class DocumentUploadService {
         stack: stack,
       );
 
-      // Rollback storage uploads if database sync failed
       if (needsRollback) {
         await _rollbackStorageUpload(
           userId: userId,
@@ -649,27 +541,15 @@ class DocumentUploadService {
         );
       }
 
-      // Retry logic using standardized RetryConfig
       if (RetryConfig.shouldRetry(attempt + 1)) {
         final delay = RetryConfig.getDelay(attempt);
-        AppLogger.info(
-          'Retrying upload in ${delay.inSeconds} seconds (attempt ${attempt + 2} of ${RetryConfig.maxRetries})',
-          data: {'documentId': documentId, 'attempt': attempt + 1},
-        );
-
         await Future.delayed(delay);
-        return _uploadDocumentInternal(document, attempt: attempt + 1);
+        return _uploadDocumentInternal(
+          document,
+          attempt: attempt + 1,
+          deleteRemoteBeforeUpload: deleteRemoteBeforeUpload,
+        );
       }
-
-      // Max attempts reached, mark as failed
-      print('═══════════════════════════════════════════════════════════');
-      print(
-        '❌ [UPLOAD SERVICE] Upload FAILED after ${RetryConfig.maxRetries} attempts',
-      );
-      print('   Document ID: $documentId');
-      print('   Title: ${document.title}');
-      print('   Error: $e');
-      print('═══════════════════════════════════════════════════════════');
 
       _emitProgress(
         documentId,
@@ -678,7 +558,6 @@ class DocumentUploadService {
         lastAttempt: DateTime.now(),
       );
 
-      // Update sync status to failed (not queued for retry)
       DocumentSyncStateService.instance.setSyncStatus(
         documentId,
         DocumentSyncStatus.failed,
@@ -686,90 +565,46 @@ class DocumentUploadService {
             'Upload failed after ${RetryConfig.maxRetries} attempts: ${e.toString()}',
       );
 
-      AppLogger.error(
-        '❌ Upload failed after ${RetryConfig.maxRetries} attempts',
-        error: e,
-        stack: stack,
-        data: {'documentId': documentId},
-      );
-
       return null;
     }
   }
 
-  /// Rolls back storage uploads if database sync fails
   Future<void> _rollbackStorageUpload({
     required String userId,
     required String documentId,
     String? fileUrl,
     String? thumbnailUrl,
   }) async {
-    print('═══════════════════════════════════════════════════════════');
-    print('🔄 [UPLOAD SERVICE] Rolling back storage uploads');
-    print('   Document ID: $documentId');
-    print('   File URL: ${fileUrl != null ? "YES" : "NO"}');
-    print('   Thumbnail URL: ${thumbnailUrl != null ? "YES" : "NO"}');
-    print('═══════════════════════════════════════════════════════════');
-
-    AppLogger.info(
-      '🔄 Rolling back storage uploads due to database sync failure',
-      data: {
-        'documentId': documentId,
-        'hasFileUrl': fileUrl != null,
-        'hasThumbnailUrl': thumbnailUrl != null,
-      },
-    );
-
     try {
       final supabase = AuthService.instance.supabase;
       final filesToDelete = <String>[];
 
-      // Add main file to deletion list
       if (fileUrl != null) {
-        // Extract file name from document ID
         final format = fileUrl.contains('.pdf') ? 'pdf' : 'docx';
         filesToDelete.add('$userId/$documentId.$format');
       }
 
-      // Add thumbnail to deletion list
       if (thumbnailUrl != null) {
         filesToDelete.add('$userId/${documentId}_thumb.jpg');
       }
 
-      // Delete files from storage
       if (filesToDelete.isNotEmpty) {
         await supabase.storage.from(_storageBucket).remove(filesToDelete);
-
-        print(
-          '✅ [UPLOAD SERVICE] Rollback completed - deleted ${filesToDelete.length} files',
-        );
-        AppLogger.info(
-          '✅ Storage rollback completed',
-          data: {
-            'documentId': documentId,
-            'filesDeleted': filesToDelete.length,
-          },
-        );
       }
     } catch (e) {
-      print('⚠️ [UPLOAD SERVICE] Rollback failed (non-critical)');
-      print('   Error: $e');
       AppLogger.warning(
         '⚠️ Failed to rollback storage uploads (files may remain in storage)',
         error: e,
         data: {'documentId': documentId},
       );
-      // Don't throw - rollback failure is non-critical
     }
   }
 
-  /// Adds document to upload queue
   void _addToQueue(DocumentModel document) {
     final existing = _uploadQueue.indexWhere(
       (u) => u.documentId == document.id,
     );
     if (existing >= 0) {
-      // Update existing entry
       _uploadQueue[existing] = _uploadQueue[existing].copyWith(
         lastAttempt: DateTime.now(),
       );
@@ -778,50 +613,10 @@ class DocumentUploadService {
         PendingUpload(documentId: document.id, document: document),
       );
     }
-
-    AppLogger.info(
-      'Document added to upload queue',
-      data: {'documentId': document.id, 'queueSize': _uploadQueue.length},
-    );
   }
 
-  /// Processes the upload queue
   Future<void> _processQueue() async {
-    if (_uploadQueue.isEmpty) return;
-
-    // Check if user is authenticated
-    try {
-      await AuthService.instance.ensureInitialized();
-      final user = AuthService.instance.currentUser;
-      if (user == null) {
-        AppLogger.info('User not authenticated, skipping queue processing');
-        return;
-      }
-
-      // Check concurrent upload limit using ResourceGuard
-      while (_uploadQueue.isNotEmpty &&
-          _isProcessing.length < ResourceGuard.instance.maxConcurrentUploads) {
-        final upload = _uploadQueue.removeAt(0);
-
-        if (_isProcessing.containsKey(upload.documentId)) {
-          continue; // Already processing
-        }
-
-        // Acquire upload slot
-        await ResourceGuard.instance.acquireUploadSlot(
-          operationId: upload.documentId,
-          priority: OperationPriority.background,
-        );
-
-        _isProcessing[upload.documentId] = true;
-      }
-    } catch (e) {
-      AppLogger.warning(
-        error: null,
-        'AuthService not ready, skipping queue processing',
-      );
-      return;
-    }
+    if (!_isInitialized) return;
 
     // Check connectivity
     final connectivityResults = await _connectivity.checkConnectivity();
@@ -830,47 +625,35 @@ class DocumentUploadService {
           result != ConnectivityResult.none &&
           result != ConnectivityResult.bluetooth,
     );
-
     if (!isOnline) {
-      AppLogger.info('No internet connection, cannot process queue');
       return;
     }
 
-    // Process queue (one at a time to avoid overwhelming the system)
     while (_uploadQueue.isNotEmpty) {
       final upload = _uploadQueue.removeAt(0);
 
-      // Skip if already processing
       if (_isProcessing[upload.documentId] == true) {
         continue;
       }
 
-      // Skip if max attempts reached
       if (upload.attempts >= _maxRetryAttempts) {
-        AppLogger.warning(
-          error: null,
-          'Max retry attempts reached for document ${upload.documentId}',
-        );
         continue;
       }
 
       _isProcessing[upload.documentId] = true;
-
       try {
-        await _uploadDocumentInternal(upload.document);
-        _isProcessing.remove(upload.documentId);
-      } catch (e) {
-        _isProcessing.remove(upload.documentId);
-        // Re-add to queue with incremented attempts
+        await _uploadDocumentInternal(upload.document, attempt: upload.attempts);
+      } catch (_) {
         _uploadQueue.add(
           upload.copyWith(
             attempts: upload.attempts + 1,
             lastAttempt: DateTime.now(),
           ),
         );
+      } finally {
+        _isProcessing.remove(upload.documentId);
       }
 
-      // Small delay between uploads to prevent overwhelming the system
       await Future.delayed(const Duration(seconds: 1));
     }
   }

@@ -6,6 +6,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:thyscan/core/services/app_logger.dart';
+import 'package:thyscan/core/services/document_upload_service.dart';
+import 'package:thyscan/features/scan/core/config/pdf_settings.dart';
+import 'package:thyscan/models/document_color_profile.dart';
 import 'package:thyscan/models/document_model.dart';
 import 'package:thyscan/services/document_service.dart';
 
@@ -31,6 +34,12 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
   PdfDocument? _pdfDocument;
   int _pageCount = 0;
   final Map<int, Future<PdfPageImage?>> _pageRenders = {};
+
+  List<String>? _draftPageImagePaths;
+  String? _draftScanMode;
+  DocumentColorProfile? _draftColorProfile;
+  bool _hasDraftChanges = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
@@ -148,6 +157,90 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     }
   }
 
+  void _applyDraftResult(dynamic result) {
+    if (result is Map) {
+      final paths = result['imagePaths'];
+      final scanMode = result['scanMode'];
+      final colorProfileKey = result['colorProfile'];
+
+      if (paths is List) {
+        setState(() {
+          _draftPageImagePaths = paths.whereType<String>().toList();
+          _draftScanMode = scanMode is String ? scanMode : null;
+          _draftColorProfile = colorProfileKey is String
+              ? DocumentColorProfile.fromKey(colorProfileKey)
+              : null;
+          _hasDraftChanges = true;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Changes ready. Tap Save to apply.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } else if (result == true) {
+      // Backwards compatibility: some callers may still return boolean.
+      _hasDraftChanges = true;
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    final doc = _document;
+    if (doc == null) return;
+    if (_draftPageImagePaths == null || _draftPageImagePaths!.isEmpty) return;
+
+    setState(() {
+      _isSaving = true;
+      _error = null;
+    });
+
+    try {
+      final scanMode = _draftScanMode ?? doc.scanMode;
+      final colorProfile =
+          _draftColorProfile ?? DocumentColorProfile.fromKey(doc.colorProfile);
+
+      final updatedDoc = await DocumentService.instance.updateDocument(
+        documentId: doc.id,
+        pageImagePaths: _draftPageImagePaths!,
+        scanMode: scanMode,
+        colorProfile: colorProfile,
+        options: DocumentSaveOptions.enterpriseDefaults(
+          title: doc.title,
+          tags: doc.tags,
+          skipUpload: true,
+        ),
+      );
+
+      await DocumentUploadService.instance.uploadDocument(
+        updatedDoc,
+        deleteRemoteBeforeUpload: true,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _draftPageImagePaths = null;
+        _draftScanMode = null;
+        _draftColorProfile = null;
+        _hasDraftChanges = false;
+      });
+
+      await _reloadFromHive();
+    } catch (e, stack) {
+      AppLogger.error('Failed to save updated PDF', error: e, stack: stack);
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+      });
+    }
+  }
+
   Future<void> _reloadFromHive() async {
     try {
       setState(() {
@@ -219,7 +312,7 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
 
     if (doc.pageImagePaths.isNotEmpty) {
       if (!mounted) return;
-      final updated = await context.push<bool>(
+      final result = await context.push<dynamic>(
         '/savepdfscreen',
         extra: {
           'imagePaths': doc.pageImagePaths,
@@ -230,9 +323,8 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         },
       );
 
-      if (updated == true && mounted) {
-        await _reloadFromHive();
-      }
+      if (!mounted) return;
+      _applyDraftResult(result);
       return;
     }
 
@@ -261,7 +353,7 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      context.push(
+      final result = await context.push<dynamic>(
         '/savepdfscreen',
         extra: {
           'imagePaths': imagePaths,
@@ -271,6 +363,9 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
           'colorProfile': doc.colorProfile,
         },
       );
+
+      if (!mounted) return;
+      _applyDraftResult(result);
     } catch (e, stack) {
       AppLogger.error(
         'Failed to prepare PDF pages for editing',
@@ -351,6 +446,22 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
             icon: const Icon(Icons.edit_outlined),
           ),
         ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: FilledButton(
+            onPressed:
+                (_hasDraftChanges && !_isLoading && !_isSaving) ? _saveDraft : null,
+            child: _isSaving
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Save'),
+          ),
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
